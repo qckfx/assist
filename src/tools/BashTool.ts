@@ -2,13 +2,8 @@
  * BashTool - Executes shell commands in the environment
  */
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { createTool } from './createTool';
 import { Tool, ToolContext, ValidationResult } from '../types/tool';
-
-// Promisify exec for async/await usage
-const execAsync = promisify(exec);
 
 export interface BashToolArgs {
   command: string;
@@ -77,15 +72,20 @@ export const createBashTool = (): Tool => {
       // Extract arguments
       const commandStr = args.command as string;
       const workingDir = args.workingDir as string | undefined;
-      
-      const options = workingDir ? { cwd: workingDir } : undefined;
-      
+            
       try {
         context.logger?.debug(`Executing bash command: ${commandStr}`);
-        const result = await execAsync(commandStr, options);
-        const stdout = result.stdout.toString();
-        const stderr = result.stderr.toString();
+        const executionAdapter = context.executionAdapter;
+        const {stdout, stderr, exitCode } = await executionAdapter.executeCommand(commandStr, workingDir);
         
+        if (exitCode !== 0) {
+          return { 
+            success: false,
+            error: stderr,
+            command: commandStr
+          };
+        }
+
         return { 
           success: true,
           stdout, 

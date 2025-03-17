@@ -22,11 +22,12 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
   if (!config.modelClient) throw new Error('AgentRunner requires a modelClient');
   if (!config.toolRegistry) throw new Error('AgentRunner requires a toolRegistry');
   if (!config.permissionManager) throw new Error('AgentRunner requires a permissionManager');
-  
+  if (!config.executionAdapter) throw new Error('AgentRunner requires an executionAdapter');
   // Dependencies
   const modelClient = config.modelClient;
   const toolRegistry = config.toolRegistry;
   const permissionManager = config.permissionManager;
+  const executionAdapter = config.executionAdapter;
   const logger = config.logger || console;
   
   // Return the public interface
@@ -76,7 +77,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           sessionState,
           logger,
           toolRegistry,
-          modelClient
+          modelClient,
+          executionAdapter
         };
         
         // Loop until we get a final response or reach max iterations

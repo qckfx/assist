@@ -2,15 +2,8 @@
  * FileReadTool - Reads the contents of files
  */
 
-import fs from 'fs';
-import path from 'path';
-import { promisify } from 'util';
 import { createTool } from './createTool';
 import { Tool, ToolContext, ValidationResult } from '../types/tool';
-
-// Promisify fs functions for async/await usage
-const readFileAsync = promisify(fs.readFile);
-const statAsync = promisify(fs.stat);
 
 // Interface for the arguments accepted by the FileReadTool
 // Used for type checking and documentation
@@ -22,7 +15,7 @@ export interface FileReadToolArgs {
   lineCount?: number;
 }
 
-interface FileReadToolSuccessResult {
+export interface FileReadToolSuccessResult {
   success: true;
   path: string;
   content: string;
@@ -36,7 +29,7 @@ interface FileReadToolSuccessResult {
   };
 }
 
-interface FileReadToolErrorResult {
+export interface FileReadToolErrorResult {
   success: false;
   path: string;
   error: string;
@@ -96,77 +89,23 @@ export const createFileReadTool = (): Tool => {
       const encoding = args.encoding as string || 'utf8';
       const maxSize = args.maxSize as number || 1048576;
       const lineOffset = args.lineOffset as number || 0;
-      const lineCount = args.lineCount !== undefined ? args.lineCount as number : null;
+      const lineCount = args.lineCount !== undefined ? args.lineCount as number : undefined;
+
+      const executionAdapter = context.executionAdapter;
+      const { readFile } = executionAdapter;
       
       try {
-        // Resolve the path (could add security checks here)
-        const resolvedPath = path.resolve(filePath);
-        
-        // Check if file exists and get stats
-        const stats = await statAsync(resolvedPath);
-        
-        if (!stats.isFile()) {
-          return {
-            success: false,
-            path: filePath,
-            error: `Path exists but is not a file: ${filePath}`
-          };
-        }
-        
-        // Check file size
-        if (stats.size > maxSize) {
-          return {
-            success: false,
-            path: filePath,
-            error: `File is too large (${stats.size} bytes) to read. Max size: ${maxSize} bytes`
-          };
-        }
-        
-        // Read the file
-        context.logger?.debug(`Reading file: ${resolvedPath}`);
-        let content = (await readFileAsync(resolvedPath, encoding as BufferEncoding)).toString();
-        
-        // Handle line pagination if requested
-        if (lineOffset > 0 || lineCount !== null) {
-          const lines = content.split('\n');
-          const startLine = Math.min(lineOffset, lines.length);
-          const endLine = lineCount !== null 
-            ? Math.min(startLine + lineCount, lines.length) 
-            : lines.length;
-          
-          content = lines.slice(startLine, endLine).join('\n');
-          
-          return {
-            success: true,
-            path: resolvedPath,
-            content,
-            size: stats.size,
-            encoding,
-            pagination: {
-              totalLines: lines.length,
-              startLine,
-              endLine,
-              hasMore: endLine < lines.length
-            }
-          };
-        }
-        
-        return {
-          success: true,
-          path: resolvedPath,
-          content,
-          size: stats.size,
-          encoding
-        };
+        return await readFile(filePath, maxSize, lineOffset, lineCount, encoding);
       } catch (error: unknown) {
         const err = error as Error;
         context.logger?.error(`Error reading file: ${err.message}`);
         return {
           success: false,
           path: filePath,
-          error: (error as Error).message
+          error: err.message
         };
       }
     }
   });
 };
+        

@@ -35,6 +35,7 @@ import { Agent, AgentConfig } from './types/main';
 import { Tool } from './types/tool';
 import { ErrorType } from './types/error';
 import { ModelProvider } from './types/model';
+import { LocalExecutionAdapter } from './utils/LocalExecutionAdapter';
 /**
  * Creates a complete agent with default tools
  * @param config - Agent configuration
@@ -77,7 +78,8 @@ const createAgent = (config: AgentConfig): Agent => {
     modelClient,
     toolRegistry,
     permissionManager,
-    logger
+    logger,
+    executionAdapter: new LocalExecutionAdapter()
   });
   
   // Create state manager

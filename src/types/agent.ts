@@ -5,11 +5,13 @@
 import { ModelClient } from './model';
 import { PermissionManager } from './permission';
 import { ToolRegistry } from './registry';
+import { ExecutionAdapter } from './tool';
 
 export interface AgentRunnerConfig {
   modelClient: ModelClient;
   toolRegistry: ToolRegistry;
   permissionManager: PermissionManager;
+  executionAdapter: ExecutionAdapter;
   logger?: {
     debug: (message: string, ...args: unknown[]) => void;
     info: (message: string, ...args: unknown[]) => void;
