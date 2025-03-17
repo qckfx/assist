@@ -1,7 +1,7 @@
 {
   "name": "qckfx",
-  "version": "0.1.1",
-  "description": "A modular, composition-based AI agent framework",
+  "version": "0.1.2",
+  "description": "A cli-based AI software engineering agent",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

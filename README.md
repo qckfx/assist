@@ -16,7 +16,7 @@
   <a href="https://github.com/qckfx/agent/blob/main/LICENSE">
     <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg" />
   </a>
-  <a href="https://discord.com/widget?id=1351120157392769055">
+  <a href="https://discord.gg/DbTkJm43s5">
     <img alt="Discord Community" src="https://img.shields.io/discord/1351120157392769055?color=7289DA&label=discord&logo=discord&logoColor=white" />
   </a>
   <a href="https://www.npmjs.com/package/qckfx">
@@ -27,7 +27,11 @@
   </a>
 </p>
 
-<iframe src="https://discord.com/widget?id=1351120157392769055&theme=dark" width="350" height="500" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
+<p align="center">
+  <a href="https://discord.gg/DbTkJm43s5">
+    <img src="https://img.shields.io/badge/join-discord-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord server" />
+  </a>
+</p>
 
 ---
 
@@ -70,7 +74,7 @@ qckfx agent
 └── Utils
     ├── Logger
     ├── Error Handling
-    └── State Management
+    └── Token Management 
 ```
 
 ## Installation
