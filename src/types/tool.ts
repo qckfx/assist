@@ -2,6 +2,27 @@
  * Types and interfaces for tools
  */
 
+import { GlobOptions } from "fs";
+import { FileEditToolResult } from "../tools/FileEditTool";
+import { FileReadToolResult } from "../tools/FileReadTool";
+
+export interface ExecutionAdapter {
+  executeCommand: (command: string, workingDir?: string) => Promise<{
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+  }>;
+
+  editFile: (filepath: string, searchCode: string, replaceCode: string, encoding?: string) => Promise<FileEditToolResult>;
+
+  glob: (pattern: string, options?: GlobOptions) => Promise<string[]>;
+
+  readFile: (filepath: string, maxSize?: number, lineOffset?: number, lineCount?: number, encoding?: string) => Promise<FileReadToolResult>;
+
+  writeFile: (filepath: string, content: string) => Promise<void>;
+  
+}
+
 export interface ParameterSchema {
   type: string;
   description?: string;
@@ -38,6 +59,7 @@ export interface ToolContext {
     warn: (message: string, ...args: unknown[]) => void;
     error: (message: string, ...args: unknown[]) => void;
   };
+  executionAdapter: ExecutionAdapter;
   [key: string]: unknown;
 }
 
