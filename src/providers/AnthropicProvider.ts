@@ -23,7 +23,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
   const apiKey = config.apiKey;
   const model = config.model || 'claude-3-7-sonnet-20250219';
   const maxTokens = config.maxTokens || 4096;
-  const logger = config.logger || console;
+  const logger = config.logger;
   
   // Create Anthropic client
   const anthropic = new Anthropic({
@@ -38,12 +38,12 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
   return async (prompt: ModelProviderRequest): Promise<Anthropic.Messages.Message> => {
     try {
       if (prompt.messages && prompt.messages.length > 0) {
-        logger.debug('Calling Anthropic API', LogCategory.MODEL, { 
+        logger?.debug('Calling Anthropic API', LogCategory.MODEL, { 
           model,
           messageCount: prompt.messages.length
         });
       } else {
-        logger.debug('Calling Anthropic API', LogCategory.MODEL, { model, prompt: 'No messages provided' });
+        logger?.debug('Calling Anthropic API', LogCategory.MODEL, { model, prompt: 'No messages provided' });
       }
 
       if (prompt.responseType === 'user_message') {
@@ -79,10 +79,10 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         
         // Make sure token usage information is available for tracking
         if (!response.usage) {
-          logger.warn('Token usage information not provided in the response');
+          logger?.warn('Token usage information not provided in the response', LogCategory.MODEL);
         }
         
-        logger.debug('Anthropic API response', LogCategory.MODEL, { 
+        logger?.debug('Anthropic API response', LogCategory.MODEL, { 
           id: response.id,
           usage: response.usage,
           contentTypes: response.content?.map(c => c.type)
@@ -97,7 +97,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
             citations: []
           };
           response.content = [fallbackContent];
-          logger.debug('Added fallback content for empty response', { content: response.content });
+          logger?.debug('Added fallback content for empty response', LogCategory.MODEL, { content: response.content });
         }
 
         return response as Anthropic.Messages.Message;
@@ -125,10 +125,10 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         
         // Make sure token usage information is available for tracking
         if (!response.usage) {
-          logger.warn('Token usage information not provided in the response');
+          logger?.warn('Token usage information not provided in the response', LogCategory.MODEL);
         }
         
-        logger.debug('Anthropic API response', LogCategory.MODEL, { 
+        logger?.debug('Anthropic API response', LogCategory.MODEL, { 
           id: response.id,
           usage: response.usage,
           contentTypes: response.content?.map(c => c.type)
@@ -136,7 +136,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         return response as Anthropic.Messages.Message;
       }
     } catch (error) {
-      logger.error('Error calling Anthropic API', error);
+      logger?.error('Error calling Anthropic API', LogCategory.MODEL, error);
       throw error;
     }
   };
