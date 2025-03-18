@@ -2,15 +2,9 @@
  * LSTool - Lists directory contents
  */
 
-import fs from 'fs';
-import path from 'path';
-import { promisify } from 'util';
 import { createTool } from './createTool';
 import { Tool, ToolContext, ValidationResult } from '../types/tool';
 
-// Promisify fs functions for async/await usage
-const readdirAsync = promisify(fs.readdir);
-const statAsync = promisify(fs.stat);
 
 interface LSToolArgs {
   path?: string;
@@ -18,7 +12,7 @@ interface LSToolArgs {
   details?: boolean;
 }
 
-interface FileEntry {
+export interface FileEntry {
   name: string;
   type?: string;
   size?: number;
@@ -30,20 +24,20 @@ interface FileEntry {
   error?: string;
 }
 
-interface LSToolSuccessResult {
+export interface LSToolSuccessResult {
   success: true;
   path: string;
   entries: FileEntry[];
   count: number;
 }
 
-interface LSToolErrorResult {
+export interface LSToolErrorResult {
   success: false;
   path: string;
   error: string;
 }
 
-type LSToolResult = LSToolSuccessResult | LSToolErrorResult;
+export type LSToolResult = LSToolSuccessResult | LSToolErrorResult;
 
 /**
  * Creates a tool for listing directory contents
@@ -90,94 +84,9 @@ export const createLSTool = (): Tool => {
         details = false
       } = args;
       
-      try {
-        // Resolve the path
-        const resolvedPath = path.resolve(dirPath);
-        
-        // Check if directory exists
-        try {
-          const stats = await statAsync(resolvedPath);
-          if (!stats.isDirectory()) {
-            return {
-              success: false,
-              path: dirPath,
-              error: `Path exists but is not a directory: ${dirPath}`
-            };
-          }
-        } catch {
-          return {
-            success: false,
-            path: dirPath,
-            error: `Directory does not exist: ${dirPath}`
-          };
-        }
-        
-        // Read directory contents
-        context.logger?.debug(`Listing directory: ${resolvedPath}`);
-        const entries = await readdirAsync(resolvedPath, { withFileTypes: true });
-        
-        // Filter hidden files if needed
-        const filteredEntries = showHidden ? 
-          entries : 
-          entries.filter(entry => !entry.name.startsWith('.'));
-        
-        // Format the results
-        let results: FileEntry[];
-        
-        if (details) {
-          // Get detailed information for each entry
-          results = await Promise.all(
-            filteredEntries.map(async (entry) => {
-              const entryPath = path.join(resolvedPath, entry.name);
-              try {
-                const stats = await statAsync(entryPath);
-                return {
-                  name: entry.name,
-                  type: entry.isDirectory() ? 'directory' : 
-                        entry.isFile() ? 'file' : 
-                        entry.isSymbolicLink() ? 'symlink' : 'other',
-                  size: stats.size,
-                  modified: stats.mtime,
-                  created: stats.birthtime,
-                  isDirectory: entry.isDirectory(),
-                  isFile: entry.isFile(),
-                  isSymbolicLink: entry.isSymbolicLink()
-                };
-              } catch (err: unknown) {
-                return {
-                  name: entry.name,
-                  isDirectory: false,
-                  isFile: false,
-                  isSymbolicLink: false,
-                  error: (err as Error).message
-                };
-              }
-            })
-          );
-        } else {
-          // Simple listing
-          results = filteredEntries.map(entry => ({
-            name: entry.name,
-            isDirectory: entry.isDirectory(),
-            isFile: entry.isFile(),
-            isSymbolicLink: entry.isSymbolicLink()
-          }));
-        }
-        
-        return {
-          success: true,
-          path: resolvedPath,
-          entries: results,
-          count: results.length
-        };
-      } catch (error: unknown) {
-        context.logger?.error(`Error listing directory: ${(error as Error).message}`);
-        return {
-          success: false,
-          path: dirPath,
-          error: (error as Error).message
-        };
-      }
+      const executionAdapter = context.executionAdapter;
+      const result = await executionAdapter.ls(dirPath, showHidden, details);
+      return result;
     }
   });
 };

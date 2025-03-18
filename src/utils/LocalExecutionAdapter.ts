@@ -6,7 +6,7 @@ import { exec } from 'child_process';
   import glob from 'glob';
   import { FileReadToolSuccessResult, FileReadToolErrorResult } from '../tools/FileReadTool';
   import { FileEditToolSuccessResult, FileEditToolErrorResult } from '../tools/FileEditTool';
-
+  import { FileEntry, LSToolSuccessResult, LSToolErrorResult } from '../tools/LSTool';
   const execAsync = promisify(exec);
   const readFileAsync = promisify(fs.readFile);
   const writeFileAsync = promisify(fs.writeFile);
@@ -193,5 +193,96 @@ import { exec } from 'child_process';
 
     async writeFile(path: string, content: string) {
       return writeFileAsync(path, content);
+    }
+
+    async ls(dirPath: string, showHidden: boolean = false, details: boolean = false) {
+      try {
+        // Resolve the path
+        const resolvedPath = path.resolve(dirPath);
+        
+        // Check if directory exists
+        try {
+          const stats = await fs.promises.stat(resolvedPath);
+          if (!stats.isDirectory()) {
+            return {
+              success: false as const,
+              path: dirPath,
+              error: `Path exists but is not a directory: ${dirPath}`
+            } as LSToolErrorResult;
+          }
+        } catch {
+          return {
+            success: false as const,
+            path: dirPath,
+            error: `Directory does not exist: ${dirPath}`
+          } as LSToolErrorResult;
+        }
+        
+        // Read directory contents
+        console.log(`Listing directory: ${resolvedPath}`);
+        const entries = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
+        
+        // Filter hidden files if needed
+        const filteredEntries = showHidden ? 
+          entries : 
+          entries.filter(entry => !entry.name.startsWith('.'));
+        
+        // Format the results
+        let results: FileEntry[];
+        
+        if (details) {
+          // Get detailed information for each entry
+          results = await Promise.all(
+            filteredEntries.map(async (entry) => {
+              const entryPath = path.join(resolvedPath, entry.name);
+              try {
+                const stats = await fs.promises.stat(entryPath);
+                return {
+                  name: entry.name,
+                  type: entry.isDirectory() ? 'directory' : 
+                        entry.isFile() ? 'file' : 
+                        entry.isSymbolicLink() ? 'symlink' : 'other',
+                  size: stats.size,
+                  modified: stats.mtime,
+                  created: stats.birthtime,
+                  isDirectory: entry.isDirectory(),
+                  isFile: entry.isFile(),
+                  isSymbolicLink: entry.isSymbolicLink()
+                };
+              } catch (err: unknown) {
+                return {
+                  name: entry.name,
+                  isDirectory: false,
+                  isFile: false,
+                  isSymbolicLink: false,
+                  error: (err as Error).message
+                };
+              }
+            })
+          );
+        } else {
+          // Simple listing
+          results = filteredEntries.map(entry => ({
+            name: entry.name,
+            isDirectory: entry.isDirectory(),
+            isFile: entry.isFile(),
+            isSymbolicLink: entry.isSymbolicLink()
+          }));
+        }
+        
+        return {
+          success: true as const,
+          path: resolvedPath,
+          entries: results,
+          count: results.length
+        } as LSToolSuccessResult;
+      } catch (error: unknown) {
+        console.error(`Error listing directory: ${(error as Error).message}`);
+        return {
+          success: false as const,
+          path: dirPath,
+          error: (error as Error).message
+        } as LSToolErrorResult;
+      }
     }
   }
