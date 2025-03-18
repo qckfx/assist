@@ -7,12 +7,31 @@ import { exec } from 'child_process';
   import { FileReadToolSuccessResult, FileReadToolErrorResult } from '../tools/FileReadTool';
   import { FileEditToolSuccessResult, FileEditToolErrorResult } from '../tools/FileEditTool';
   import { FileEntry, LSToolSuccessResult, LSToolErrorResult } from '../tools/LSTool';
+  import { LogCategory } from './logger';
+  
   const execAsync = promisify(exec);
   const readFileAsync = promisify(fs.readFile);
   const writeFileAsync = promisify(fs.writeFile);
   const globAsync = promisify(glob);
 
   export class LocalExecutionAdapter implements ExecutionAdapter {
+    private logger?: {
+      debug: (message: string, ...args: unknown[]) => void;
+      info: (message: string, ...args: unknown[]) => void;
+      warn: (message: string, ...args: unknown[]) => void;
+      error: (message: string, ...args: unknown[]) => void;
+    };
+
+    constructor(options?: { 
+      logger?: {
+        debug: (message: string, ...args: unknown[]) => void;
+        info: (message: string, ...args: unknown[]) => void;
+        warn: (message: string, ...args: unknown[]) => void;
+        error: (message: string, ...args: unknown[]) => void;
+      }
+    }) {
+      this.logger = options?.logger;
+    }
     async executeCommand(command: string, workingDir?: string) {
       try {
         const options = workingDir ? { cwd: workingDir } : undefined;
@@ -219,7 +238,7 @@ import { exec } from 'child_process';
         }
         
         // Read directory contents
-        console.log(`Listing directory: ${resolvedPath}`);
+        this.logger?.debug(`Listing directory: ${resolvedPath}`, LogCategory.TOOLS);
         const entries = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
         
         // Filter hidden files if needed
@@ -277,7 +296,7 @@ import { exec } from 'child_process';
           count: results.length
         } as LSToolSuccessResult;
       } catch (error: unknown) {
-        console.error(`Error listing directory: ${(error as Error).message}`);
+        this.logger?.error(`Error listing directory: ${(error as Error).message}`, error, LogCategory.TOOLS);
         return {
           success: false as const,
           path: dirPath,

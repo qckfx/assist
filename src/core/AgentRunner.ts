@@ -11,6 +11,57 @@ import {
 } from '../types/agent';
 import { ToolCall, ConversationMessage, SessionState } from '../types/model';
 import { manageConversationSize } from '../utils/TokenManager';
+import { LogCategory } from '../utils/logger';
+
+/**
+ * Helper function to create a concise summary of tool arguments
+ * @param args The arguments to summarize
+ * @returns A concise string representation of the arguments
+ */
+function summarizeArgs(args: Record<string, unknown>): string {
+  // Handle file paths specially
+  if (args.file_path || args.filepath || args.path) {
+    const filePath = (args.file_path || args.filepath || args.path) as string;
+    const otherArgs = { ...args };
+    delete otherArgs.file_path;
+    delete otherArgs.filepath;
+    delete otherArgs.path;
+    
+    if (Object.keys(otherArgs).length > 0) {
+      return `${filePath} + ${Object.keys(otherArgs).length} more args`;
+    } else {
+      return filePath;
+    }
+  }
+  
+  // For pattern-based tools
+  if (args.pattern) {
+    return `pattern: ${args.pattern}${args.include ? `, include: ${args.include}` : ''}`;
+  }
+  
+  // For command execution
+  if (args.command) {
+    const cmd = args.command as string;
+    return cmd.length > 30 ? `${cmd.substring(0, 30)}...` : cmd;
+  }
+  
+  // Default case - list all args with their types
+  return Object.entries(args)
+    .map(([key, val]) => {
+      if (typeof val === 'string') {
+        if (val.length > 20) {
+          return `${key}: "${val.substring(0, 20)}..."`;
+        }
+        return `${key}: "${val}"`;
+      } else if (Array.isArray(val)) {
+        return `${key}: [${val.length} items]`;
+      } else if (typeof val === 'object' && val !== null) {
+        return `${key}: {object}`;
+      }
+      return `${key}: ${val}`;
+    })
+    .join(', ');
+}
 
 /**
  * Creates an agent runner to orchestrate the agent process
@@ -58,8 +109,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         // Manage conversation size to prevent token limit issues
         // Do this before adding the new query to avoid trimming it
         if (sessionState.tokenUsage) {
-          logger.debug('Managing conversation size before processing query');
-          manageConversationSize(sessionState);
+          logger.debug('Managing conversation size before processing query', LogCategory.SYSTEM);
+          manageConversationSize(sessionState, 60000, logger);
         }
         
         // Add the user query to conversation history if it's not already there
@@ -84,11 +135,11 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         // Loop until we get a final response or reach max iterations
         while (iterations < maxIterations) {
           iterations++;
-          logger.debug(`Iteration ${iterations}/${maxIterations}`);
+          logger.debug(`Iteration ${iterations}/${maxIterations}`, LogCategory.SYSTEM);
           
           try {
             // 1. Ask the model what to do next
-            logger.debug('Getting tool call from model');
+            logger.debug('Getting tool call from model', LogCategory.MODEL);
             
             const toolCallChat = await modelClient.getToolCall(
               currentQuery, 
@@ -97,7 +148,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             );
             // If the model doesn't want to use a tool, it's ready to respond
             if (!toolCallChat.toolChosen) {
-              logger.debug('Model chose not to use a tool, generating final response');
+              logger.debug('Model chose not to use a tool, generating final response', LogCategory.MODEL);
               
               finalResponse = toolCallChat.response;
               
@@ -107,7 +158,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             const toolCall = toolCallChat.toolCall as ToolCall;
             
             // 2. Get the chosen tool
-            logger.debug(`Model selected tool: ${toolCall.toolId}`);
+            logger.debug(`Model selected tool: ${toolCall.toolId}`, LogCategory.MODEL);
             const tool = toolRegistry.getTool(toolCall.toolId);
             if (!tool) {
               throw new Error(`Tool ${toolCall.toolId} not found`);
@@ -120,7 +171,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             delete sessionState.lastToolError;
             
             // 3. Execute the tool
-            logger.debug(`Executing tool ${tool.name} with args:`, toolCall.args);
+            const argSummary = summarizeArgs(toolCall.args as Record<string, unknown>);
+            logger.debug(`Executing tool ${tool.name} with args: ${argSummary}`, LogCategory.TOOLS);
             let result;
             try {
               result = await tool.execute(toolCall.args as Record<string, unknown>, context);
@@ -128,7 +180,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               // Handle validation errors specifically
               const errorObj = error as Error;
               if (errorObj.message && errorObj.message.includes('Invalid args')) {
-                logger.warn(`Tool argument error: ${errorObj.message}`);
+                logger.warn(`Tool argument error: ${errorObj.message}`, LogCategory.TOOLS);
                 
                 // Store the error in state for the model to learn from
                 sessionState.lastToolError = {
@@ -188,11 +240,11 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             // Ask the model to decide what to do next
             currentQuery = `Based on the result of using ${tool.name}, what should I do next to answer: ${query}`;
           } catch (error: unknown) {
-            logger.error(`Error in iteration ${iterations}:`, error);
+            logger.error(`Error in iteration ${iterations}:`, error, LogCategory.SYSTEM);
             
             // If we have at least one tool result, try to generate a response
             if (toolResults.length > 0) {
-              logger.debug('Generating response from partial results due to error');
+              logger.debug('Generating response from partial results due to error', LogCategory.MODEL);
               
               finalResponse = await modelClient.generateResponse(
                 query,
@@ -210,7 +262,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         
         // If we reached max iterations without a response, generate one
         if (!finalResponse) {
-          logger.debug('Reached maximum iterations, generating response');
+          logger.debug('Reached maximum iterations, generating response', LogCategory.MODEL);
           
           finalResponse = await modelClient.generateResponse(
             query,
@@ -246,7 +298,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           done: true
         };
       } catch (error: unknown) {
-        logger.error('Error in processQuery:', error);
+        logger.error('Error in processQuery:', error, LogCategory.SYSTEM);
         return {
           error: (error as Error).message,
           sessionState,
@@ -269,14 +321,14 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
       while (!done) {
         // Manage conversation size before starting a new loop
         if (sessionState.tokenUsage) {
-          logger.debug('Managing conversation size before starting new conversation loop');
-          manageConversationSize(sessionState as SessionState);
+          logger.debug('Managing conversation size before starting new conversation loop', LogCategory.SYSTEM);
+          manageConversationSize(sessionState as SessionState, 60000, logger);
         }
         
         const result = await this.processQuery(query, sessionState);
         
         if (result.error) {
-          logger.error('Error in conversation:', result.error);
+          logger.error('Error in conversation:', result.error, LogCategory.SYSTEM);
           responses.push(`Error: ${result.error}`);
           break;
         }

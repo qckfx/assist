@@ -105,32 +105,50 @@ This will start an interactive session where you can chat with Claude. The agent
 
 Example conversation:
 ```
-🤖 qckfx agent 🤖
-Type your queries and the AI will respond.
-Type "exit" or "quit" to end the conversation.
+> tell me what this repo does
 
-You: What files are in the current directory?
+✔ Response ready
+[INFO] [tools] 
+🔧 Tools Used:
+[INFO] [tools]   1. ls(details: true)
+[INFO] [tools]   2. file_read(README.md)
+[INFO] [tools]   3. file_read(package.json)
+[INFO] [tools]   4. ls(src, details: true)
+[INFO] [tools]   5. file_read(src/index.ts)
+[INFO] [tools] 
+[INFO] [user] 🤖 Based on my exploration of the repository, here's what this repo does:
 
-AI: Here are the files and directories in the current directory:
-1. README.md
-2. docs (directory)
-3. node_modules (directory)
-4. package-lock.json
-5. package.json
-6. src (directory)
+# qckfx agent
 
-You: Find all the React components that use useEffect
+This is a CLI-based AI software engineering assistant that runs in your terminal. It's designed to help developers with coding tasks by providing an AI assistant that can interact with your codebase.
 
-AI: Searching for React components that use useEffect...
-[Lists all matching files]
+## Key Features:
 
-You: Explain how the permission system works in this codebase
+1. **File Operations**: The agent can read, edit, and create files in your codebase.
+2. **Code Search**: It can find code using glob patterns and grep-like searches.
+3. **Bash Command Execution**: It can run terminal commands with proper permission handling.
+4. **Interactive Chat**: It supports multi-turn conversations with context preservation.
+5. **Claude Integration**: It's powered by Anthropic's Claude models with tool calling capabilities.
 
-AI: [Provides detailed explanation after analyzing relevant files]
+## Architecture:
 
-You: exit
+The project follows a modular, composition-based approach with these main components:
 
-Goodbye! 👋
+- **Core**: Includes AgentRunner (orchestrates the process), ToolRegistry (manages tools), PermissionManager (handles permissions), and ModelClient (interacts with the LLM).
+- **Providers**: Currently includes AnthropicProvider for Claude models.
+- **Tools**: Various tools like BashTool, GlobTool, GrepTool, LSTool, FileReadTool, FileEditTool, FileWriteTool, and ScratchpadTool.
+- **Utils**: Includes Logger, Error Handling, and Token Management.
+
+## Usage:
+
+You can use it by running:
+```bash
+ANTHROPIC_API_KEY=your_key_here npx qckfx
+```
+
+This starts an interactive session where you can chat with Claude. The agent can assist with various software development tasks like debugging, code generation, refactoring, codebase exploration, and testing.
+
+The project is MIT licensed and is part of the qckfx platform, which also offers a hosted solution at qckfx.com for fixing GitHub issues asynchronously and autonomously.
 ```
 
 ### Advanced Use Cases

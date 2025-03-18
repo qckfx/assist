@@ -4,6 +4,7 @@
 
 import { SessionState, MessageTokenUsage } from "../types/model";
 import { Anthropic } from "@anthropic-ai/sdk";
+import { LogCategory } from "./logger";
 
 /**
  * Tracks token usage from model responses
@@ -42,8 +43,18 @@ const trackTokenUsage = (response: Anthropic.Messages.Message, sessionState: Ses
  * Uses a prioritized strategy that preserves user messages and recent context
  * @param sessionState - The current session state
  * @param maxTokens - Maximum number of tokens to allow (default: 60000)
+ * @param logger - Optional logger for logging token management actions
  */
-const manageConversationSize = (sessionState: SessionState, maxTokens: number = 60000): void => {
+const manageConversationSize = (
+  sessionState: SessionState, 
+  maxTokens: number = 60000,
+  logger?: {
+    debug: (message: string, ...args: unknown[]) => void;
+    info: (message: string, ...args: unknown[]) => void;
+    warn: (message: string, ...args: unknown[]) => void;
+    error: (message: string, ...args: unknown[]) => void;
+  }
+): void => {
   if (!sessionState.tokenUsage || !sessionState.conversationHistory) {
     return;
   }
@@ -53,7 +64,7 @@ const manageConversationSize = (sessionState: SessionState, maxTokens: number = 
     return;
   }
   
-  console.log(`[TokenManager] Need to trim history. Current tokens: ${sessionState.tokenUsage.totalTokens}, Max: ${maxTokens}`);
+  logger?.debug(`Need to trim history. Current tokens: ${sessionState.tokenUsage.totalTokens}, Max: ${maxTokens}`, LogCategory.MODEL);
   
   // We need to trim the history
   const tokensToRemove = sessionState.tokenUsage.totalTokens - maxTokens;
@@ -112,13 +123,13 @@ const manageConversationSize = (sessionState: SessionState, maxTokens: number = 
     const toolUseMessage = sessionState.conversationHistory[pair.toolUseIndex];
     const toolResultMessage = sessionState.conversationHistory[pair.toolResultIndex];
     
-    console.log(`[TokenManager] Removing tool pair - Tool Use (index ${pair.toolUseIndex}): ${JSON.stringify(toolUseMessage.content)}`);
-    console.log(`[TokenManager] Removing tool pair - Tool Result (index ${pair.toolResultIndex}): ${JSON.stringify(toolResultMessage.content)}`);
+    logger?.debug(`Removing tool pair - Tool Use (index ${pair.toolUseIndex}): ${JSON.stringify(toolUseMessage.content)}`, LogCategory.MODEL);
+    logger?.debug(`Removing tool pair - Tool Result (index ${pair.toolResultIndex}): ${JSON.stringify(toolResultMessage.content)}`, LogCategory.MODEL);
     
     removedIndices.add(pair.toolUseIndex);
     removedIndices.add(pair.toolResultIndex);
     tokensRemoved += pair.totalTokens;
-    console.log(`[TokenManager] Removed tool pair - Tokens removed: ${pair.totalTokens}`);
+    logger?.debug(`Removed tool pair - Tokens removed: ${pair.totalTokens}`, LogCategory.MODEL);
   }
   
   // Find the index of the most recent user message
@@ -146,11 +157,11 @@ const manageConversationSize = (sessionState: SessionState, maxTokens: number = 
       if (message.role === 'assistant') {
         const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
         
-        console.log(`[TokenManager] Removing assistant message (index ${i}): ${JSON.stringify(message.content)}`);
+        logger?.debug(`Removing assistant message (index ${i}): ${JSON.stringify(message.content)}`, LogCategory.MODEL);
         
         removedIndices.add(i);
         tokensRemoved += tokens;
-        console.log(`[TokenManager] Removed assistant message - Tokens removed: ${tokens}`);
+        logger?.debug(`Removed assistant message - Tokens removed: ${tokens}`, LogCategory.MODEL);
         if (tokensRemoved >= tokensToRemove) {
           break;
         }
@@ -181,11 +192,11 @@ const manageConversationSize = (sessionState: SessionState, maxTokens: number = 
             message.content.some(c => c.type === 'tool_result'))) { // Not a tool result message
         const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
         
-        console.log(`[TokenManager] Removing user message (index ${i}): ${JSON.stringify(message.content)}`);
+        logger?.debug(`Removing user message (index ${i}): ${JSON.stringify(message.content)}`, LogCategory.MODEL);
         
         removedIndices.add(i);
         tokensRemoved += tokens;
-        console.log(`[TokenManager] Removed user message - Tokens removed: ${tokens}`);
+        logger?.debug(`Removed user message - Tokens removed: ${tokens}`, LogCategory.MODEL);
         
         if (tokensRemoved >= tokensToRemove) {
           break;
@@ -206,11 +217,11 @@ const manageConversationSize = (sessionState: SessionState, maxTokens: number = 
       if (sessionState.conversationHistory[i].role === 'assistant') {
         const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
         
-        console.log(`[TokenManager] Removing recent assistant message (index ${i}): ${JSON.stringify(sessionState.conversationHistory[i].content)}`);
+        logger?.debug(`Removing recent assistant message (index ${i}): ${JSON.stringify(sessionState.conversationHistory[i].content)}`, LogCategory.MODEL);
         
         removedIndices.add(i);
         tokensRemoved += tokens;
-        console.log(`[TokenManager] Removed recent assistant message - Tokens removed: ${tokens}`);
+        logger?.debug(`Removed recent assistant message - Tokens removed: ${tokens}`, LogCategory.MODEL);
         if (tokensRemoved >= tokensToRemove) {
           break;
         }
@@ -225,11 +236,11 @@ const manageConversationSize = (sessionState: SessionState, maxTokens: number = 
         if (sessionState.conversationHistory[i].role === 'user') {
           const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
           
-          console.log(`[TokenManager] Removing recent user message (index ${i}): ${JSON.stringify(sessionState.conversationHistory[i].content)}`);
+          logger?.debug(`Removing recent user message (index ${i}): ${JSON.stringify(sessionState.conversationHistory[i].content)}`, LogCategory.MODEL);
           
           removedIndices.add(i);
           tokensRemoved += tokens;
-          console.log(`[TokenManager] Removed recent user message - Tokens removed: ${tokens}`);
+          logger?.debug(`Removed recent user message - Tokens removed: ${tokens}`, LogCategory.MODEL);
           
           if (tokensRemoved >= tokensToRemove) {
             break;
@@ -267,7 +278,7 @@ const manageConversationSize = (sessionState: SessionState, maxTokens: number = 
   if (removedIndices.size > 0) {
     sessionState.historyTrimmed = true;
     const actualTokensRemoved = oldTotalTokens - newTotalTokens;
-    console.log(`[TokenManager] Removed ${removedCount} messages, freed up ${actualTokensRemoved} tokens`);
+    logger?.debug(`Removed ${removedCount} messages, freed up ${actualTokensRemoved} tokens`, LogCategory.MODEL);
   }
 };
 

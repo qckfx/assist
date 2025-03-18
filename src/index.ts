@@ -27,7 +27,7 @@ import { createFileWriteTool } from './tools/FileWriteTool';
 import { createScratchpadTool } from './tools/ScratchpadTool';
 
 // Utils
-import { createLogger, LogLevel } from './utils/logger';
+import { createLogger, LogLevel, LogCategory } from './utils/logger';
 import { createErrorHandler, createError } from './utils/ErrorHandler';
 import { LocalExecutionAdapter } from './utils/LocalExecutionAdapter';
 import { E2BExecutionAdapter } from './utils/E2BExecutionAdapter';
@@ -145,6 +145,7 @@ export {
   // Utils
   createLogger,
   LogLevel,
+  LogCategory,
   createErrorHandler,
   createError,
   ErrorType,

@@ -4,26 +4,53 @@ import { FileReadToolErrorResult, FileReadToolSuccessResult } from '../tools/Fil
 import { ExecutionAdapter } from '../types/tool';
 import { FileEntry, LSToolErrorResult, LSToolSuccessResult } from '../tools/LSTool';
 import path from 'path';
+import { LogCategory } from './logger';
 
 export class E2BExecutionAdapter implements ExecutionAdapter {
   private sandbox: Sandbox;
+  private logger?: {
+    debug: (message: string, ...args: unknown[]) => void;
+    info: (message: string, ...args: unknown[]) => void;
+    warn: (message: string, ...args: unknown[]) => void;
+    error: (message: string, ...args: unknown[]) => void;
+  };
 
-  private constructor(sandbox: Sandbox) {
+  private constructor(sandbox: Sandbox, options?: { 
+    logger?: {
+      debug: (message: string, ...args: unknown[]) => void;
+      info: (message: string, ...args: unknown[]) => void;
+      warn: (message: string, ...args: unknown[]) => void;
+      error: (message: string, ...args: unknown[]) => void;
+    }
+  }) {
     this.sandbox = sandbox;
+    this.logger = options?.logger;
   }
 
   /**
    * Creates a new E2BExecutionAdapter instance with a connected sandbox
    * @param sandboxId The ID of the sandbox to connect to
+   * @param options Optional configuration options
    * @returns A fully initialized E2BExecutionAdapter
    * @throws Error if connection to the sandbox fails
    */
-  public static async create(sandboxId: string): Promise<E2BExecutionAdapter> {
+  public static async create(sandboxId: string, options?: { 
+    logger?: {
+      debug: (message: string, ...args: unknown[]) => void;
+      info: (message: string, ...args: unknown[]) => void;
+      warn: (message: string, ...args: unknown[]) => void;
+      error: (message: string, ...args: unknown[]) => void;
+    }
+  }): Promise<E2BExecutionAdapter> {
     try {
       const sandbox = await Sandbox.connect(sandboxId);
-      return new E2BExecutionAdapter(sandbox);
+      return new E2BExecutionAdapter(sandbox, options);
     } catch (error) {
-      console.error('Failed to connect to E2B sandbox:', error);
+      if (options?.logger) {
+        options.logger.error('Failed to connect to E2B sandbox:', error, LogCategory.SYSTEM);
+      } else {
+        console.error('Failed to connect to E2B sandbox:', error);
+      }
       throw error;
     }
   }
@@ -185,7 +212,7 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
       }
       
       // Read directory contents
-      console.log(`Listing directory: ${dirPath}`);
+      this.logger?.debug(`Listing directory: ${dirPath}`, LogCategory.TOOLS);
       const entries = await this.sandbox.files.list(dirPath);
 
       // Filter hidden files if needed
