@@ -8,12 +8,128 @@ import { createAgent, createAnthropicProvider, createLogger, LogLevel, LogCatego
 import readline from 'readline';
 import dotenv from 'dotenv';
 import { SessionState, ToolResultEntry } from './types';
+import chalk from 'chalk';
 
 // Load environment variables from .env file
 dotenv.config();
 
 // Get API key from environment
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// Helper functions for formatting tool calls
+
+/**
+ * Formats a single tool call for display
+ * @param toolResult - The tool result entry
+ * @param index - The index of the tool result
+ * @param logger - The logger instance
+ */
+function formatToolCall(
+  toolResult: ToolResultEntry, 
+  index: number, 
+  logger: { 
+    info: (message: string, category: LogCategory, ...args: unknown[]) => void 
+  }
+): void {
+  // Get tool name
+  const toolName = chalk.cyan(toolResult.toolId);
+  
+  // Format arguments in a more readable way
+  let formattedArgs = '';
+  
+  // For file operations, highlight the file path
+  if (toolResult.args.file_path || toolResult.args.filepath || toolResult.args.path) {
+    const filePath = toolResult.args.file_path || toolResult.args.filepath || toolResult.args.path;
+    
+    // Show the file path with special formatting
+    if (typeof filePath === 'string') {
+      formattedArgs = chalk.yellow(filePath);
+      
+      // If there are other args, append them
+      const otherArgs = { ...toolResult.args };
+      delete otherArgs.file_path;
+      delete otherArgs.filepath;
+      delete otherArgs.path;
+      
+      if (Object.keys(otherArgs).length > 0) {
+        const otherArgsStr = Object.entries(otherArgs)
+          .map(([key, value]) => {
+            // Truncate long string values
+            if (typeof value === 'string' && value.length > 30) {
+              return `${key}: "${value.substring(0, 30)}..."`;
+            }
+            return `${key}: ${JSON.stringify(value)}`;
+          })
+          .join(', ');
+        
+        if (otherArgsStr.length > 0) {
+          formattedArgs += `, ${otherArgsStr}`;
+        }
+      }
+    } else {
+      // Fallback to standard formatting
+      formattedArgs = formatArgs(toolResult.args);
+    }
+  } else {
+    // Standard argument formatting
+    formattedArgs = formatArgs(toolResult.args);
+  }
+  
+  // Log the formatted tool call
+  logger.info(`  ${index}. ${toolName}(${formattedArgs})`, LogCategory.TOOLS);
+}
+
+/**
+ * Formats tool arguments in a more readable way
+ * @param args - The tool arguments
+ * @returns Formatted arguments string
+ */
+function formatArgs(args: Record<string, unknown>): string {
+  // For simple objects, show key-value pairs with better formatting
+  return Object.entries(args)
+    .map(([key, value]) => {
+      // Format based on type of value
+      if (typeof value === 'string') {
+        // Truncate long strings
+        if (value.length > 50) {
+          return `${key}: "${value.substring(0, 50)}..."`;
+        }
+        return `${key}: "${value}"`;
+      } else if (value === null) {
+        return `${key}: null`;
+      } else if (Array.isArray(value)) {
+        if (value.length > 3) {
+          return `${key}: [${value.slice(0, 3).join(', ')}, ...]`;
+        }
+        return `${key}: [${value.join(', ')}]`;
+      } else if (typeof value === 'object') {
+        return `${key}: {...}`;
+      }
+      return `${key}: ${value}`;
+    })
+    .join(', ');
+}
+
+/**
+ * Creates a summary of tool usage for display
+ * @param toolResults - The list of tool results
+ * @returns A summary string
+ */
+function summarizeToolUsage(toolResults: ToolResultEntry[]): string {
+  // Count tools by type
+  const toolCounts: Record<string, number> = {};
+  
+  toolResults.forEach(result => {
+    const toolId = result.toolId;
+    toolCounts[toolId] = (toolCounts[toolId] || 0) + 1;
+  });
+  
+  // Create a summary string
+  return Object.entries(toolCounts)
+    .sort((a, b) => b[1] - a[1]) // Sort by most used
+    .map(([tool, count]) => `${count}× ${tool}`)
+    .join(', ');
+}
 
 // Chat command functionality, extracted to be reused in default command
 const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxId?: string, quiet?: boolean }) => {
@@ -117,12 +233,24 @@ const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxI
       } else {
         // Display prettier tool usage information without results
         if (!options.quiet && result.result && result.result.toolResults && result.result.toolResults.length > 0) {
-          cliLogger.info('\n🔧 Tools Used:', LogCategory.TOOLS);
-          result.result.toolResults.forEach((toolResult: ToolResultEntry, index: number) => {
-            // Format tool call prettily without showing results
-            const formattedArgs = JSON.stringify(toolResult.args, null, 0).replace(/[{}]/g, '');
-            cliLogger.info(`  ${index + 1}. ${toolResult.toolId}(${formattedArgs})`, LogCategory.TOOLS); 
-          });
+          // Only show a summary initially if there are many tool calls
+          const toolResults = result.result.toolResults;
+          const totalTools = toolResults.length;
+          
+          if (totalTools > 5) {
+            cliLogger.info(`\n🔧 ${totalTools} tools used (${summarizeToolUsage(toolResults)})`, LogCategory.TOOLS);
+            
+            // Show first and last tool call as a preview
+            formatToolCall(toolResults[0], 1, cliLogger);
+            cliLogger.info(`  ... ${totalTools - 2} more tools ...`, LogCategory.TOOLS);
+            formatToolCall(toolResults[totalTools - 1], totalTools, cliLogger);
+          } else {
+            cliLogger.info('\n🔧 Tools Used:', LogCategory.TOOLS);
+            toolResults.forEach((toolResult, index) => {
+              formatToolCall(toolResult, index + 1, cliLogger);
+            });
+          }
+          
           cliLogger.info('', LogCategory.TOOLS); // Empty line for spacing
         }
         
