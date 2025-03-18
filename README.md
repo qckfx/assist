@@ -103,6 +103,47 @@ ANTHROPIC_API_KEY=your_key_here npx qckfx
 
 This will start an interactive session where you can chat with Claude. The agent can use a variety of tools to assist you with software development tasks.
 
+### CLI Options
+
+The qckfx CLI supports several options to customize your experience:
+
+```bash
+# Basic usage
+qckfx [options]
+
+Options:
+  -h, --help               Display help information
+  -v, --version            Display version information
+  -d, --debug              Enable debug logging
+  -q, --quiet              Minimal output, show only errors and results
+  -m, --model <model>      Specify the Claude model to use (default: claude-3-7-sonnet-20250219)
+  -e, --e2bSandboxId <id>  Run agent tools in an E2B sandbox (requires sandbox ID)
+```
+
+### E2B Integration
+
+The E2B integration allows you to run agent tools in an isolated sandbox environment. This provides enhanced security and reproducibility as all file operations and command executions happen in the cloud-based sandbox instead of your local machine.
+
+To use this feature:
+
+1. Install the E2B SDK:
+   ```bash
+   npm install -g e2b
+   ```
+
+2. Create an E2B sandbox:
+   ```bash
+   e2b sbx sp
+   ```
+   This will create a sandbox and provide you with a sandbox ID.
+
+3. Run qckfx with the E2B option:
+   ```bash
+   ANTHROPIC_API_KEY=your_key_here qckfx -e <sandbox-id>
+   ```
+
+When running with the E2B integration, all tool operations (file reading/writing, command execution, etc.) will be performed in the isolated E2B sandbox rather than on your local machine.
+
 Example conversation:
 ```
 > tell me what this repo does
