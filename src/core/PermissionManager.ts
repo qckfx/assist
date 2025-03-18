@@ -3,6 +3,7 @@
  */
 
 import { PermissionManager, PermissionManagerConfig, UIHandler } from '../types/permission';
+import { LogCategory } from '../utils/logger';
 
 /**
  * Creates a permission manager to handle tool permission requests
@@ -10,6 +11,7 @@ import { PermissionManager, PermissionManagerConfig, UIHandler } from '../types/
  * @returns The permission manager interface
  */
 export const createPermissionManager = (config: PermissionManagerConfig = {}): PermissionManager => {
+  const logger = config.logger;
   // Track granted permissions
   const grantedPermissions = new Map<string, boolean>();
   
@@ -17,7 +19,7 @@ export const createPermissionManager = (config: PermissionManagerConfig = {}): P
   const uiHandler: UIHandler = config.uiHandler || {
     async requestPermission(toolId: string, args: Record<string, unknown>): Promise<boolean> {
       // Default implementation could be console-based
-      console.log(`Tool ${toolId} wants to execute with args:`, args);
+      logger?.info(`Tool ${toolId} wants to execute with args:`, LogCategory.PERMISSIONS, args);
       return true; // Always grant in default implementation
     }
   };
