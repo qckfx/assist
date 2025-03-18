@@ -29,13 +29,15 @@ import { createScratchpadTool } from './tools/ScratchpadTool';
 // Utils
 import { createLogger, LogLevel } from './utils/logger';
 import { createErrorHandler, createError } from './utils/ErrorHandler';
+import { LocalExecutionAdapter } from './utils/LocalExecutionAdapter';
+import { E2BExecutionAdapter } from './utils/E2BExecutionAdapter';
 
 // Types
-import { Agent, AgentConfig } from './types/main';
+import { Agent, AgentConfig, RepositoryEnvironment } from './types/main';
 import { Tool } from './types/tool';
 import { ErrorType } from './types/error';
 import { ModelProvider } from './types/model';
-import { LocalExecutionAdapter } from './utils/LocalExecutionAdapter';
+
 /**
  * Creates a complete agent with default tools
  * @param config - Agent configuration
@@ -74,13 +76,19 @@ const createAgent = (config: AgentConfig): Agent => {
   tools.forEach(tool => toolRegistry.registerTool(tool));
   
   // Create the agent runner
-  const agentRunner = createAgentRunner({
-    modelClient,
-    toolRegistry,
-    permissionManager,
-    logger,
-    executionAdapter: new LocalExecutionAdapter()
-  });
+  const agentRunner = async () => {
+    const executionAdapter = config.environment.type === 'local' 
+      ? new LocalExecutionAdapter() 
+      : await E2BExecutionAdapter.create(config.environment.sandboxId);
+    
+    return createAgentRunner({
+      modelClient,
+      toolRegistry,
+      permissionManager,
+      logger,
+      executionAdapter
+    });
+  };
   
   // Create state manager
   
@@ -95,11 +103,13 @@ const createAgent = (config: AgentConfig): Agent => {
     
     // Helper methods
     async processQuery(query, sessionState = { conversationHistory: [] }) {
-      return agentRunner.processQuery(query, sessionState);
+      const runner = await agentRunner();
+      return runner.processQuery(query, sessionState);
     },
     
     async runConversation(initialQuery) {
-      return agentRunner.runConversation(initialQuery);
+      const runner = await agentRunner();
+      return runner.runConversation(initialQuery);
     },
     
     registerTool(tool) {
@@ -138,4 +148,5 @@ export {
   createErrorHandler,
   createError,
   ErrorType,
+  RepositoryEnvironment
 };

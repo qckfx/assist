@@ -9,8 +9,14 @@ import { ToolRegistry } from './registry';
 import { Tool } from './tool';
 import { ModelProvider } from './model';
 
+// Define repository environment types
+export type RepositoryEnvironment = 
+  | { type: 'local' }
+  | { type: 'e2b', sandboxId: string };
+
 export interface AgentConfig {
   modelProvider: ModelProvider;
+  environment: RepositoryEnvironment;
   logger?: {
     debug: (message: string, ...args: unknown[]) => void;
     info: (message: string, ...args: unknown[]) => void;
@@ -24,7 +30,7 @@ export interface AgentConfig {
 
 export interface Agent {
   // Core components
-  agentRunner: AgentRunner;
+  agentRunner: (env: RepositoryEnvironment) => Promise<AgentRunner>;
   toolRegistry: ToolRegistry;
   permissionManager: PermissionManager;
   modelClient: ModelClient;

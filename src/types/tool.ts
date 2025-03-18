@@ -5,6 +5,7 @@
 import { GlobOptions } from "fs";
 import { FileEditToolResult } from "../tools/FileEditTool";
 import { FileReadToolResult } from "../tools/FileReadTool";
+import { LSToolResult } from "../tools/LSTool";
 
 export interface ExecutionAdapter {
   executeCommand: (command: string, workingDir?: string) => Promise<{
@@ -20,6 +21,8 @@ export interface ExecutionAdapter {
   readFile: (filepath: string, maxSize?: number, lineOffset?: number, lineCount?: number, encoding?: string) => Promise<FileReadToolResult>;
 
   writeFile: (filepath: string, content: string) => Promise<void>;
+
+  ls: (dirPath: string, showHidden?: boolean, details?: boolean) => Promise<LSToolResult>;
   
 }
 

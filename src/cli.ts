@@ -16,7 +16,7 @@ dotenv.config();
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // Chat command functionality, extracted to be reused in default command
-const startChat = async (options: any) => {
+const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxId?: string }) => {
   if (!ANTHROPIC_API_KEY) {
     console.error('Error: ANTHROPIC_API_KEY environment variable is required');
     process.exit(1);
@@ -37,6 +37,7 @@ const startChat = async (options: any) => {
   // Create the agent
   const agent = createAgent({
     modelProvider,
+    environment: { type: options.e2bSandboxId ? 'e2b' : 'local', sandboxId: options.e2bSandboxId || '' },
     logger: createLogger({ 
       level: options.debug ? LogLevel.DEBUG : LogLevel.INFO 
     }),
@@ -83,6 +84,7 @@ const startChat = async (options: any) => {
       console.log('\nParameters:');
       console.log('  -d, --debug       Enable debug logging');
       console.log('  -m, --model       Specify the model to use');
+      console.log('  -e, --e2bSandboxId       Specify the E2B sandbox ID to use. If not provided, the agent will run locally.');
       console.log('\n');
       continue;
     }
@@ -148,12 +150,14 @@ program
   .description('Start a conversation with the agent')
   .option('-d, --debug', 'Enable debug logging')
   .option('-m, --model <model>', 'Model to use', 'claude-3-7-sonnet-20250219')
+  .option('-e, --e2bSandboxId <e2bSandboxId>', 'E2B sandbox ID to use, if not provided, the agent will run locally')
   .action(startChat);
 
 // Default command (when no command is specified)
 program
   .option('-d, --debug', 'Enable debug logging')
   .option('-m, --model <model>', 'Model to use', 'claude-3-7-sonnet-20250219')
+  .option('-e, --e2bSandboxId <e2bSandboxId>', 'E2B sandbox ID to use, if not provided, the agent will run locally')
   .action(startChat);
 
 // Parse command line arguments
