@@ -9,7 +9,7 @@ import readline from 'readline';
 import dotenv from 'dotenv';
 import { SessionState, ToolResultEntry } from './types';
 import chalk from 'chalk';
-import ora from 'ora';
+import prompts from 'prompts';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -18,6 +18,13 @@ dotenv.config();
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // Helper functions for formatting tool calls
+
+// Define a minimal spinner interface
+interface Spinner {
+  start: () => void;
+  succeed: (text?: string) => void;
+  fail: (text?: string) => void;
+}
 
 /**
  * Formats a single tool call for display
@@ -155,49 +162,69 @@ const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxI
     model: options.model
   });
   
-  // Create readline interface first (needed for permission handling)
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-  
   // We already created the logger above
   
-  // Create the agent
+  // Create the agent with a prompts-based permission handler
   const agent = createAgent({
     modelProvider,
     environment: { type: options.e2bSandboxId ? 'e2b' : 'local', sandboxId: options.e2bSandboxId || '' },
     logger: cliLogger,
     permissionUIHandler: {
       async requestPermission(toolId: string, args: Record<string, unknown>): Promise<boolean> {
-        return new Promise((resolve) => {
-          cliLogger.info(`Tool ${toolId} wants to execute with args:`, LogCategory.PERMISSIONS, args);
-          cliLogger.info('Type "y" to approve or anything else to deny:', LogCategory.PERMISSIONS);
-          
-          rl.question('> ', (answer) => {
-            resolve(answer.toLowerCase() === 'y');
-          });
+        cliLogger.info(`Tool ${toolId} wants to execute with args:`, LogCategory.PERMISSIONS, args);
+        
+        // Use prompts for permission handling too
+        const response = await prompts({
+          type: 'confirm',
+          name: 'granted',
+          message: 'Do you approve this action?',
+          initial: false
         });
+        
+        return response.granted === true;
       }
     }
   });
   
-  cliLogger.info('Agent ready. Type your query (or "exit" to quit, "/help" for help):', LogCategory.USER_INTERACTION);
-  
-  // Start conversation loop
+  // We'll keep track of the session state
   let conversationActive = true;
   let sessionState: SessionState = {
     conversationHistory: [],
   };
   
+  cliLogger.info('Agent ready. Type your query (or "exit" to quit, "/help" for help):', LogCategory.USER_INTERACTION);
+  
   while (conversationActive) {
-    const query = await new Promise<string>(resolve => {
-      // Prompt with visual indicator
-      process.stdout.write(chalk.blue('🧑 > '));
-      rl.question('', resolve);
+    cliLogger.debug('--------- NEW TURN: Waiting for user input... ---------', LogCategory.USER_INTERACTION);
+    
+    // Use prompts for interactive input - onCancel is an option, not a prompt property
+    const response = await prompts({
+      type: 'text',
+      name: 'query',
+      message: chalk.blue('🧑'),
+    }, {
+      onCancel: () => {
+        cliLogger.info('Cancelled by user', LogCategory.USER_INTERACTION);
+        conversationActive = false;
+        return false;
+      }
     });
     
+    // Check if we got a response
+    if (!response.query) {
+      if (conversationActive) {
+        cliLogger.info('Empty input received, exiting...', LogCategory.USER_INTERACTION);
+      }
+      conversationActive = false;
+      continue;
+    }
+    
+    const query = response.query;
+    cliLogger.debug(`Processing input: "${query}"`, LogCategory.USER_INTERACTION);
+    
+    // Handle special commands
     if (query.toLowerCase() === 'exit') {
+      cliLogger.info('Exiting...', LogCategory.SYSTEM);
       conversationActive = false;
       continue;
     }
@@ -229,13 +256,21 @@ const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxI
       });
       
       // Show spinner during processing
-      const spinner = ora({
-        text: 'Thinking...',
-        color: 'blue',
-      }).start();
-      
+      let spinner: Spinner = { 
+        start: () => {}, 
+        succeed: () => {}, 
+        fail: () => {} 
+      };
       let result;
+      
       try {
+        // Dynamically import ora
+        const ora = (await import('ora')).default;
+        spinner = ora({
+          text: 'Thinking...',
+          color: 'blue',
+        }).start();
+        
         // Process the query
         result = await agent.processQuery(query, sessionState);
         spinner.succeed('Response ready');
@@ -277,15 +312,18 @@ const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxI
           const assistantLabel = chalk.green('🤖 ');
           cliLogger.info(`${assistantLabel}${result.response}`, LogCategory.USER_INTERACTION);
           
-          // Update session state for the next iteration
-          // Keep our conversation history from the current session state
-          const currentConversationHistory = sessionState.conversationHistory || [];
+          // Add the assistant's response to the conversation history
+          sessionState.conversationHistory.push({
+            role: "assistant",
+            content: [
+              { type: "text", text: result.response, citations: null }
+            ]
+          });
           
-          // Update session state with the result
+          // Update the session state with other values from the result
           sessionState = {
             ...result.sessionState,
-            conversationHistory: currentConversationHistory,
-            history: sessionState.history
+            conversationHistory: sessionState.conversationHistory, // Keep our updated conversation history
           };
         }
       }
@@ -294,7 +332,8 @@ const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxI
     }
   }
   
-  rl.close();
+  // No need to close rl anymore
+  cliLogger.info('Goodbye!', LogCategory.SYSTEM);
 };
 
 // Setup command line interface
