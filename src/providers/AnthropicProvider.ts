@@ -8,6 +8,7 @@ import {
   AnthropicProvider, 
   ModelProviderRequest, 
 } from '../types';
+import { LogCategory } from '../utils/logger';
 
 /**
  * Creates a provider for Anthropic's Claude API
@@ -37,13 +38,12 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
   return async (prompt: ModelProviderRequest): Promise<Anthropic.Messages.Message> => {
     try {
       if (prompt.messages && prompt.messages.length > 0) {
-        const lastMessage = prompt.messages[prompt.messages.length - 1];
-        logger.debug('Calling Anthropic API', { 
-          model, 
-          prompt: JSON.stringify(lastMessage.content) 
+        logger.debug('Calling Anthropic API', LogCategory.MODEL, { 
+          model,
+          messageCount: prompt.messages.length
         });
       } else {
-        logger.debug('Calling Anthropic API', { model, prompt: 'No messages provided' });
+        logger.debug('Calling Anthropic API', LogCategory.MODEL, { model, prompt: 'No messages provided' });
       }
 
       if (prompt.responseType === 'user_message') {
@@ -82,7 +82,11 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
           logger.warn('Token usage information not provided in the response');
         }
         
-        logger.debug('Anthropic API response', { response: JSON.stringify(response, null, 2) });
+        logger.debug('Anthropic API response', LogCategory.MODEL, { 
+          id: response.id,
+          usage: response.usage,
+          contentTypes: response.content?.map(c => c.type)
+        });
 
         // Handle empty content array by providing a fallback message
         if (!response.content || response.content.length === 0) {
@@ -124,7 +128,11 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
           logger.warn('Token usage information not provided in the response');
         }
         
-        logger.debug('Anthropic API response', { response: JSON.stringify(response, null, 2) });
+        logger.debug('Anthropic API response', LogCategory.MODEL, { 
+          id: response.id,
+          usage: response.usage,
+          contentTypes: response.content?.map(c => c.type)
+        });
         return response as Anthropic.Messages.Message;
       }
     } catch (error) {
