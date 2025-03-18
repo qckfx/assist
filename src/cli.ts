@@ -9,6 +9,7 @@ import readline from 'readline';
 import dotenv from 'dotenv';
 import { SessionState, ToolResultEntry } from './types';
 import chalk from 'chalk';
+import ora from 'ora';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -191,7 +192,9 @@ const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxI
   
   while (conversationActive) {
     const query = await new Promise<string>(resolve => {
-      rl.question('> ', resolve);
+      // Prompt with visual indicator
+      process.stdout.write(chalk.blue('🧑 > '));
+      rl.question('', resolve);
     });
     
     if (query.toLowerCase() === 'exit') {
@@ -225,8 +228,22 @@ const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxI
         ]
       });
       
-      // Process the query
-      const result = await agent.processQuery(query, sessionState);
+      // Show spinner during processing
+      const spinner = ora({
+        text: 'Thinking...',
+        color: 'blue',
+      }).start();
+      
+      let result;
+      try {
+        // Process the query
+        result = await agent.processQuery(query, sessionState);
+        spinner.succeed('Response ready');
+      } catch (error) {
+        // Make sure spinner is stopped on error
+        spinner.fail('Processing failed');
+        throw error;
+      }
       
       if (result.error) {
         cliLogger.error(`Error: ${result.error}`, LogCategory.SYSTEM);
@@ -256,7 +273,9 @@ const startChat = async (options: { debug?: boolean, model?: string, e2bSandboxI
         
         // Display the response to the user
         if (result.response) {
-          cliLogger.info(result.response, LogCategory.USER_INTERACTION);
+          // Add a visual marker for the assistant's response
+          const assistantLabel = chalk.green('🤖 ');
+          cliLogger.info(`${assistantLabel}${result.response}`, LogCategory.USER_INTERACTION);
           
           // Update session state for the next iteration
           // Keep our conversation history from the current session state
