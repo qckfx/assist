@@ -1,22 +1,25 @@
-import React from 'react';
+import { ThemeProvider } from '@/components/ThemeProvider';
+import Layout from '@/components/Layout';
 
 function App() {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="max-w-md w-full p-6 space-y-4">
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">QCKFX Agent</h1>
-          <p className="text-muted-foreground">
-            A CLI-based AI software engineering agent
-          </p>
+    <ThemeProvider defaultTheme="dark">
+      <Layout>
+        <div className="flex flex-col items-center justify-center h-full">
+          <div className="max-w-md text-center p-6">
+            <h1 className="text-3xl font-bold mb-4">Welcome to QCKFX Agent</h1>
+            <p className="text-muted-foreground mb-6">
+              This is a placeholder UI. The full terminal interface will be implemented in PR4.
+            </p>
+            <div className="p-4 border rounded-md bg-card text-card-foreground">
+              <p className="text-sm">
+                The API services have been set up and are ready to be used by the upcoming UI components.
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="bg-card rounded-lg p-4 border">
-          <p className="text-card-foreground">
-            This is a placeholder UI. The full Web UI is under development.
-          </p>
-        </div>
-      </div>
-    </div>
+      </Layout>
+    </ThemeProvider>
   );
 }
 
