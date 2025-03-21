@@ -60,6 +60,7 @@ jest.mock('body-parser', () => ({
   urlencoded: jest.fn(() => 'urlencodedMiddleware'),
 }));
 jest.mock('connect-history-api-fallback', () => jest.fn(() => 'historyMiddleware'));
+jest.mock('../routes/api', () => require('../routes/__tests__/api.mock').default);
 
 jest.mock('../utils', () => ({
   findAvailablePort: jest.fn().mockImplementation(async (port) => port),

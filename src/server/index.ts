@@ -11,6 +11,7 @@ import fs from 'fs';
 import { ServerConfig, getServerUrl } from './config';
 import { findAvailablePort } from './utils';
 import { serverLogger } from './logger';
+import apiRoutes from './routes/api';
 
 /**
  * Error class for server-related errors
@@ -102,11 +103,8 @@ export async function startServer(config: ServerConfig): Promise<{
       });
     }
     
-    // Add API routes prefix
-    app.use('/api', (req, res, next) => {
-      // This will be populated in a future PR
-      next();
-    });
+    // Add API routes
+    app.use('/api', apiRoutes);
     
     // Add a catch-all route for SPA (only needed if UI build exists)
     if (uiBuildExists) {
@@ -116,7 +114,8 @@ export async function startServer(config: ServerConfig): Promise<{
     }
     
     // Error handling middleware
-    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
       serverLogger.error('Server error:', err);
       
       // In development mode, include the error details

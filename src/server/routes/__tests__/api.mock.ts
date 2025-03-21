@@ -1,0 +1,9 @@
+/**
+ * Mock API routes for tests
+ */
+export default function mockRouter() {
+  // Return a mock middleware function
+  return (req: any, res: any, next: any) => {
+    next();
+  };
+}
