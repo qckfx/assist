@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
 
 // Mock matchMedia for responsive tests
 window.matchMedia = window.matchMedia || function() {
@@ -13,3 +14,28 @@ window.matchMedia = window.matchMedia || function() {
     },
   };
 };
+
+// Mock IntersectionObserver
+class MockIntersectionObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+  root = null;
+  rootMargin = '';
+  thresholds = [];
+  
+  constructor() {}
+}
+
+global.IntersectionObserver = MockIntersectionObserver as any;
+
+// Mock ResizeObserver
+class MockResizeObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+  
+  constructor() {}
+}
+
+global.ResizeObserver = MockResizeObserver as any;
