@@ -2,7 +2,7 @@ import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { AgentService, AgentServiceEvent, getAgentService } from './AgentService';
 import { SessionManager, sessionManager } from './SessionManager';
-import { logger } from '../../utils/logger';
+import { serverLogger } from '../logger';
 
 /**
  * Event types for WebSocket communication
@@ -46,7 +46,7 @@ export class WebSocketService {
     this.setupSocketHandlers();
     this.setupAgentEventListeners();
 
-    logger.info('WebSocketService initialized');
+    serverLogger.info('WebSocketService initialized');
   }
 
   /**
@@ -75,7 +75,7 @@ export class WebSocketService {
   public close(): Promise<void> {
     return new Promise((resolve) => {
       this.io.close(() => {
-        logger.info('WebSocketService closed');
+        serverLogger.info('WebSocketService closed');
         resolve();
       });
     });
@@ -86,7 +86,7 @@ export class WebSocketService {
    */
   private setupSocketHandlers(): void {
     this.io.on(WebSocketEvent.CONNECT, (socket: Socket) => {
-      logger.debug(`Client connected: ${socket.id}`);
+      serverLogger.debug(`Client connected: ${socket.id}`);
 
       // Handle join session requests
       socket.on(WebSocketEvent.JOIN_SESSION, (sessionId: string) => {
@@ -99,14 +99,14 @@ export class WebSocketService {
 
         // Join the session's room
         socket.join(sessionId);
-        logger.debug(`Client ${socket.id} joined session ${sessionId}`);
+        serverLogger.debug(`Client ${socket.id} joined session ${sessionId}`);
 
         // Send current session state
         const session = this.sessionManager.getSession(sessionId);
         socket.emit(WebSocketEvent.SESSION_UPDATED, session);
 
         // If there are pending permission requests, send them
-        const pendingPermissions = this.agentService.getPendingPermissions(sessionId);
+        const pendingPermissions = this.agentService.getPermissionRequests(sessionId);
         if (pendingPermissions.length > 0) {
           socket.emit(WebSocketEvent.PERMISSION_REQUESTED, {
             sessionId,
@@ -118,12 +118,12 @@ export class WebSocketService {
       // Handle leave session requests
       socket.on(WebSocketEvent.LEAVE_SESSION, (sessionId: string) => {
         socket.leave(sessionId);
-        logger.debug(`Client ${socket.id} left session ${sessionId}`);
+        serverLogger.debug(`Client ${socket.id} left session ${sessionId}`);
       });
 
       // Handle disconnects
       socket.on(WebSocketEvent.DISCONNECT, () => {
-        logger.debug(`Client disconnected: ${socket.id}`);
+        serverLogger.debug(`Client disconnected: ${socket.id}`);
       });
     });
   }

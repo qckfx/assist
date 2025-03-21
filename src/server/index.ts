@@ -156,20 +156,20 @@ export async function startServer(config: ServerConfig): Promise<{
     
     return {
       close: async () => {
+        serverLogger.info('Shutting down server...');
+        
+        // Stop the session manager
+        sessionManager.stop();
+        
+        // Close WebSocket connections
+        try {
+          const webSocketService = WebSocketService.getInstance();
+          await webSocketService.close();
+        } catch (error) {
+          serverLogger.warn('Error closing WebSocket service:', error);
+        }
+        
         return new Promise<void>((resolve, reject) => {
-          serverLogger.info('Shutting down server...');
-          
-          // Stop the session manager
-          sessionManager.stop();
-          
-          // Close WebSocket connections
-          try {
-            const webSocketService = WebSocketService.getInstance();
-            await webSocketService.close();
-          } catch (error) {
-            serverLogger.warn('Error closing WebSocket service:', error);
-          }
-          
           server.close((err) => {
             if (err) {
               serverLogger.error('Error closing server:', err);
