@@ -7,6 +7,7 @@ export interface ShortcutsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   className?: string;
+  ariaLabelledBy?: string;
 }
 
 function formatKey(shortcut: KeyboardShortcut): string {
@@ -27,24 +28,31 @@ export function ShortcutsPanel({
   isOpen,
   onClose,
   className,
+  ariaLabelledBy,
 }: ShortcutsPanelProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+    >
       <div
         className={cn(
           'bg-gray-900 border border-gray-700 rounded-lg shadow-lg p-6 max-w-md w-full',
           className
         )}
         data-testid="shortcuts-panel"
+        role="document"
+        aria-labelledby={ariaLabelledBy}
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-white">Keyboard Shortcuts</h2>
+          <h2 className="text-xl font-semibold text-white" id={ariaLabelledBy}>Keyboard Shortcuts</h2>
           <button
             className="text-gray-400 hover:text-white"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Close shortcuts panel"
             data-testid="close-shortcuts"
           >
             &times;

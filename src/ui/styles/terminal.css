@@ -85,3 +85,55 @@
 .terminal-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--terminal-user-msg-bg);
 }
+
+/* Add responsive design styles */
+@media (max-width: 640px) {
+  .terminal-mobile-full {
+    height: 100vh !important;
+    width: 100vw !important;
+    border-radius: 0 !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 50;
+  }
+
+  .terminal-text-xs,
+  .terminal-text-sm {
+    font-size: 0.75rem !important;
+  }
+
+  .terminal-text-md {
+    font-size: 0.875rem !important;
+  }
+
+  .terminal-text-lg,
+  .terminal-text-xl {
+    font-size: 1rem !important;
+  }
+}
+
+/* Add reduced motion styles */
+@media (prefers-reduced-motion: reduce) {
+  .terminal-message-animation {
+    animation: none !important;
+  }
+
+  .terminal-cursor {
+    animation: none !important;
+    opacity: 1;
+  }
+}
+
+/* Screen reader only class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

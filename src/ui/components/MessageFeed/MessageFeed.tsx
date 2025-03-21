@@ -8,13 +8,15 @@ export interface MessageFeedProps {
   className?: string;
   autoScroll?: boolean;
   enableAnsiColors?: boolean;
+  ariaLabelledBy?: string;
 }
 
 export function MessageFeed({
   messages,
   className,
   autoScroll = true,
-  enableAnsiColors = true
+  enableAnsiColors = true,
+  ariaLabelledBy
 }: MessageFeedProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -35,9 +37,15 @@ export function MessageFeed({
         className
       )}
       data-testid="message-feed"
+      aria-labelledby={ariaLabelledBy}
+      role="list"
     >
       {messages.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-gray-500">
+        <div 
+          className="flex-1 flex items-center justify-center text-gray-500"
+          role="status"
+          aria-live="polite"
+        >
           <p>No messages yet</p>
         </div>
       ) : (
@@ -51,6 +59,8 @@ export function MessageFeed({
               message.type === 'tool' && 'self-start max-w-full'
             )}
             data-testid={`message-${message.id}`}
+            role="listitem"
+            aria-label={`${message.type} message`}
           >
             <Message
               content={message.content}
@@ -58,6 +68,7 @@ export function MessageFeed({
               timestamp={message.timestamp}
               enableAnsiColors={enableAnsiColors && (message.type === 'tool' || message.type === 'assistant')}
               // Message inherits styles from parent Terminal via CSS inheritance
+              ariaLabel={`${message.type === 'user' ? 'You' : message.type === 'assistant' ? 'Assistant' : message.type}: ${message.content}`}
             />
           </div>
         ))

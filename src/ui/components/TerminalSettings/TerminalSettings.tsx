@@ -6,12 +6,14 @@ export interface TerminalSettingsProps {
   isOpen: boolean;
   onClose: () => void;
   className?: string;
+  ariaLabelledBy?: string;
 }
 
 export function TerminalSettings({
   isOpen,
   onClose,
   className,
+  ariaLabelledBy,
 }: TerminalSettingsProps) {
   const { state, dispatch } = useTerminal();
   
@@ -70,20 +72,26 @@ export function TerminalSettings({
   ];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+    >
       <div
         className={cn(
           'bg-gray-900 border border-gray-700 rounded-lg shadow-lg p-6 max-w-md w-full',
           className
         )}
         data-testid="terminal-settings"
+        role="document"
+        aria-labelledby={ariaLabelledBy}
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-white">Terminal Display Settings</h2>
+          <h2 className="text-xl font-semibold text-white" id={ariaLabelledBy}>Terminal Display Settings</h2>
           <button
             className="text-gray-400 hover:text-white"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Close settings panel"
             data-testid="close-settings"
           >
             &times;
@@ -93,8 +101,9 @@ export function TerminalSettings({
         <div className="space-y-6">
           {/* Font Family */}
           <div className="space-y-2">
-            <label className="text-gray-300 block">Font Family</label>
+            <label htmlFor="font-family-select" className="text-gray-300 block">Font Family</label>
             <select
+              id="font-family-select"
               className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3"
               value={previewSettings.fontFamily}
               onChange={(e) => 
@@ -104,6 +113,7 @@ export function TerminalSettings({
                 })
               }
               data-testid="font-family-select"
+              aria-describedby="font-family-description"
             >
               {fontFamilyOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -111,12 +121,16 @@ export function TerminalSettings({
                 </option>
               ))}
             </select>
+            <div id="font-family-description" className="sr-only">
+              Choose a font family for the terminal display
+            </div>
           </div>
 
           {/* Font Size */}
           <div className="space-y-2">
-            <label className="text-gray-300 block">Font Size</label>
+            <label htmlFor="font-size-select" className="text-gray-300 block">Font Size</label>
             <select
+              id="font-size-select"
               className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3"
               value={previewSettings.fontSize}
               onChange={(e) => 
@@ -126,6 +140,7 @@ export function TerminalSettings({
                 })
               }
               data-testid="font-size-select"
+              aria-describedby="font-size-description"
             >
               {fontSizeOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -133,14 +148,18 @@ export function TerminalSettings({
                 </option>
               ))}
             </select>
+            <div id="font-size-description" className="sr-only">
+              Select the font size for the terminal display
+            </div>
           </div>
 
           {/* Terminal Color Scheme */}
           <div className="space-y-2">
-            <label className="text-gray-300 block">
+            <label htmlFor="color-scheme-select" className="text-gray-300 block">
               Terminal Theme <span className="text-xs text-gray-400">(Independent from app theme)</span>
             </label>
             <select
+              id="color-scheme-select"
               className="w-full bg-gray-800 text-white border border-gray-700 rounded py-2 px-3"
               value={previewSettings.colorScheme}
               onChange={(e) => {
@@ -151,6 +170,7 @@ export function TerminalSettings({
                 });
               }}
               data-testid="color-scheme-select"
+              aria-describedby="color-scheme-description"
             >
               {colorSchemeOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -158,7 +178,7 @@ export function TerminalSettings({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-gray-400 mt-1">
+            <p id="color-scheme-description" className="text-xs text-gray-400 mt-1">
               This setting only changes the terminal appearance and is separate from the application theme toggle in the top-right corner.
             </p>
           </div>
@@ -196,6 +216,7 @@ export function TerminalSettings({
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             onClick={applySettings}
+            aria-label="Apply terminal settings"
           >
             Apply Settings
           </button>

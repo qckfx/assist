@@ -14,7 +14,7 @@ describe('App', () => {
 
   it('renders without crashing', () => {
     render(<App />);
-    expect(screen.getByText(/Welcome to QCKFX Terminal/i)).toBeInTheDocument();
+    expect(screen.getByText(/Welcome to qckfx Terminal/i)).toBeInTheDocument();
   });
 
   it('displays the assistant message', () => {
@@ -41,7 +41,8 @@ describe('App', () => {
     });
     
     // Verify user message is displayed
-    expect(screen.getByText('hello world')).toBeInTheDocument();
+    const userMessages = screen.getAllByText('hello world');
+    expect(userMessages.length).toBeGreaterThan(0);
     
     // Fast-forward timer to trigger the response
     act(() => {
@@ -49,7 +50,8 @@ describe('App', () => {
     });
     
     // Verify response is displayed
-    expect(screen.getByText('You said: hello world')).toBeInTheDocument();
+    const responses = screen.getAllByText('You said: hello world');
+    expect(responses.length).toBeGreaterThan(0);
   });
   
   it('clears the terminal when clear function is triggered', () => {
@@ -68,7 +70,10 @@ describe('App', () => {
     fireEvent.keyDown(terminal, { key: 'l', ctrlKey: true });
     
     // Verify welcome messages are cleared and "Terminal cleared" message is shown
-    expect(screen.queryByText(/Welcome to QCKFX Terminal/i)).not.toBeInTheDocument();
-    expect(screen.getByText('Terminal cleared')).toBeInTheDocument();
+    expect(screen.queryByText(/Welcome to qckfx Terminal/i)).not.toBeInTheDocument();
+    
+    // Get all "Terminal cleared" messages (there might be multiple due to announcer)
+    const clearMessages = screen.getAllByText('Terminal cleared');
+    expect(clearMessages.length).toBeGreaterThan(0);
   });
 });

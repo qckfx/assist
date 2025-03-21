@@ -8,6 +8,9 @@ import TerminalSettings from '@/components/TerminalSettings';
 import useKeyboardShortcuts, { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
 import { useTerminal } from '@/context/TerminalContext';
 import { useTheme } from '@/components/ThemeProvider';
+import Announcer from '@/components/Announcer';
+import { generateAriaId, prefersReducedMotion } from '@/utils/accessibility';
+import { useIsSmallScreen } from '@/hooks/useMediaQuery';
 
 export interface TerminalProps {
   className?: string;
@@ -21,6 +24,8 @@ export interface TerminalProps {
     fontSize?: string;
     colorScheme?: 'dark' | 'light' | 'system';
   };
+  ariaLabel?: string;
+  mobileFullScreen?: boolean;
 }
 
 export function Terminal({
@@ -31,11 +36,26 @@ export function Terminal({
   fullScreen = false,
   onClear = () => {},
   theme,
+  ariaLabel = 'Terminal interface',
+  mobileFullScreen = true,
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Check if we're on a small screen
+  const isSmallScreen = useIsSmallScreen();
+  
+  // Determine if reduced motion is preferred
+  const reducedMotion = prefersReducedMotion();
+  
+  // Generate unique IDs for aria attributes
+  const [ids] = useState({
+    terminal: generateAriaId('terminal'),
+    output: generateAriaId('terminal-output'),
+    input: generateAriaId('terminal-input'),
+  });
   
   // Use provided theme or get from context
   const terminalContext = useTerminal();
@@ -158,6 +178,8 @@ export function Terminal({
           'terminal-text-lg': themeToUse.fontSize === 'lg',
           'terminal-text-xl': themeToUse.fontSize === 'xl',
         },
+        mobileFullScreen && isSmallScreen && 'terminal-mobile-full',
+        reducedMotion && 'reduce-motion',
         className
       )}
       style={{ 
@@ -178,6 +200,10 @@ export function Terminal({
       }}
       tabIndex={0}
       data-testid="terminal-container"
+      role="application"
+      aria-label={ariaLabel}
+      aria-describedby={ids.output}
+      id={ids.terminal}
     >
       <div 
         className="flex items-center px-4 py-2 border-b"
@@ -185,19 +211,28 @@ export function Terminal({
           backgroundColor: 'var(--terminal-header)',
           borderColor: 'var(--terminal-border)'
         }}
+        role="toolbar"
+        aria-controls={ids.terminal}
       >
         <div className="flex space-x-2">
           <div className="w-3 h-3 rounded-full bg-red-500"></div>
           <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
         </div>
-        <div className="flex-1 text-center text-sm">qckfx Terminal</div>
+        <div 
+          className="flex-1 text-center text-sm"
+          id={`${ids.terminal}-title`}
+        >
+          qckfx Terminal
+        </div>
         <div className="flex items-center space-x-2">
           <button
             className="hover:text-white text-sm"
             onClick={() => setShowSettings(true)}
             aria-label="Terminal settings"
             data-testid="show-settings"
+            aria-haspopup="dialog"
+            aria-expanded={showSettings}
           >
             ⚙️
           </button>
@@ -206,32 +241,56 @@ export function Terminal({
             onClick={() => setShowShortcuts(true)}
             aria-label="Show shortcuts"
             data-testid="show-shortcuts"
+            aria-haspopup="dialog"
+            aria-expanded={showShortcuts}
           >
             ?
           </button>
         </div>
       </div>
-      <div className="flex flex-col flex-1 overflow-hidden terminal-scrollbar">
+      <div 
+        className="flex flex-col flex-1 overflow-hidden terminal-scrollbar"
+        role="log"
+        aria-live="polite"
+        id={ids.output}
+      >
         <MessageFeed 
           messages={messages} 
           className="terminal-message-animation"
+          ariaLabelledBy={ids.output}
         />
         <InputField 
           ref={inputRef}
           onSubmit={handleCommand} 
           disabled={inputDisabled} 
           className="terminal-input"
+          ariaLabel="Terminal input"
+          ariaLabelledBy={`${ids.input}-label`}
+          id={ids.input}
         />
+        <div id={`${ids.input}-label`} className="sr-only">Type a command and press Enter to submit</div>
       </div>
       <ShortcutsPanel
         shortcuts={shortcuts}
         isOpen={showShortcuts}
         onClose={() => setShowShortcuts(false)}
+        ariaLabelledBy={`${ids.terminal}-shortcuts-title`}
       />
       <TerminalSettings
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
+        ariaLabelledBy={`${ids.terminal}-settings-title`}
       />
+      <Announcer messages={messages} />
+      
+      {/* Hidden elements for screen reader description */}
+      <div className="sr-only" id={`${ids.terminal}-shortcuts-title`}>Keyboard shortcuts</div>
+      <div className="sr-only" id={`${ids.terminal}-settings-title`}>Terminal settings</div>
+      <div className="sr-only">
+        Press question mark to view keyboard shortcuts. 
+        Use arrow keys to navigate command history.
+        Press Control+L to clear the terminal.
+      </div>
     </div>
   );
 }

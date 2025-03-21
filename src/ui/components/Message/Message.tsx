@@ -10,6 +10,7 @@ export interface MessageProps {
   className?: string;
   showTimestamp?: boolean;
   enableAnsiColors?: boolean;
+  ariaLabel?: string;
 }
 
 // Simple ANSI escape code parser
@@ -87,6 +88,7 @@ export function Message({
   className,
   showTimestamp = true,
   enableAnsiColors = true,
+  ariaLabel,
 }: MessageProps) {
   // Process content for ANSI colors if enabled
   const processedContent = enableAnsiColors ? parseAnsi(content) : content;
@@ -147,12 +149,16 @@ export function Message({
       style={getTypeStyles()}
       data-testid="message"
       data-message-type={type}
+      role={type === 'error' ? 'alert' : 'log'}
+      aria-label={ariaLabel}
+      aria-live={type === 'error' ? 'assertive' : 'polite'}
     >
       <div className="whitespace-pre-wrap break-words">{processedContent}</div>
       {showTimestamp && timestamp && (
         <div 
           className="text-xs mt-1"
           style={{ opacity: 0.7 }}
+          aria-hidden="true"
         >
           {timestamp.toLocaleTimeString()}
         </div>

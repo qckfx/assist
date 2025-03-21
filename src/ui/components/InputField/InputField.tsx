@@ -8,6 +8,9 @@ export interface InputFieldProps {
   disabled?: boolean;
   autoFocus?: boolean;
   maxHistorySize?: number;
+  ariaLabel?: string;
+  ariaLabelledBy?: string;
+  id?: string;
 }
 
 export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function InputField({
@@ -16,7 +19,10 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function
   placeholder = 'Type a command...',
   disabled = false,
   autoFocus = true,
-  maxHistorySize = 50
+  maxHistorySize = 50,
+  ariaLabel,
+  ariaLabelledBy,
+  id
 }: InputFieldProps, ref) {
   const [inputValue, setInputValue] = useState<string>('');
   const [history, setHistory] = useState<string[]>([]);
@@ -114,10 +120,13 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function
         backgroundColor: 'var(--terminal-input-bg)',
       }}
       data-testid="input-field-container"
+      role="form"
+      aria-label="Command input"
     >
       <span 
         className="mr-2" 
         style={{ color: 'var(--terminal-prompt)' }}
+        aria-hidden="true"
       >
         $
       </span>
@@ -132,9 +141,18 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function
         placeholder={placeholder}
         disabled={disabled}
         data-testid="input-field"
+        aria-label={ariaLabel || "Command input"}
+        aria-labelledby={ariaLabelledBy}
+        id={id}
+        role="textbox"
+        aria-multiline="false"
+        aria-autocomplete="list"
+        aria-haspopup="false"
+        autoComplete="off"
+        spellCheck="false"
       />
       {disabled && (
-        <span className="terminal-cursor" />
+        <span className="terminal-cursor" aria-hidden="true" />
       )}
     </div>
   );
