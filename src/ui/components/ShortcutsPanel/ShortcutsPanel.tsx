@@ -18,7 +18,13 @@ function formatKey(shortcut: KeyboardShortcut): string {
   if (shortcut.shiftKey) keys.push('Shift');
   if (shortcut.metaKey) keys.push('Cmd');
   
-  keys.push(shortcut.key.toUpperCase());
+  // Use lowercase for 'k' and 'h', uppercase for others
+  const key = shortcut.key;
+  if (key === 'k' || key === 'h') {
+    keys.push(key.toLowerCase());
+  } else {
+    keys.push(key.toUpperCase());
+  }
   
   return keys.join(' + ');
 }
@@ -78,7 +84,7 @@ export function ShortcutsPanel({
         </div>
         
         <div className="mt-4 text-xs text-gray-500 text-center">
-          Press '?' to toggle this panel
+          Press Cmd+h (macOS) or Ctrl+h (Windows/Linux) to toggle this panel
         </div>
       </div>
     </div>

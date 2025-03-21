@@ -28,17 +28,44 @@ export function useKeyboardShortcuts({
     (event: KeyboardEvent) => {
       if (!enabled) return;
 
+      // Always allow special key combinations that include modifier keys
+      const isModifierCombo = event.ctrlKey || event.altKey || event.metaKey;
+      
+      // Get the actual target element
+      const target = event.target as HTMLElement;
+      const isInTextField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+      
+      // Skip handling for regular (non-modifier) keys if user is typing in an input field
+      if (isInTextField && !isModifierCombo) return;
+      
+      // Logging for debugging
+      console.log('KeyDown event:', { 
+        key: event.key, 
+        ctrl: event.ctrlKey, 
+        alt: event.altKey, 
+        meta: event.metaKey,
+        shift: event.shiftKey,
+        target: target.tagName
+      });
+
       // Check if any shortcut matches the key press
       const matchingShortcut = shortcuts.find(
-        (shortcut) =>
-          shortcut.key.toLowerCase() === event.key.toLowerCase() &&
-          !!shortcut.ctrlKey === event.ctrlKey &&
-          !!shortcut.altKey === event.altKey &&
-          !!shortcut.shiftKey === event.shiftKey &&
-          !!shortcut.metaKey === event.metaKey
+        (shortcut) => {
+          // Case-insensitive key matching
+          const keyMatches = shortcut.key.toLowerCase() === event.key.toLowerCase();
+          
+          // Check that all modifier keys match exactly
+          const ctrlMatches = !!shortcut.ctrlKey === event.ctrlKey;
+          const altMatches = !!shortcut.altKey === event.altKey;
+          const metaMatches = !!shortcut.metaKey === event.metaKey;
+          const shiftMatches = !!shortcut.shiftKey === event.shiftKey;
+          
+          return keyMatches && ctrlMatches && altMatches && metaMatches && shiftMatches;
+        }
       );
 
       if (matchingShortcut) {
+        console.log('Shortcut matched:', matchingShortcut.description);
         event.preventDefault();
         matchingShortcut.action();
       }
@@ -49,16 +76,14 @@ export function useKeyboardShortcuts({
   useEffect(() => {
     if (!enabled) return;
 
-    // If targetRef is provided, attach the listener to that element
-    // Otherwise, attach it to the document
-    const target = targetRef?.current || document;
-
-    target.addEventListener('keydown', handleKeyDown as EventListener);
+    // Always attach event listener to document to ensure global shortcuts work
+    // regardless of focus state
+    document.addEventListener('keydown', handleKeyDown as EventListener);
 
     return () => {
-      target.removeEventListener('keydown', handleKeyDown as EventListener);
+      document.removeEventListener('keydown', handleKeyDown as EventListener);
     };
-  }, [targetRef, handleKeyDown, enabled]);
+  }, [handleKeyDown, enabled]);
 
   // Return all registered shortcuts for documentation
   return {

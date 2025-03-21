@@ -6,10 +6,14 @@ The QCKFX Terminal UI supports the following keyboard shortcuts for efficient in
 
 | Shortcut | Description |
 |----------|-------------|
-| `?` | Toggle shortcuts panel |
-| `Ctrl + ,` | Open settings panel |
-| `Ctrl + L` | Clear terminal |
-| `k` | Focus command input |
+| `Cmd + h` | Toggle shortcuts panel (macOS) |
+| `Ctrl + h` | Toggle shortcuts panel (Windows/Linux) |
+| `Cmd + ,` | Open settings panel (macOS) |
+| `Ctrl + ,` | Open settings panel (Windows/Linux) |
+| `Cmd + k` | Clear terminal (macOS) |
+| `Ctrl + k` | Clear terminal (Windows/Linux) |
+| `Cmd + /` | Focus command input (macOS) |
+| `Ctrl + /` | Focus command input (Windows/Linux) |
 
 ## Input Field Shortcuts
 
@@ -36,12 +40,22 @@ interface KeyboardShortcut {
 }
 ```
 
+## How Keyboard Shortcuts Work
+
+The Terminal UI implements a robust keyboard shortcut system:
+
+1. **Global Availability**: Keyboard shortcuts work throughout the application, regardless of which component has focus
+2. **Input Field Compatibility**: 
+   - When typing in the input field, single-key shortcuts are temporarily disabled to avoid interfering with text input
+   - Special key combinations (like `Cmd+k` and `Cmd+h`) remain active even when typing
+3. **Focus Management**: Shortcuts like `Cmd+/` help users quickly navigate between different parts of the terminal
+
 ## Usage Tips
 
-1. Use `Ctrl + L` to quickly clear the terminal when it gets cluttered.
+1. Use `Cmd + k` (macOS) or `Ctrl + k` (Windows/Linux) to quickly clear the terminal when it gets cluttered.
 2. Use arrow keys to recall previous commands instead of retyping them.
-3. Press `?` at any time to see this list of shortcuts.
-4. Press `k` to quickly focus the input field from anywhere in the terminal.
+3. Press `Cmd + h` (macOS) or `Ctrl + h` (Windows/Linux) to see this list of shortcuts.
+4. Use `Cmd + /` (macOS) or `Ctrl + /` (Windows/Linux) to quickly focus the input field.
 
 ## Accessibility Considerations
 
@@ -50,7 +64,7 @@ All keyboard shortcuts are designed to work well with screen readers and other a
 - Shortcuts are announced to screen readers when the shortcuts panel is opened
 - All interactive elements are properly labelled for screen reader users
 - Keyboard focus is managed to provide a smooth navigation experience
-- Modifier keys (Ctrl, Alt, etc.) are properly handled and announced
+- Modifier keys (Cmd/Ctrl, Alt, etc.) are properly handled and announced
 
 ## Custom Shortcuts
 

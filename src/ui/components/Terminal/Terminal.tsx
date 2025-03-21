@@ -126,40 +126,43 @@ export function Terminal({
     onCommand(command);
   };
 
-  // Define keyboard shortcuts
+  // Define keyboard shortcuts - use metaKey (cmd) on macOS
+  const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  
   const shortcuts: KeyboardShortcut[] = [
     {
-      key: 'l',
-      ctrlKey: true,
+      key: 'k',
+      [isMac ? 'metaKey' : 'ctrlKey']: true,
       action: () => onClear(),
-      description: 'Clear terminal',
+      description: `${isMac ? 'Cmd' : 'Ctrl'}+k: Clear terminal`,
     },
     {
-      key: 'k',
+      key: '/',
+      [isMac ? 'metaKey' : 'ctrlKey']: true,
       action: () => {
         // Focus the input field
         if (inputRef.current) {
           inputRef.current.focus();
         }
       },
-      description: 'Focus input',
+      description: `${isMac ? 'Cmd' : 'Ctrl'}+/: Focus input`,
     },
     {
-      key: '?',
+      key: 'h',
+      [isMac ? 'metaKey' : 'ctrlKey']: true,
       action: () => setShowShortcuts(!showShortcuts),
-      description: 'Toggle shortcuts panel',
+      description: `${isMac ? 'Cmd' : 'Ctrl'}+h: Toggle shortcuts panel`,
     },
     {
       key: ',',
-      ctrlKey: true,
+      [isMac ? 'metaKey' : 'ctrlKey']: true,
       action: () => setShowSettings(!showSettings),
-      description: 'Open settings',
+      description: `${isMac ? 'Cmd' : 'Ctrl'}+,: Open settings`,
     },
   ];
 
-  // Register keyboard shortcuts
+  // Register keyboard shortcuts - note: we no longer use targetRef since we want global shortcuts
   useKeyboardShortcuts({
-    targetRef: terminalRef,
     shortcuts,
     enabled: !inputDisabled,
   });

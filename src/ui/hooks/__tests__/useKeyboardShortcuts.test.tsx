@@ -134,4 +134,52 @@ describe('useKeyboardShortcuts Hook', () => {
     
     expect(mockAction).toHaveBeenCalledTimes(1);
   });
+
+  it('skips regular key shortcuts in input fields', () => {
+    const mockAction = vi.fn();
+    const shortcuts: KeyboardShortcut[] = [
+      {
+        key: 'a',
+        action: mockAction,
+        description: 'Regular Key Action',
+      },
+    ];
+    
+    const { getByTestId } = render(<TestComponent shortcuts={shortcuts} />);
+    const inputElement = getByTestId('test-input');
+    
+    // Set focus to input and trigger the shortcut
+    inputElement.focus();
+    fireEvent.keyDown(inputElement, { key: 'a' });
+    
+    // Should not trigger the action when in input field
+    expect(mockAction).not.toHaveBeenCalled();
+  });
+
+  it('allows special key combinations in input fields', () => {
+    const mockAction = vi.fn();
+    const shortcuts: KeyboardShortcut[] = [
+      {
+        key: 'l',
+        ctrlKey: true,
+        action: mockAction,
+        description: 'Ctrl+L Action',
+      },
+      {
+        key: '?',
+        action: vi.fn(),
+        description: 'Question Mark Action',
+      },
+    ];
+    
+    const { getByTestId } = render(<TestComponent shortcuts={shortcuts} />);
+    const inputElement = getByTestId('test-input');
+    
+    // Set focus to input and trigger the Ctrl+L shortcut
+    inputElement.focus();
+    fireEvent.keyDown(inputElement, { key: 'l', ctrlKey: true });
+    
+    // Should trigger the action even in input field because it's a special combination
+    expect(mockAction).toHaveBeenCalledTimes(1);
+  });
 });
