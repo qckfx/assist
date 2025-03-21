@@ -10,6 +10,7 @@ import path from 'path';
 import { ServerConfig, getServerUrl } from './config';
 import { findAvailablePort } from './utils';
 import { serverLogger } from './logger';
+import { buildFrontendIfNeeded } from './build';
 
 /**
  * Error class for server-related errors
@@ -63,10 +64,12 @@ export async function startServer(config: ServerConfig): Promise<{
       res.status(200).json({ status: 'ok' });
     });
     
-    // Static file serving - this is a placeholder until we have actual frontend files
-    const staticFilesPath = path.resolve(__dirname, '../../public');
+    // Build the frontend if needed
+    buildFrontendIfNeeded();
     
-    // Check if the directory exists and set up static file serving
+    // Use the build directory for static files
+    const staticFilesPath = path.resolve(__dirname, '../../dist/ui');
+    
     try {
       // Use history API fallback for SPA
       app.use(history());
@@ -79,10 +82,15 @@ export async function startServer(config: ServerConfig): Promise<{
       serverLogger.warn(`Could not serve static files from ${staticFilesPath}:`, error);
     }
     
+    // Add API routes prefix
+    app.use('/api', (req, res, next) => {
+      // This will be populated in a future PR
+      next();
+    });
+    
     // Add a catch-all route for SPA
     app.get('*', (req, res) => {
-      // This will be updated once we have the frontend build
-      res.send('Web UI coming soon!');
+      res.sendFile(path.join(staticFilesPath, 'index.html'));
     });
     
     // Error handling middleware

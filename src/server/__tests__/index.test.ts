@@ -74,6 +74,10 @@ jest.mock('../logger', () => ({
   },
 }));
 
+jest.mock('../build', () => ({
+  buildFrontendIfNeeded: jest.fn().mockReturnValue(true),
+}));
+
 describe('Server', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -123,6 +127,13 @@ describe('Server', () => {
       // Check routes
       expect(express().get).toHaveBeenCalledWith('/health', expect.any(Function));
       expect(express().get).toHaveBeenCalledWith('*', expect.any(Function));
+      
+      // Check API routes
+      expect(express().use).toHaveBeenCalledWith('/api', expect.any(Function));
+      
+      // Check build integration
+      const { buildFrontendIfNeeded } = require('../build');
+      expect(buildFrontendIfNeeded).toHaveBeenCalled();
       
       // Check server start
       expect(express().listen).toHaveBeenCalled();
