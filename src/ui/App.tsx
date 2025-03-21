@@ -67,6 +67,18 @@ function App() {
     }, 500);
   };
 
+  const handleClear = () => {
+    // Clear messages except for the initial welcome message
+    setMessages([
+      {
+        id: 'clear-notice',
+        content: 'Terminal cleared',
+        type: 'system',
+        timestamp: new Date(),
+      },
+    ]);
+  };
+
   return (
     <ThemeProvider defaultTheme="dark">
       <Layout>
@@ -75,6 +87,7 @@ function App() {
             fullScreen 
             messages={messages}
             onCommand={handleCommand}
+            onClear={handleClear}
           />
         </div>
       </Layout>

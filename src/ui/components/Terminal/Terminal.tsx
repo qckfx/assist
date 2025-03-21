@@ -1,7 +1,9 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import MessageFeed, { type Message } from '@/components/MessageFeed';
 import InputField from '@/components/InputField';
+import ShortcutsPanel from '@/components/ShortcutsPanel';
+import useKeyboardShortcuts, { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
 
 export interface TerminalProps {
   className?: string;
@@ -9,6 +11,7 @@ export interface TerminalProps {
   onCommand?: (command: string) => void;
   inputDisabled?: boolean;
   fullScreen?: boolean;
+  onClear?: () => void;
 }
 
 export function Terminal({
@@ -17,8 +20,11 @@ export function Terminal({
   onCommand = () => {},
   inputDisabled = false,
   fullScreen = false,
+  onClear = () => {},
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Focus the terminal on mount
@@ -30,6 +36,38 @@ export function Terminal({
   const handleCommand = (command: string) => {
     onCommand(command);
   };
+
+  // Define keyboard shortcuts
+  const shortcuts: KeyboardShortcut[] = [
+    {
+      key: 'l',
+      ctrlKey: true,
+      action: () => onClear(),
+      description: 'Clear terminal',
+    },
+    {
+      key: 'k',
+      action: () => {
+        // Focus the input field
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      },
+      description: 'Focus input',
+    },
+    {
+      key: '?',
+      action: () => setShowShortcuts(!showShortcuts),
+      description: 'Toggle shortcuts panel',
+    },
+  ];
+
+  // Register keyboard shortcuts
+  useKeyboardShortcuts({
+    targetRef: terminalRef,
+    shortcuts,
+    enabled: !inputDisabled,
+  });
 
   return (
     <div
@@ -49,14 +87,28 @@ export function Terminal({
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
         </div>
         <div className="flex-1 text-center text-sm text-gray-400">QCKFX Terminal</div>
+        <button
+          className="text-gray-400 hover:text-white text-sm"
+          onClick={() => setShowShortcuts(true)}
+          aria-label="Show shortcuts"
+          data-testid="show-shortcuts"
+        >
+          ?
+        </button>
       </div>
       <div className="flex flex-col flex-1 overflow-hidden">
         <MessageFeed messages={messages} />
         <InputField 
+          ref={inputRef}
           onSubmit={handleCommand} 
           disabled={inputDisabled} 
         />
       </div>
+      <ShortcutsPanel
+        shortcuts={shortcuts}
+        isOpen={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+      />
     </div>
   );
 }

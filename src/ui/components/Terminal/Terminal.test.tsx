@@ -66,4 +66,24 @@ describe('Terminal Component', () => {
     const terminal = screen.getByTestId('terminal-container');
     expect(terminal).toHaveClass('test-class');
   });
+  
+  it('shows shortcuts panel when ? button is clicked', () => {
+    render(<Terminal />);
+    
+    fireEvent.click(screen.getByTestId('show-shortcuts'));
+    
+    expect(screen.getByTestId('shortcuts-panel')).toBeInTheDocument();
+    expect(screen.getByText('Clear terminal')).toBeInTheDocument();
+    expect(screen.getByText('Ctrl + L')).toBeInTheDocument();
+  });
+
+  it('calls onClear when clear shortcut is triggered', () => {
+    const mockOnClear = vi.fn();
+    render(<Terminal onClear={mockOnClear} />);
+    
+    const terminal = screen.getByTestId('terminal-container');
+    fireEvent.keyDown(terminal, { key: 'l', ctrlKey: true });
+    
+    expect(mockOnClear).toHaveBeenCalled();
+  });
 });

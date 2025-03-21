@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import React, { useState, useRef, useEffect, KeyboardEvent, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface InputFieldProps {
@@ -10,25 +10,38 @@ export interface InputFieldProps {
   maxHistorySize?: number;
 }
 
-export function InputField({
+export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function InputField({
   onSubmit,
   className,
   placeholder = 'Type a command...',
   disabled = false,
   autoFocus = true,
   maxHistorySize = 50
-}: InputFieldProps) {
+}: InputFieldProps, ref) {
   const [inputValue, setInputValue] = useState<string>('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyCursor, setHistoryCursor] = useState<number>(-1);
   const [tempValue, setTempValue] = useState<string>('');
   
-  const inputRef = useRef<HTMLInputElement>(null);
+  const innerInputRef = useRef<HTMLInputElement>(null);
+  
+  // Combine the refs
+  const handleRef = (inputElement: HTMLInputElement) => {
+    // Update the forwarded ref
+    if (typeof ref === 'function') {
+      ref(inputElement);
+    } else if (ref) {
+      ref.current = inputElement;
+    }
+    
+    // Update the inner ref
+    innerInputRef.current = inputElement;
+  };
 
   // Focus input field on mount if autoFocus is true
   useEffect(() => {
-    if (autoFocus && inputRef.current && !disabled) {
-      inputRef.current.focus();
+    if (autoFocus && innerInputRef.current && !disabled) {
+      innerInputRef.current.focus();
     }
   }, [autoFocus, disabled]);
 
@@ -98,7 +111,7 @@ export function InputField({
     >
       <span className="text-green-500 mr-2">$</span>
       <input
-        ref={inputRef}
+        ref={handleRef}
         className="flex-1 bg-transparent outline-none text-green-300 placeholder-gray-500"
         type="text"
         value={inputValue}
@@ -110,6 +123,6 @@ export function InputField({
       />
     </div>
   );
-}
+});
 
 export default InputField;

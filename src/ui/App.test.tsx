@@ -51,4 +51,24 @@ describe('App', () => {
     // Verify response is displayed
     expect(screen.getByText('You said: hello world')).toBeInTheDocument();
   });
+  
+  it('clears the terminal when clear function is triggered', () => {
+    render(<App />);
+    
+    // Click the ? button to show shortcuts
+    fireEvent.click(screen.getByTestId('show-shortcuts'));
+    
+    // Verify shortcuts panel is displayed
+    expect(screen.getByTestId('shortcuts-panel')).toBeInTheDocument();
+    
+    // Get the terminal container
+    const terminal = screen.getByTestId('terminal-container');
+    
+    // Simulate Ctrl+L keyboard shortcut
+    fireEvent.keyDown(terminal, { key: 'l', ctrlKey: true });
+    
+    // Verify welcome messages are cleared and "Terminal cleared" message is shown
+    expect(screen.queryByText(/Welcome to QCKFX Terminal/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Terminal cleared')).toBeInTheDocument();
+  });
 });
