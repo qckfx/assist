@@ -13,6 +13,7 @@ import { findAvailablePort } from './utils';
 import { serverLogger } from './logger';
 import apiRoutes from './routes/api';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { sessionManager } from './services/SessionManager';
 
 /**
  * Error class for server-related errors
@@ -147,6 +148,10 @@ export async function startServer(config: ServerConfig): Promise<{
       close: async () => {
         return new Promise<void>((resolve, reject) => {
           serverLogger.info('Shutting down server...');
+          
+          // Stop the session manager
+          sessionManager.stop();
+          
           server.close((err) => {
             if (err) {
               serverLogger.error('Error closing server:', err);
