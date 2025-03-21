@@ -1,5 +1,15 @@
 import { render, screen } from '@testing-library/react';
 import { Terminal } from './Terminal';
+import { Message } from '@/components/MessageFeed';
+
+const mockMessages: Message[] = [
+  {
+    id: '1',
+    content: 'Test message',
+    type: 'system',
+    timestamp: new Date(),
+  },
+];
 
 describe('Terminal Component', () => {
   it('renders correctly', () => {
@@ -9,16 +19,13 @@ describe('Terminal Component', () => {
     expect(terminal).toBeInTheDocument();
   });
 
-  it('renders with children', () => {
-    render(
-      <Terminal>
-        <div data-testid="test-child">Test content</div>
-      </Terminal>
-    );
+  it('renders with messages', () => {
+    render(<Terminal messages={mockMessages} />);
     
-    const child = screen.getByTestId('test-child');
-    expect(child).toBeInTheDocument();
-    expect(child).toHaveTextContent('Test content');
+    // The MessageFeed component will be tested separately
+    // Here we just verify that the Terminal renders without errors
+    const terminal = screen.getByTestId('terminal-container');
+    expect(terminal).toBeInTheDocument();
   });
 
   it('applies fullScreen class when fullScreen is true', () => {

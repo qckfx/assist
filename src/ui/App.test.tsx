@@ -5,16 +5,16 @@ import App from './App';
 describe('App', () => {
   it('renders without crashing', () => {
     render(<App />);
-    expect(screen.getByText(/Welcome to qckfx/i)).toBeInTheDocument();
+    expect(screen.getByText(/Welcome to QCKFX Terminal/i)).toBeInTheDocument();
   });
 
-  it('displays the placeholder message', () => {
+  it('displays the assistant message', () => {
     render(<App />);
-    expect(screen.getByText(/placeholder UI/i)).toBeInTheDocument();
+    expect(screen.getByText(/How can I help you today?/i)).toBeInTheDocument();
   });
 
-  it('displays the API services message', () => {
+  it('renders the terminal component', () => {
     render(<App />);
-    expect(screen.getByText(/API services have been set up/i)).toBeInTheDocument();
+    expect(screen.getByTestId('terminal-container')).toBeInTheDocument();
   });
 });

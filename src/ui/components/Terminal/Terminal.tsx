@@ -1,13 +1,14 @@
 import React, { useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import MessageFeed, { type Message } from '@/components/MessageFeed';
 
 export interface TerminalProps {
   className?: string;
-  children?: React.ReactNode;
+  messages?: Message[];
   fullScreen?: boolean;
 }
 
-export function Terminal({ className, children, fullScreen = false }: TerminalProps) {
+export function Terminal({ className, messages = [], fullScreen = false }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,8 +37,8 @@ export function Terminal({ className, children, fullScreen = false }: TerminalPr
         </div>
         <div className="flex-1 text-center text-sm text-gray-400">QCKFX Terminal</div>
       </div>
-      <div className="flex-1 overflow-hidden p-2">
-        {children}
+      <div className="flex-1 overflow-hidden">
+        <MessageFeed messages={messages} />
       </div>
     </div>
   );
