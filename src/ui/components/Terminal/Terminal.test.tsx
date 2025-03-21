@@ -10,6 +10,12 @@ const mockMessages: Message[] = [
     type: 'system',
     timestamp: new Date(),
   },
+  {
+    id: '2',
+    content: 'Message with \u001b[31mcolors\u001b[0m',
+    type: 'tool',
+    timestamp: new Date(),
+  },
 ];
 
 describe('Terminal Component', () => {

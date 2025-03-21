@@ -43,15 +43,15 @@ describe('MessageFeed Component', () => {
       expect(messageElement).toBeInTheDocument();
       expect(messageElement).toHaveTextContent(message.content);
       
-      // Check for appropriate styling classes based on message type
+      // Check for appropriate positioning classes based on message type
       if (message.type === 'user') {
-        expect(messageElement).toHaveClass('bg-blue-950');
+        expect(messageElement).toHaveClass('self-end');
       } else if (message.type === 'assistant') {
-        expect(messageElement).toHaveClass('bg-gray-800');
+        expect(messageElement).toHaveClass('self-start');
       } else if (message.type === 'system') {
-        expect(messageElement).toHaveClass('bg-gray-700');
+        expect(messageElement).toHaveClass('self-center');
       } else if (message.type === 'error') {
-        expect(messageElement).toHaveClass('bg-red-900');
+        expect(messageElement).toHaveClass('self-center');
       }
     });
   });
