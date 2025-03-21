@@ -10,7 +10,7 @@ export function Layout({ children }: LayoutProps) {
     <div className="flex flex-col h-screen">
       <header className="border-b px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-xl">QCKFX Agent</span>
+          <span className="font-bold text-xl">qckfx</span>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
@@ -20,7 +20,7 @@ export function Layout({ children }: LayoutProps) {
         {children}
       </main>
       <footer className="border-t py-2 px-4 text-center text-xs text-muted-foreground">
-        <p>© {new Date().getFullYear()} QCKFX Agent</p>
+        <p>© {new Date().getFullYear()} qckfx</p>
       </footer>
     </div>
   );
