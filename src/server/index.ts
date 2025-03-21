@@ -6,6 +6,7 @@ import express from 'express';
 import cors from 'cors';
 import { json, urlencoded } from 'body-parser';
 import history from 'connect-history-api-fallback';
+import path from 'path';
 import { ServerConfig, getServerUrl } from './config';
 import { findAvailablePort } from './utils';
 import { serverLogger } from './logger';
@@ -44,8 +45,28 @@ export async function startServer(config: ServerConfig): Promise<{
     res.status(200).json({ status: 'ok' });
   });
   
-  // Add SPA fallback (will be used when serving the frontend)
-  app.use(history());
+  // Static file serving - this is a placeholder until we have actual frontend files
+  // The path will be updated once we have the frontend build
+  const staticFilesPath = path.resolve(__dirname, '../../public');
+  
+  // Check if the directory exists and set up static file serving
+  try {
+    // Use history API fallback for SPA
+    app.use(history());
+    
+    // Serve static files after the history middleware
+    app.use(express.static(staticFilesPath));
+    
+    serverLogger.info(`Serving static files from ${staticFilesPath}`);
+  } catch (error) {
+    serverLogger.warn(`Could not serve static files from ${staticFilesPath}:`, error);
+  }
+  
+  // Add a catch-all route for SPA
+  app.get('*', (req, res) => {
+    // This will be updated once we have the frontend build
+    res.send('Web UI coming soon!');
+  });
   
   // Error handling middleware
   app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
