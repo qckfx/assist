@@ -7,10 +7,10 @@ import cors from 'cors';
 import { json, urlencoded } from 'body-parser';
 import history from 'connect-history-api-fallback';
 import path from 'path';
+import fs from 'fs';
 import { ServerConfig, getServerUrl } from './config';
 import { findAvailablePort } from './utils';
 import { serverLogger } from './logger';
-import { buildFrontendIfNeeded } from './build';
 
 /**
  * Error class for server-related errors
@@ -64,13 +64,14 @@ export async function startServer(config: ServerConfig): Promise<{
       res.status(200).json({ status: 'ok' });
     });
     
-    // Build the frontend if needed
-    buildFrontendIfNeeded();
-    
     // Use the build directory for static files
     const staticFilesPath = path.resolve(__dirname, '../../dist/ui');
     
-    try {
+    // Check if UI build exists
+    const uiBuildExists = fs.existsSync(staticFilesPath) && 
+                          fs.existsSync(path.join(staticFilesPath, 'index.html'));
+    
+    if (uiBuildExists) {
       // Use history API fallback for SPA
       app.use(history());
       
@@ -78,8 +79,27 @@ export async function startServer(config: ServerConfig): Promise<{
       app.use(express.static(staticFilesPath));
       
       serverLogger.info(`Serving static files from ${staticFilesPath}`);
-    } catch (error) {
-      serverLogger.warn(`Could not serve static files from ${staticFilesPath}:`, error);
+    } else {
+      serverLogger.warn(
+        `UI build not found at ${staticFilesPath}. ` +
+        `Make sure to run 'npm run build' to create the UI files.`
+      );
+      
+      // Serve a fallback message when the UI build doesn't exist
+      app.get('*', (req, res) => {
+        if (req.path === '/health') return; // Skip health endpoint
+        
+        res.status(503).send(`
+          <html>
+            <body style="font-family: sans-serif; padding: 2rem; text-align: center;">
+              <h1>Web UI Not Built</h1>
+              <p>The web UI files were not found. Please make sure to run:</p>
+              <pre>npm run build</pre>
+              <p>to create the UI files before starting the server.</p>
+            </body>
+          </html>
+        `);
+      });
     }
     
     // Add API routes prefix
@@ -88,10 +108,12 @@ export async function startServer(config: ServerConfig): Promise<{
       next();
     });
     
-    // Add a catch-all route for SPA
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(staticFilesPath, 'index.html'));
-    });
+    // Add a catch-all route for SPA (only needed if UI build exists)
+    if (uiBuildExists) {
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(staticFilesPath, 'index.html'));
+      });
+    }
     
     // Error handling middleware
     app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

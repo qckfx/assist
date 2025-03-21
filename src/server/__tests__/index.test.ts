@@ -74,8 +74,10 @@ jest.mock('../logger', () => ({
   },
 }));
 
-jest.mock('../build', () => ({
-  buildFrontendIfNeeded: jest.fn().mockReturnValue(true),
+jest.mock('fs', () => ({
+  existsSync: jest.fn().mockReturnValue(true), // Default to UI build existing
+  writeFileSync: jest.fn(),
+  readFileSync: jest.fn(),
 }));
 
 describe('Server', () => {
@@ -131,10 +133,6 @@ describe('Server', () => {
       // Check API routes
       expect(express().use).toHaveBeenCalledWith('/api', expect.any(Function));
       
-      // Check build integration
-      const { buildFrontendIfNeeded } = require('../build');
-      expect(buildFrontendIfNeeded).toHaveBeenCalled();
-      
       // Check server start
       expect(express().listen).toHaveBeenCalled();
     }, 10000);
@@ -178,6 +176,33 @@ describe('Server', () => {
       
       // Now when we call startServer, it should catch the error and throw a ServerError
       await expect(startServer(config)).rejects.toThrow('Failed to start server');
+    });
+    
+    test('should handle missing UI build files', async () => {
+      // Mock fs.existsSync to simulate missing UI build
+      const fs = require('fs');
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      
+      const config: ServerConfig = {
+        enabled: true,
+        port: 3000,
+        host: 'localhost',
+      };
+      
+      const result = await startServer(config);
+      expect(result).toEqual({
+        close: expect.any(Function),
+        url: 'http://localhost:3000',
+      });
+      
+      // Check that the logger warning was called
+      const { serverLogger } = require('../logger');
+      expect(serverLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('UI build not found')
+      );
+      
+      // Check that a fallback route was registered
+      expect(express().get).toHaveBeenCalledWith('*', expect.any(Function));
     });
   });
 });

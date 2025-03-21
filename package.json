@@ -14,9 +14,11 @@
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "build": "tsc",
+    "build:ui": "ts-node src/scripts/build-ui.ts",
     "build:watch": "tsc --watch",
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
+    "postbuild": "npm run build:ui",
     "type-check": "tsc --noEmit",
     "start:dist": "node dist/cli.js",
     "prepublishOnly": "npm run build"
