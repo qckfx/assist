@@ -175,7 +175,15 @@ const startChat = async (options: {
       server = await startServer(serverConfig);
       cliLogger.info(`Web UI available at ${server.url}`, LogCategory.SYSTEM);
     } catch (error) {
-      cliLogger.error('Failed to start web UI server:', error, LogCategory.SYSTEM);
+      // Log detailed error in development mode, more concise in production
+      if (process.env.NODE_ENV === 'development') {
+        cliLogger.error(`Failed to start web UI server: ${error instanceof Error ? error.message : String(error)}`, LogCategory.SYSTEM);
+        if (error instanceof Error && 'cause' in error && error.cause) {
+          cliLogger.debug('Caused by:', error.cause, LogCategory.SYSTEM);
+        }
+      } else {
+        cliLogger.error('Failed to start web UI server. Run with NODE_ENV=development for details.', LogCategory.SYSTEM);
+      }
     }
   }
 
@@ -204,6 +212,22 @@ const startChat = async (options: {
   // Handle termination signals
   process.on('SIGINT', handleShutdown);
   process.on('SIGTERM', handleShutdown);
+  
+  // Handle uncaught exceptions
+  process.on('uncaughtException', async (error) => {
+    cliLogger.error('Uncaught exception:', error, LogCategory.SYSTEM);
+    
+    // Close the server if it was started
+    if (server) {
+      try {
+        await server.close();
+      } catch (closeError) {
+        cliLogger.error(`Error shutting down web UI server: ${closeError instanceof Error ? closeError.message : String(closeError)}`, LogCategory.SYSTEM);
+      }
+    }
+    
+    process.exit(1);
+  });
   
   // Create the model provider
   const modelProvider = createAnthropicProvider({
