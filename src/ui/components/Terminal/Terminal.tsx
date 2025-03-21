@@ -4,7 +4,10 @@ import MessageFeed from '@/components/MessageFeed';
 import { TerminalMessage } from '@/types/terminal';
 import InputField from '@/components/InputField';
 import ShortcutsPanel from '@/components/ShortcutsPanel';
+import TerminalSettings from '@/components/TerminalSettings';
 import useKeyboardShortcuts, { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
+import { useTerminal } from '@/context/TerminalContext';
+import { useTheme } from '@/components/ThemeProvider';
 
 export interface TerminalProps {
   className?: string;
@@ -13,6 +16,11 @@ export interface TerminalProps {
   inputDisabled?: boolean;
   fullScreen?: boolean;
   onClear?: () => void;
+  theme?: {
+    fontFamily?: string;
+    fontSize?: string;
+    colorScheme?: 'dark' | 'light' | 'system';
+  };
 }
 
 export function Terminal({
@@ -22,10 +30,70 @@ export function Terminal({
   inputDisabled = false,
   fullScreen = false,
   onClear = () => {},
+  theme,
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Use provided theme or get from context
+  const terminalContext = useTerminal();
+  const { theme: appTheme } = useTheme();
+  const themeToUse = theme || terminalContext.state.theme;
+  
+  // Debug the themes
+  useEffect(() => {
+    console.log('Terminal component received terminal theme:', themeToUse);
+    console.log('Terminal color scheme:', themeToUse.colorScheme);
+    console.log('App theme:', appTheme);
+  }, [themeToUse, appTheme]);
+  
+  // Determine color scheme class and vars directly
+  // If terminal is set to system, use the app theme, otherwise use terminal's setting
+  const shouldUseDarkTerminal = 
+    themeToUse.colorScheme === 'system' 
+      ? appTheme === 'dark'
+      : themeToUse.colorScheme !== 'light';
+      
+  const colorSchemeClass = shouldUseDarkTerminal ? 'theme-dark' : 'theme-light';
+    
+  // Create direct CSS variable references based on determined theme
+  const terminalVars = shouldUseDarkTerminal ? {
+    // Dark theme direct values
+    '--terminal-background': '#0e1117',
+    '--terminal-text': '#d9d9d9',
+    '--terminal-border': '#2a2e37',
+    '--terminal-header': '#181c24',
+    '--terminal-user-msg-bg': '#1e3a8a',
+    '--terminal-user-msg-text': '#e2e8f0',
+    '--terminal-assistant-msg-bg': '#1f2937',
+    '--terminal-assistant-msg-text': '#e2e8f0',
+    '--terminal-system-msg-bg': '#3b4252',
+    '--terminal-system-msg-text': '#d8dee9',
+    '--terminal-error-msg-bg': '#7f1d1d',
+    '--terminal-error-msg-text': '#fecaca',
+    '--terminal-tool-msg-bg': '#1e293b',
+    '--terminal-tool-msg-text': '#d8dee9',
+  } : {
+    // Light theme direct values
+    '--terminal-background': '#f8f9fa',
+    '--terminal-text': '#1a1a1a',
+    '--terminal-border': '#94a3b8',
+    '--terminal-header': '#e9ecef',
+    '--terminal-user-msg-bg': '#dbeafe',
+    '--terminal-user-msg-text': '#1e3a8a',
+    '--terminal-assistant-msg-bg': '#f3f4f6',
+    '--terminal-assistant-msg-text': '#111827',
+    '--terminal-system-msg-bg': '#e5e7eb',
+    '--terminal-system-msg-text': '#374151',
+    '--terminal-error-msg-bg': '#fee2e2',
+    '--terminal-error-msg-text': '#7f1d1d',
+    '--terminal-tool-msg-bg': '#f1f5f9',
+    '--terminal-tool-msg-text': '#0f172a',
+  };
+    
+  console.log('Using terminal theme:', shouldUseDarkTerminal ? 'dark' : 'light');
 
   useEffect(() => {
     // Focus the terminal on mount
@@ -61,6 +129,12 @@ export function Terminal({
       action: () => setShowShortcuts(!showShortcuts),
       description: 'Toggle shortcuts panel',
     },
+    {
+      key: ',',
+      ctrlKey: true,
+      action: () => setShowSettings(!showSettings),
+      description: 'Open settings',
+    },
   ];
 
   // Register keyboard shortcuts
@@ -74,41 +148,89 @@ export function Terminal({
     <div
       ref={terminalRef}
       className={cn(
-        'flex flex-col bg-black text-green-500 font-mono rounded-md border border-gray-700 overflow-hidden',
+        'terminal flex flex-col rounded-md overflow-hidden',
+        colorSchemeClass,
         fullScreen ? 'h-full w-full' : 'h-[500px] w-full max-w-4xl',
+        {
+          'terminal-text-xs': themeToUse.fontSize === 'xs',
+          'terminal-text-sm': themeToUse.fontSize === 'sm',
+          'terminal-text-md': themeToUse.fontSize === 'md',
+          'terminal-text-lg': themeToUse.fontSize === 'lg',
+          'terminal-text-xl': themeToUse.fontSize === 'xl',
+        },
         className
       )}
+      style={{ 
+        ...terminalVars, // Apply all theme variables directly
+        fontFamily: themeToUse.fontFamily,
+        fontSize: 
+          themeToUse.fontSize === 'xs' ? '0.75rem' :
+          themeToUse.fontSize === 'sm' ? '0.875rem' :
+          themeToUse.fontSize === 'md' ? '1rem' :
+          themeToUse.fontSize === 'lg' ? '1.125rem' :
+          themeToUse.fontSize === 'xl' ? '1.25rem' : '1rem',
+        backgroundColor: 'var(--terminal-background)',
+        color: 'var(--terminal-text)',
+        borderWidth: shouldUseDarkTerminal ? '1px' : '2px',
+        borderStyle: 'solid',
+        borderColor: 'var(--terminal-border)',
+        boxShadow: shouldUseDarkTerminal ? 'none' : '0 4px 8px rgba(0, 0, 0, 0.15)',
+      }}
       tabIndex={0}
       data-testid="terminal-container"
     >
-      <div className="flex items-center bg-gray-900 px-4 py-2 border-b border-gray-700">
+      <div 
+        className="flex items-center px-4 py-2 border-b"
+        style={{ 
+          backgroundColor: 'var(--terminal-header)',
+          borderColor: 'var(--terminal-border)'
+        }}
+      >
         <div className="flex space-x-2">
           <div className="w-3 h-3 rounded-full bg-red-500"></div>
           <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
         </div>
-        <div className="flex-1 text-center text-sm text-gray-400">QCKFX Terminal</div>
-        <button
-          className="text-gray-400 hover:text-white text-sm"
-          onClick={() => setShowShortcuts(true)}
-          aria-label="Show shortcuts"
-          data-testid="show-shortcuts"
-        >
-          ?
-        </button>
+        <div className="flex-1 text-center text-sm">qckfx Terminal</div>
+        <div className="flex items-center space-x-2">
+          <button
+            className="hover:text-white text-sm"
+            onClick={() => setShowSettings(true)}
+            aria-label="Terminal settings"
+            data-testid="show-settings"
+          >
+            ⚙️
+          </button>
+          <button
+            className="hover:text-white text-sm"
+            onClick={() => setShowShortcuts(true)}
+            aria-label="Show shortcuts"
+            data-testid="show-shortcuts"
+          >
+            ?
+          </button>
+        </div>
       </div>
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <MessageFeed messages={messages} />
+      <div className="flex flex-col flex-1 overflow-hidden terminal-scrollbar">
+        <MessageFeed 
+          messages={messages} 
+          className="terminal-message-animation"
+        />
         <InputField 
           ref={inputRef}
           onSubmit={handleCommand} 
           disabled={inputDisabled} 
+          className="terminal-input"
         />
       </div>
       <ShortcutsPanel
         shortcuts={shortcuts}
         isOpen={showShortcuts}
         onClose={() => setShowShortcuts(false)}
+      />
+      <TerminalSettings
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
       />
     </div>
   );

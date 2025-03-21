@@ -57,6 +57,7 @@ export function MessageFeed({
               type={message.type}
               timestamp={message.timestamp}
               enableAnsiColors={enableAnsiColors && (message.type === 'tool' || message.type === 'assistant')}
+              // Message inherits styles from parent Terminal via CSS inheritance
             />
           </div>
         ))

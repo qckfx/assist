@@ -91,23 +91,69 @@ export function Message({
   // Process content for ANSI colors if enabled
   const processedContent = enableAnsiColors ? parseAnsi(content) : content;
   
+  // Get CSS variables based on message type
+  const getTypeStyles = () => {
+    const baseStyles = {
+      backgroundColor: '',
+      color: '',
+    };
+    
+    switch (type) {
+      case 'user':
+        return {
+          ...baseStyles,
+          backgroundColor: 'var(--terminal-user-msg-bg)',
+          color: 'var(--terminal-user-msg-text)',
+        };
+      case 'assistant':
+        return {
+          ...baseStyles,
+          backgroundColor: 'var(--terminal-assistant-msg-bg)',
+          color: 'var(--terminal-assistant-msg-text)',
+        };
+      case 'system':
+        return {
+          ...baseStyles,
+          backgroundColor: 'var(--terminal-system-msg-bg)',
+          color: 'var(--terminal-system-msg-text)',
+          fontStyle: 'italic',
+          // Removed hardcoded fontSize to inherit from parent
+        };
+      case 'error':
+        return {
+          ...baseStyles,
+          backgroundColor: 'var(--terminal-error-msg-bg)',
+          color: 'var(--terminal-error-msg-text)',
+        };
+      case 'tool':
+        return {
+          ...baseStyles,
+          backgroundColor: 'var(--terminal-tool-msg-bg)',
+          color: 'var(--terminal-tool-msg-text)',
+          // Removed hardcoded fontSize to inherit from parent
+        };
+      default:
+        return baseStyles;
+    }
+  };
+  
   return (
     <div
       className={cn(
-        'px-3 py-2 rounded text-sm',
-        type === 'user' && 'bg-blue-950 text-blue-100',
-        type === 'assistant' && 'bg-gray-800 text-gray-100',
-        type === 'system' && 'bg-gray-700 text-gray-200 italic text-xs',
-        type === 'error' && 'bg-red-900 text-red-100',
-        type === 'tool' && 'bg-gray-850 text-gray-200 font-mono text-xs',
+        'px-3 py-2 rounded',
+        'terminal-message-animation',
         className
       )}
+      style={getTypeStyles()}
       data-testid="message"
       data-message-type={type}
     >
       <div className="whitespace-pre-wrap break-words">{processedContent}</div>
       {showTimestamp && timestamp && (
-        <div className="text-xs text-gray-400 mt-1">
+        <div 
+          className="text-xs mt-1"
+          style={{ opacity: 0.7 }}
+        >
           {timestamp.toLocaleTimeString()}
         </div>
       )}

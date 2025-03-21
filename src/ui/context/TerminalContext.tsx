@@ -7,7 +7,7 @@ const initialState: TerminalState = {
   messages: [
     {
       id: 'welcome',
-      content: 'Welcome to QCKFX Terminal',
+      content: 'Welcome to qckfx Terminal',
       type: 'system',
       timestamp: new Date(),
     },
@@ -109,13 +109,16 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
       };
       
     case 'SET_COLOR_SCHEME':
-      return {
+      console.log('TerminalContext reducer: SET_COLOR_SCHEME', action.payload);
+      const newState = {
         ...state,
         theme: {
           ...state.theme,
           colorScheme: action.payload,
         },
       };
+      console.log('New terminal theme state:', newState.theme);
+      return newState;
       
     default:
       return state;

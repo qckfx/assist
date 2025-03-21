@@ -106,15 +106,25 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function
   return (
     <div
       className={cn(
-        'flex items-center border-t border-gray-700 bg-gray-900 px-3 py-2',
+        'flex items-center border-t px-3 py-2 terminal-input',
         className
       )}
+      style={{
+        borderColor: 'var(--terminal-border)',
+        backgroundColor: 'var(--terminal-input-bg)',
+      }}
       data-testid="input-field-container"
     >
-      <span className="text-green-500 mr-2">$</span>
+      <span 
+        className="mr-2" 
+        style={{ color: 'var(--terminal-prompt)' }}
+      >
+        $
+      </span>
       <input
         ref={handleRef}
-        className="flex-1 bg-transparent outline-none text-green-300 placeholder-gray-500"
+        className="flex-1 bg-transparent outline-none placeholder-gray-500"
+        style={{ color: 'var(--terminal-text)' }}
         type="text"
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
@@ -123,6 +133,9 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function
         disabled={disabled}
         data-testid="input-field"
       />
+      {disabled && (
+        <span className="terminal-cursor" />
+      )}
     </div>
   );
 });

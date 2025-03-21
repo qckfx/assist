@@ -1,7 +1,17 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Terminal } from './Terminal';
 import { TerminalMessage } from '@/types/terminal';
+import { TerminalProvider } from '@/context/TerminalContext';
 import { describe, it, expect, vi } from 'vitest';
+
+// Wrap component with TerminalProvider for testing
+const renderWithProvider = (ui: React.ReactElement) => {
+  return render(
+    <TerminalProvider>
+      {ui}
+    </TerminalProvider>
+  );
+};
 
 const mockMessages: TerminalMessage[] = [
   {
@@ -20,14 +30,14 @@ const mockMessages: TerminalMessage[] = [
 
 describe('Terminal Component', () => {
   it('renders correctly', () => {
-    render(<Terminal />);
+    renderWithProvider(<Terminal />);
     
     const terminal = screen.getByTestId('terminal-container');
     expect(terminal).toBeInTheDocument();
   });
 
   it('renders with messages', () => {
-    render(<Terminal messages={mockMessages} />);
+    renderWithProvider(<Terminal messages={mockMessages} />);
     
     // The MessageFeed component will be tested separately
     // Here we just verify that the Terminal renders without errors
@@ -37,7 +47,7 @@ describe('Terminal Component', () => {
 
   it('calls onCommand when command is submitted', () => {
     const mockOnCommand = vi.fn();
-    render(<Terminal onCommand={mockOnCommand} />);
+    renderWithProvider(<Terminal onCommand={mockOnCommand} />);
     
     const input = screen.getByTestId('input-field');
     fireEvent.change(input, { target: { value: 'test command' } });
@@ -47,28 +57,28 @@ describe('Terminal Component', () => {
   });
 
   it('disables input when inputDisabled is true', () => {
-    render(<Terminal inputDisabled={true} />);
+    renderWithProvider(<Terminal inputDisabled={true} />);
     
     const input = screen.getByTestId('input-field');
     expect(input).toBeDisabled();
   });
 
   it('applies fullScreen class when fullScreen is true', () => {
-    render(<Terminal fullScreen={true} />);
+    renderWithProvider(<Terminal fullScreen={true} />);
     
     const terminal = screen.getByTestId('terminal-container');
     expect(terminal).toHaveClass('h-full w-full');
   });
 
   it('applies custom className', () => {
-    render(<Terminal className="test-class" />);
+    renderWithProvider(<Terminal className="test-class" />);
     
     const terminal = screen.getByTestId('terminal-container');
     expect(terminal).toHaveClass('test-class');
   });
   
   it('shows shortcuts panel when ? button is clicked', () => {
-    render(<Terminal />);
+    renderWithProvider(<Terminal />);
     
     fireEvent.click(screen.getByTestId('show-shortcuts'));
     
@@ -79,7 +89,7 @@ describe('Terminal Component', () => {
 
   it('calls onClear when clear shortcut is triggered', () => {
     const mockOnClear = vi.fn();
-    render(<Terminal onClear={mockOnClear} />);
+    renderWithProvider(<Terminal onClear={mockOnClear} />);
     
     const terminal = screen.getByTestId('terminal-container');
     fireEvent.keyDown(terminal, { key: 'l', ctrlKey: true });
