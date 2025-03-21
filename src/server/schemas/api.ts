@@ -82,6 +82,45 @@ export const historyResponseSchema = z.object({
   ),
 });
 
+/**
+ * Schema for permission request query
+ */
+export const permissionRequestQuerySchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+/**
+ * Schema for permission resolution
+ */
+export const permissionResolutionSchema = z.object({
+  permissionId: z.string(),
+  granted: z.boolean(),
+});
+
+/**
+ * Schema for permission request response
+ */
+export const permissionRequestsResponseSchema = z.object({
+  sessionId: z.string().uuid(),
+  permissionRequests: z.array(
+    z.object({
+      permissionId: z.string(),
+      toolId: z.string(),
+      args: z.record(z.any()),
+      timestamp: z.string().datetime(),
+    })
+  ),
+});
+
+/**
+ * Schema for permission resolution response
+ */
+export const permissionResolutionResponseSchema = z.object({
+  permissionId: z.string(),
+  granted: z.boolean(),
+  resolved: z.boolean(),
+});
+
 // Types based on schemas
 export type StartSessionRequest = z.infer<typeof startSessionSchema>;
 export type QueryRequest = z.infer<typeof querySchema>;
@@ -91,3 +130,7 @@ export type StatusRequest = z.infer<typeof statusSchema>;
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
 export type StatusResponse = z.infer<typeof statusResponseSchema>;
 export type HistoryResponse = z.infer<typeof historyResponseSchema>;
+export type PermissionRequestQuery = z.infer<typeof permissionRequestQuerySchema>;
+export type PermissionResolution = z.infer<typeof permissionResolutionSchema>;
+export type PermissionRequestsResponse = z.infer<typeof permissionRequestsResponseSchema>;
+export type PermissionResolutionResponse = z.infer<typeof permissionResolutionResponseSchema>;

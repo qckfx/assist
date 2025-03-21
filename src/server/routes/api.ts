@@ -3,6 +3,7 @@
  */
 import { Router } from 'express';
 import * as apiController from '../controllers/api';
+import * as permissionController from '../controllers/permissions';
 import { validateBody, validateQuery } from '../middleware/validation';
 import {
   startSessionSchema,
@@ -10,7 +11,10 @@ import {
   abortSchema,
   historySchema,
   statusSchema,
+  permissionRequestQuerySchema,
+  permissionResolutionSchema,
 } from '../schemas/api';
+import { apiDocumentation } from '../docs/api';
 
 const router = Router();
 
@@ -43,5 +47,25 @@ router.get('/history', validateQuery(historySchema), apiController.getHistory);
  * @desc    Get current agent status
  */
 router.get('/status', validateQuery(statusSchema), apiController.getStatus);
+
+/**
+ * @route   GET /api/permissions
+ * @desc    Get pending permission requests for a session
+ */
+router.get('/permissions', validateQuery(permissionRequestQuerySchema), permissionController.getPermissionRequests);
+
+/**
+ * @route   POST /api/permissions/resolve
+ * @desc    Resolve a permission request
+ */
+router.post('/permissions/resolve', validateBody(permissionResolutionSchema), permissionController.resolvePermission);
+
+/**
+ * @route   GET /api/docs
+ * @desc    Get API documentation
+ */
+router.get('/docs', (req, res) => {
+  res.json(apiDocumentation);
+});
 
 export default router;

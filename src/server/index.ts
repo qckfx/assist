@@ -16,6 +16,8 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { sessionManager } from './services/SessionManager';
 import { WebSocketService } from './services/WebSocketService';
 import { createServer } from 'http';
+import swaggerUi from 'swagger-ui-express';
+import { apiDocumentation } from './docs/api';
 
 /**
  * Error class for server-related errors
@@ -72,6 +74,9 @@ export async function startServer(config: ServerConfig): Promise<{
     app.get('/health', (req, res) => {
       res.status(200).json({ status: 'ok' });
     });
+    
+    // Set up Swagger documentation UI
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(apiDocumentation));
     
     // Use the build directory for static files
     const staticFilesPath = path.resolve(__dirname, '../../dist/ui');
