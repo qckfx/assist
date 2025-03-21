@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { Terminal } from './Terminal';
 import { Message } from '@/components/MessageFeed';
+import { describe, it, expect, vi } from 'vitest';
 
 const mockMessages: Message[] = [
   {
@@ -26,6 +27,24 @@ describe('Terminal Component', () => {
     // Here we just verify that the Terminal renders without errors
     const terminal = screen.getByTestId('terminal-container');
     expect(terminal).toBeInTheDocument();
+  });
+
+  it('calls onCommand when command is submitted', () => {
+    const mockOnCommand = vi.fn();
+    render(<Terminal onCommand={mockOnCommand} />);
+    
+    const input = screen.getByTestId('input-field');
+    fireEvent.change(input, { target: { value: 'test command' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    
+    expect(mockOnCommand).toHaveBeenCalledWith('test command');
+  });
+
+  it('disables input when inputDisabled is true', () => {
+    render(<Terminal inputDisabled={true} />);
+    
+    const input = screen.getByTestId('input-field');
+    expect(input).toBeDisabled();
   });
 
   it('applies fullScreen class when fullScreen is true', () => {
