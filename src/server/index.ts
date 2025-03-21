@@ -12,6 +12,7 @@ import { ServerConfig, getServerUrl } from './config';
 import { findAvailablePort } from './utils';
 import { serverLogger } from './logger';
 import apiRoutes from './routes/api';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 /**
  * Error class for server-related errors
@@ -25,10 +26,14 @@ export class ServerError extends Error {
 
 /**
  * Check if we're running in development mode
+ * Used in error handler to decide how much information to show
  */
 function isDevelopmentMode(): boolean {
   return process.env.NODE_ENV === 'development';
 }
+
+// Export for use in other modules
+export { isDevelopmentMode };
 
 /**
  * Start the server
@@ -106,6 +111,9 @@ export async function startServer(config: ServerConfig): Promise<{
     // Add API routes
     app.use('/api', apiRoutes);
     
+    // Add route not found handler for API routes
+    app.use('/api/*', notFoundHandler);
+    
     // Add a catch-all route for SPA (only needed if UI build exists)
     if (uiBuildExists) {
       app.get('*', (req, res) => {
@@ -113,24 +121,8 @@ export async function startServer(config: ServerConfig): Promise<{
       });
     }
     
-    // Error handling middleware
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-      serverLogger.error('Server error:', err);
-      
-      // In development mode, include the error details
-      const errorResponse = {
-        error: {
-          message: 'Internal server error',
-          ...(isDevelopmentMode() ? { 
-            details: err.message,
-            stack: err.stack 
-          } : {})
-        }
-      };
-      
-      res.status(500).json(errorResponse);
-    });
+    // Use our custom error handling middleware
+    app.use(errorHandler);
     
     // Start the server with proper error handling
     const serverPromise = new Promise<{ server: ReturnType<typeof app.listen>; url: string }>((resolve, reject) => {
