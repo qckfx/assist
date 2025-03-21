@@ -14,6 +14,8 @@ import { serverLogger } from './logger';
 import apiRoutes from './routes/api';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { sessionManager } from './services/SessionManager';
+import { WebSocketService } from './services/WebSocketService';
+import { createServer } from 'http';
 
 /**
  * Error class for server-related errors
@@ -125,12 +127,20 @@ export async function startServer(config: ServerConfig): Promise<{
     // Use our custom error handling middleware
     app.use(errorHandler);
     
+    // Create HTTP server first to attach both Express and Socket.IO
+    const httpServer = createServer(app);
+    
     // Start the server with proper error handling
-    const serverPromise = new Promise<{ server: ReturnType<typeof app.listen>; url: string }>((resolve, reject) => {
+    const serverPromise = new Promise<{ server: ReturnType<typeof httpServer.listen>; url: string }>((resolve, reject) => {
       try {
-        const server = app.listen(config.port, config.host, () => {
+        const server = httpServer.listen(config.port, config.host, () => {
           const url = getServerUrl(config);
           serverLogger.info(`Server started at ${url}`);
+          
+          // Initialize WebSocketService after server is listening
+          WebSocketService.getInstance(httpServer);
+          serverLogger.info('WebSocket service initialized');
+          
           resolve({ server, url });
         });
         
@@ -151,6 +161,14 @@ export async function startServer(config: ServerConfig): Promise<{
           
           // Stop the session manager
           sessionManager.stop();
+          
+          // Close WebSocket connections
+          try {
+            const webSocketService = WebSocketService.getInstance();
+            await webSocketService.close();
+          } catch (error) {
+            serverLogger.warn('Error closing WebSocket service:', error);
+          }
           
           server.close((err) => {
             if (err) {

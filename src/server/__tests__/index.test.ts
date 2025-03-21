@@ -2,6 +2,7 @@ import { startServer } from '..';
 import { ServerConfig } from '../config';
 import express from 'express';
 import http from 'http';
+import { WebSocketService } from '../services/WebSocketService';
 
 // Type definitions for mocks
 interface MockApp {
@@ -66,6 +67,17 @@ jest.mock('../utils', () => ({
   findAvailablePort: jest.fn().mockImplementation(async (port) => port),
   isPortAvailable: jest.fn().mockImplementation(async () => true),
 }));
+
+// Mock WebSocketService
+jest.mock('../services/WebSocketService', () => {
+  return {
+    WebSocketService: {
+      getInstance: jest.fn().mockImplementation(() => ({
+        close: jest.fn().mockResolvedValue(undefined)
+      }))
+    }
+  };
+});
 
 jest.mock('../logger', () => ({
   serverLogger: {
@@ -136,6 +148,9 @@ describe('Server', () => {
       
       // Check server start
       expect(express().listen).toHaveBeenCalled();
+      
+      // Check WebSocketService initialization
+      expect(WebSocketService.getInstance).toHaveBeenCalled();
     }, 10000);
     
     test('should close the server', async () => {
@@ -152,6 +167,7 @@ describe('Server', () => {
       await close();
       
       expect(mockServer.close).toHaveBeenCalled();
+      expect(WebSocketService.getInstance().close).toHaveBeenCalled();
     }, 10000);
     
     test('should handle server errors correctly', async () => {
