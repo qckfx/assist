@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react';
-import { MessageFeed, type Message } from './MessageFeed';
+import { MessageFeed } from './MessageFeed';
+import { TerminalMessage } from '@/types/terminal';
+import { describe, it, expect } from 'vitest';
 
 describe('MessageFeed Component', () => {
-  const mockMessages: Message[] = [
+  const mockMessages: TerminalMessage[] = [
     {
       id: '1',
       content: 'Hello, this is a user message',

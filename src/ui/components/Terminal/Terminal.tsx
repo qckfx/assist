@@ -1,13 +1,14 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import MessageFeed, { type Message } from '@/components/MessageFeed';
+import MessageFeed from '@/components/MessageFeed';
+import { TerminalMessage } from '@/types/terminal';
 import InputField from '@/components/InputField';
 import ShortcutsPanel from '@/components/ShortcutsPanel';
 import useKeyboardShortcuts, { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
 
 export interface TerminalProps {
   className?: string;
-  messages?: Message[];
+  messages?: TerminalMessage[];
   onCommand?: (command: string) => void;
   inputDisabled?: boolean;
   fullScreen?: boolean;

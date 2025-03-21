@@ -31,11 +31,13 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function
     if (typeof ref === 'function') {
       ref(inputElement);
     } else if (ref) {
-      ref.current = inputElement;
+      // TypeScript complains about modifying a readonly property,
+      // but this is how React's forwardRef pattern works
+      (ref as React.MutableRefObject<HTMLInputElement | null>).current = inputElement;
     }
     
     // Update the inner ref
-    innerInputRef.current = inputElement;
+    (innerInputRef as React.MutableRefObject<HTMLInputElement | null>).current = inputElement;
   };
 
   // Focus input field on mount if autoFocus is true

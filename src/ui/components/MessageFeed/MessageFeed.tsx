@@ -1,16 +1,10 @@
 import React, { useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import Message, { MessageType } from '@/components/Message';
-
-export interface Message {
-  id: string;
-  content: string;
-  type: MessageType;
-  timestamp: Date;
-}
+import Message from '@/components/Message';
+import { TerminalMessage } from '@/types/terminal';
 
 export interface MessageFeedProps {
-  messages: Message[];
+  messages: TerminalMessage[];
   className?: string;
   autoScroll?: boolean;
   enableAnsiColors?: boolean;

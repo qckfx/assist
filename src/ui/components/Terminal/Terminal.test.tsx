@@ -1,9 +1,9 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Terminal } from './Terminal';
-import { Message } from '@/components/MessageFeed';
+import { TerminalMessage } from '@/types/terminal';
 import { describe, it, expect, vi } from 'vitest';
 
-const mockMessages: Message[] = [
+const mockMessages: TerminalMessage[] = [
   {
     id: '1',
     content: 'Test message',
