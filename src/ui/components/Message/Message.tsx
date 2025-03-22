@@ -11,6 +11,8 @@ export interface MessageProps {
   showTimestamp?: boolean;
   enableAnsiColors?: boolean;
   ariaLabel?: string;
+  isStreaming?: boolean;
+  streamingContent?: string;
 }
 
 // Simple ANSI escape code parser
@@ -89,6 +91,8 @@ export function Message({
   showTimestamp = true,
   enableAnsiColors = true,
   ariaLabel,
+  isStreaming = false,
+  streamingContent = '',
 }: MessageProps) {
   // Process content for ANSI colors if enabled
   const processedContent = enableAnsiColors ? parseAnsi(content) : content;
@@ -144,17 +148,27 @@ export function Message({
       className={cn(
         'px-3 py-2 rounded',
         'terminal-message-animation',
-        className
+        className,
+        isStreaming && 'message-streaming'
       )}
       style={getTypeStyles()}
       data-testid="message"
       data-message-type={type}
+      data-streaming={isStreaming ? 'true' : 'false'}
       role={type === 'error' ? 'alert' : 'log'}
       aria-label={ariaLabel}
       aria-live={type === 'error' ? 'assertive' : 'polite'}
     >
-      <div className="whitespace-pre-wrap break-words">{processedContent}</div>
-      {showTimestamp && timestamp && (
+      {isStreaming ? (
+        <div className="whitespace-pre-wrap break-words">
+          {streamingContent}
+          <span className="animate-pulse cursor">|</span>
+        </div>
+      ) : (
+        <div className="whitespace-pre-wrap break-words">{processedContent}</div>
+      )}
+      
+      {showTimestamp && timestamp && !isStreaming && (
         <div 
           className="text-xs mt-1"
           style={{ opacity: 0.7 }}

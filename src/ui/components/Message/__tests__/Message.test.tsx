@@ -88,4 +88,37 @@ describe('Message Component', () => {
     const message = screen.getByTestId('message');
     expect(message).toHaveAttribute('aria-label', 'This is a system message');
   });
+  
+  it('renders streaming content when isStreaming is true', () => {
+    render(
+      <Message 
+        content="This content should not be visible" 
+        type="assistant" 
+        isStreaming={true}
+        streamingContent="Streaming content..."
+      />
+    );
+    
+    const message = screen.getByTestId('message');
+    expect(message).toHaveAttribute('data-streaming', 'true');
+    expect(message).toHaveClass('message-streaming');
+    expect(message).toHaveTextContent('Streaming content...');
+    expect(message).not.toHaveTextContent('This content should not be visible');
+  });
+  
+  it('does not show timestamp when streaming', () => {
+    const testDate = new Date('2023-01-01T12:00:00Z');
+    render(
+      <Message 
+        content="Original content" 
+        type="assistant" 
+        timestamp={testDate}
+        isStreaming={true}
+        streamingContent="Streaming content..." 
+      />
+    );
+    
+    const message = screen.getByTestId('message');
+    expect(message.textContent).not.toContain(testDate.toLocaleTimeString());
+  });
 });
