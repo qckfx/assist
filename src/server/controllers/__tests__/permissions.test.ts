@@ -86,8 +86,11 @@ describe('Permission Controller', () => {
 
   describe('resolvePermission', () => {
     it('should resolve a permission request', async () => {
+      const testSessionId = '123e4567-e89b-12d3-a456-426614174000';
+      
       // Mock request body
       mockRequest.body = {
+        sessionId: testSessionId,
         permissionId: 'test-permission-id',
         granted: true,
       };
@@ -106,6 +109,7 @@ describe('Permission Controller', () => {
       expect(mockAgentService.resolvePermission).toHaveBeenCalledWith('test-permission-id', true);
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({
+        sessionId: testSessionId,
         permissionId: 'test-permission-id',
         granted: true,
         resolved: true,
@@ -113,8 +117,11 @@ describe('Permission Controller', () => {
     });
 
     it('should handle not found errors', async () => {
+      const testSessionId = '123e4567-e89b-12d3-a456-426614174000';
+      
       // Mock request body
       mockRequest.body = {
+        sessionId: testSessionId,
         permissionId: 'non-existent-id',
         granted: true,
       };

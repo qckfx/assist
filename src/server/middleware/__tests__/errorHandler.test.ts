@@ -5,6 +5,15 @@ import { Request, Response, NextFunction } from 'express';
 import { errorHandler, notFoundHandler } from '../errorHandler';
 import { ApiError, ValidationError, ServerError } from '../../utils/errors';
 
+// Mock E2B to avoid dependency issues
+jest.mock('../../../utils/E2BExecutionAdapter');
+jest.mock('../../../utils/LocalExecutionAdapter');
+
+// Mock isDevelopmentMode
+jest.mock('../../index', () => ({
+  isDevelopmentMode: jest.fn().mockReturnValue(false)
+}));
+
 // Mock serverLogger
 jest.mock('../../logger', () => ({
   serverLogger: {
