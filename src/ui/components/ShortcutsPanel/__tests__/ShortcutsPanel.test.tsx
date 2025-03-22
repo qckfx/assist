@@ -62,7 +62,7 @@ describe('ShortcutsPanel Component', () => {
     
     // Check for key combinations
     expect(screen.getByText('Ctrl + L')).toBeInTheDocument();
-    expect(screen.getByText('K')).toBeInTheDocument();
+    expect(screen.getByText('k')).toBeInTheDocument();
     expect(screen.getByText('?')).toBeInTheDocument();
   });
   
