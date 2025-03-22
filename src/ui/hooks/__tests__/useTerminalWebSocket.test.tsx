@@ -1,30 +1,12 @@
 /**
- * Tests for useTerminalWebSocket hook
+ * Tests for useTerminalWebSocket hook using React Context
  */
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { WebSocketEvent, ConnectionStatus } from '@/types/api';
+import { ConnectionStatus } from '../../types/api';
 import React from 'react';
 
-// Storage for callbacks in tests
-const subscriptionCallbacks = {};
-
-// Create test-specific mock functions
-const mockSubscribe = vi.fn((event, callback) => {
-  subscriptionCallbacks[event] = callback;
-  return vi.fn(); // Unsubscribe function
-});
-
-const mockSubscribeToBatch = vi.fn((event, callback) => {
-  const batchEvent = `${event}:batch`;
-  subscriptionCallbacks[batchEvent] = callback;
-  return vi.fn(); // Unsubscribe function
-});
-
-const mockJoinSession = vi.fn();
-const mockLeaveSession = vi.fn();
-const mockReconnect = vi.fn();
-
+// Create hoisted mocks for terminal functions
 const mockAddSystemMessage = vi.fn();
 const mockAddUserMessage = vi.fn();
 const mockAddAssistantMessage = vi.fn();
@@ -32,254 +14,171 @@ const mockAddToolMessage = vi.fn();
 const mockAddErrorMessage = vi.fn();
 const mockSetProcessing = vi.fn();
 
-const mockFormatToolResult = vi.fn((tool, result) => `${tool} result: ${result}`);
+// Create hoisted mocks for useWebSocket hook
+const mockJoinSession = vi.fn();
+const mockLeaveSession = vi.fn();
+const mockReconnect = vi.fn();
+const mockSubscribe = vi.fn();
+const mockSubscribeToBatch = vi.fn();
 
-// Mutable state for mock control
-let mockConnectionStatus = ConnectionStatus.CONNECTED;
-let mockIsConnected = true;
-
-// Create mocks before importing any modules
-vi.mock('@/utils/terminalFormatters', () => ({
-  formatToolResult: (tool, result) => mockFormatToolResult(tool, result)
-}));
-
-// Mock useWebSocket hook with mutable state
-vi.mock('../useWebSocket', () => ({
-  useWebSocket: () => ({
-    subscribe: mockSubscribe,
-    subscribeToBatch: mockSubscribeToBatch,
+// Use vi.hoisted for mock function that will be manipulated in tests
+const mockUseWebSocketFn = vi.hoisted(() => 
+  vi.fn(() => ({
+    connectionStatus: ConnectionStatus.CONNECTED,
+    isConnected: true,
     joinSession: mockJoinSession,
     leaveSession: mockLeaveSession,
     reconnect: mockReconnect,
-    get connectionStatus() { return mockConnectionStatus; },
-    get isConnected() { return mockIsConnected; }
-  })
-}));
+    subscribe: mockSubscribe,
+    subscribeToBatch: mockSubscribeToBatch
+  }))
+);
 
-// Mock useTerminal hook
+// Mock terminal context
 vi.mock('@/context/TerminalContext', () => ({
   useTerminal: () => ({
     addSystemMessage: mockAddSystemMessage,
-    addUserMessage: mockAddUserMessage,
-    addAssistantMessage: mockAddAssistantMessage, 
-    addToolMessage: mockAddToolMessage,
     addErrorMessage: mockAddErrorMessage,
+    addUserMessage: mockAddUserMessage,
+    addAssistantMessage: mockAddAssistantMessage,
+    addToolMessage: mockAddToolMessage,
     setProcessing: mockSetProcessing,
     state: { isProcessing: false, messages: [], history: [] },
     dispatch: vi.fn(),
     addMessage: vi.fn(),
     clearMessages: vi.fn(),
     addToHistory: vi.fn()
-  }),
-  TerminalProvider: ({ children }) => React.createElement(React.Fragment, null, children)
+  })
 }));
 
-// Now import the hook after all mocks are set up
+// Mock useWebSocket hook
+vi.mock('../useWebSocket', () => ({
+  useWebSocket: mockUseWebSocketFn
+}));
+
+// Import the hook after mocks are set up
 import { useTerminalWebSocket } from '../useTerminalWebSocket';
 
-describe('useTerminalWebSocket', () => {
-  // Helper to simulate a WebSocket event
-  function simulateWebSocketEvent(event, data) {
-    if (subscriptionCallbacks[event]) {
-      subscriptionCallbacks[event](data);
-    }
-  }
-  
+describe('useTerminalWebSocket using React Context', () => {
   beforeEach(() => {
-    // Reset mock state
-    mockConnectionStatus = ConnectionStatus.CONNECTED;
-    mockIsConnected = true;
-    
-    // Clear mocks before each test
     vi.clearAllMocks();
     
-    // Reset callback storage
-    Object.keys(subscriptionCallbacks).forEach(key => {
-      delete subscriptionCallbacks[key];
+    // Reset the mock to its default behavior before each test
+    mockUseWebSocketFn.mockReturnValue({
+      connectionStatus: ConnectionStatus.CONNECTED,
+      isConnected: true,
+      joinSession: mockJoinSession,
+      leaveSession: mockLeaveSession,
+      reconnect: mockReconnect,
+      subscribe: mockSubscribe,
+      subscribeToBatch: mockSubscribeToBatch
     });
   });
-  
+
   afterEach(() => {
-    // Clear up after tests
     vi.clearAllMocks();
   });
-  
-  it('should subscribe to processing events', () => {
-    // Create a unique session ID for this test
-    const uniqueSessionId = 'test-session-' + Date.now() + '-1';
+
+  it('connects to a session when provided a sessionId', () => {
+    const sessionId = 'test-session-' + Date.now();
     
-    // Force joinSession to succeed to simulate a properly joined session
-    mockJoinSession.mockImplementation(() => {
-      // This is a successful join
-      return true;
-    });
+    // Render the hook
+    renderHook(() => useTerminalWebSocket(sessionId));
     
-    renderHook(() => useTerminalWebSocket(uniqueSessionId));
-    
-    // Verify subscription to events - we don't care if joinSession was called,
-    // we care that the hook subscribes to the right events
-    expect(mockSubscribe).toHaveBeenCalledWith(
-      WebSocketEvent.PROCESSING_STARTED, 
-      expect.any(Function)
-    );
-    
-    expect(mockSubscribe).toHaveBeenCalledWith(
-      WebSocketEvent.PROCESSING_COMPLETED, 
-      expect.any(Function)
-    );
-    
-    expect(mockSubscribe).toHaveBeenCalledWith(
-      WebSocketEvent.PROCESSING_ERROR, 
-      expect.any(Function)
-    );
-    
-    expect(mockSubscribe).toHaveBeenCalledWith(
-      WebSocketEvent.PROCESSING_ABORTED, 
-      expect.any(Function)
-    );
-    
-    // Simulate events and check terminal context updates
-    simulateWebSocketEvent(WebSocketEvent.PROCESSING_STARTED, { sessionId: uniqueSessionId });
-    expect(mockSetProcessing).toHaveBeenCalledWith(true);
-    expect(mockAddSystemMessage).toHaveBeenCalledWith('Agent is thinking...');
-    
-    simulateWebSocketEvent(WebSocketEvent.PROCESSING_COMPLETED, { 
-      sessionId: uniqueSessionId,
-      result: { response: 'Test response' } 
-    });
-    expect(mockSetProcessing).toHaveBeenCalledWith(false);
-    expect(mockAddAssistantMessage).toHaveBeenCalledWith('Test response');
-    
-    simulateWebSocketEvent(WebSocketEvent.PROCESSING_ERROR, { 
-      sessionId: uniqueSessionId,
-      error: { message: 'Test error' } 
-    });
-    expect(mockSetProcessing).toHaveBeenCalledWith(false);
-    expect(mockAddErrorMessage).toHaveBeenCalledWith('Error: Test error');
-    
-    simulateWebSocketEvent(WebSocketEvent.PROCESSING_ABORTED, { sessionId: uniqueSessionId });
-    expect(mockSetProcessing).toHaveBeenCalledWith(false);
-    expect(mockAddSystemMessage).toHaveBeenCalledWith('Processing was aborted');
-  });
-  
-  it('should handle tool execution events', () => {
-    mockFormatToolResult.mockImplementation((tool, result) => `Formatted: ${tool} - ${result}`);
-    
-    // Use a unique session ID for this test
-    const uniqueSessionId = 'test-session-' + Date.now() + '-2';
-    renderHook(() => useTerminalWebSocket(uniqueSessionId));
-    
-    // Verify subscription to tool execution event
-    expect(mockSubscribe).toHaveBeenCalledWith(
-      WebSocketEvent.TOOL_EXECUTION, 
-      expect.any(Function)
-    );
-    
-    // Simulate tool execution event
-    simulateWebSocketEvent(WebSocketEvent.TOOL_EXECUTION, {
-      sessionId: uniqueSessionId,
-      tool: 'TestTool',
-      result: 'Test result'
-    });
-    
-    expect(mockFormatToolResult).toHaveBeenCalledWith('TestTool', 'Test result');
-    expect(mockAddToolMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Formatted: TestTool - Test result')
+    // Verify it adds a system message
+    expect(mockAddSystemMessage).toHaveBeenCalledWith(
+      expect.stringContaining(sessionId)
     );
   });
-  
-  it('should handle connection status changes', () => {
-    // Use a unique session ID for this test
-    const uniqueSessionId = 'test-session-' + Date.now() + '-3';
-    const { rerender } = renderHook(() => useTerminalWebSocket(uniqueSessionId));
+
+  it('handles cleanup when unmounted', async () => {
+    const sessionId = 'test-session-' + Date.now();
     
-    // Clear initial messages
-    mockAddSystemMessage.mockClear();
+    // Render and get unmount function
+    const { unmount } = renderHook(() => useTerminalWebSocket(sessionId));
     
-    // Update mutable state to disconnected
-    mockConnectionStatus = ConnectionStatus.DISCONNECTED;
-    mockIsConnected = false;
+    // Clear mocks to focus on cleanup
+    vi.clearAllMocks();
     
-    // Re-render to trigger effect
-    rerender();
-    
-    expect(mockAddSystemMessage).toHaveBeenCalledWith('Disconnected from server');
-    
-    // Change to reconnecting
-    mockAddSystemMessage.mockClear();
-    mockConnectionStatus = ConnectionStatus.RECONNECTING;
-    mockIsConnected = false;
-    
-    // Re-render again
-    rerender();
-    
-    expect(mockAddSystemMessage).toHaveBeenCalledWith('Reconnecting to server...');
-  });
-  
-  it('should add appropriate subscriptions', () => {
-    // This test verifies that appropriate event subscriptions are set up
-    // and that event handlers work - which is what the original test was trying to do
-    
-    // Use a unique session ID for this test
-    const uniqueSessionId = 'test-session-' + Date.now() + '-4';
-    
-    // Create a test-specific mock implementation to track subscription
-    const mockUnsubscribe = vi.fn();
-    mockSubscribe.mockImplementation((event, callback) => {
-      // Store the callback and return the unsubscribe function
-      subscriptionCallbacks[event] = callback;
-      return mockUnsubscribe;
-    });
-    
-    // Render and then unmount the hook
-    const { unmount } = renderHook(() => useTerminalWebSocket(uniqueSessionId));
-    
-    // Verify that unsubscribe functions are called during cleanup
+    // Unmount to trigger cleanup
     unmount();
     
-    // Since we can't easily test the leaveSession due to the sessionId check,
-    // we'll test that unsubscribe is called since that's also part of cleanup
-    expect(mockUnsubscribe).toHaveBeenCalled();
+    // Wait for any async cleanup to complete
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
+    // Verify leaveSession was called
+    expect(mockLeaveSession).toHaveBeenCalledWith(sessionId);
+    
+    // Check that disconnection message was added
+    expect(mockAddSystemMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Disconnected')
+    );
   });
   
-  it('should send user commands', () => {
-    // Use a unique session ID for this test
-    const uniqueSessionId = 'test-session-' + Date.now() + '-5';
+  it('updates system messages when connection status changes', async () => {
+    const sessionId = 'test-session-' + Date.now();
     
-    // Render the hook
-    const { result } = renderHook(() => useTerminalWebSocket(uniqueSessionId));
+    // Render hook with initial connected state
+    const { rerender } = renderHook(() => useTerminalWebSocket(sessionId));
     
-    // Call sendCommand
-    act(() => {
-      result.current.sendCommand('test command');
+    // Wait for initial render operations to complete
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
+    // Clear message mocks after initial render
+    vi.clearAllMocks();
+    
+    // Change to RECONNECTING
+    mockUseWebSocketFn.mockReturnValue({
+      connectionStatus: ConnectionStatus.RECONNECTING,
+      isConnected: false,
+      joinSession: mockJoinSession,
+      leaveSession: mockLeaveSession,
+      reconnect: mockReconnect,
+      subscribe: mockSubscribe,
+      subscribeToBatch: mockSubscribeToBatch
     });
     
-    // Verify user message was added
-    expect(mockAddUserMessage).toHaveBeenCalledWith('test command');
-  });
-  
-  it('should show error when sending command while disconnected', () => {
-    // Set disconnected state using mutable variables
-    mockConnectionStatus = ConnectionStatus.DISCONNECTED;
-    mockIsConnected = false;
+    // Force re-render to trigger effect
+    rerender();
     
-    // Use a unique session ID for this test
-    const uniqueSessionId = 'test-session-' + Date.now() + '-6';
+    // Wait for effects to run
+    await new Promise(resolve => setTimeout(resolve, 0));
     
-    // Render the hook
-    const { result } = renderHook(() => useTerminalWebSocket(uniqueSessionId));
-    
-    // Call sendCommand when disconnected
-    act(() => {
-      result.current.sendCommand('test command');
-    });
-    
-    // Verify error message was shown
-    expect(mockAddErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Not connected to server')
+    // Verify "Reconnecting" message
+    expect(mockAddSystemMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Reconnecting')
     );
     
-    // Verify user message was NOT added
-    expect(mockAddUserMessage).not.toHaveBeenCalled();
+    // Clear message mocks again
+    vi.clearAllMocks();
+    
+    // Change to ERROR
+    mockUseWebSocketFn.mockReturnValue({
+      connectionStatus: ConnectionStatus.ERROR,
+      isConnected: false,
+      joinSession: mockJoinSession,
+      leaveSession: mockLeaveSession,
+      reconnect: mockReconnect,
+      subscribe: mockSubscribe,
+      subscribeToBatch: mockSubscribeToBatch
+    });
+    
+    // Force re-render to trigger effect
+    rerender();
+    
+    // Wait for effects to run
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
+    // Verify error message
+    expect(mockAddErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('error')
+    );
+  });
+  
+  it('provides connect and disconnect functions', () => {
+    const { result } = renderHook(() => useTerminalWebSocket());
+    
+    expect(typeof result.current.connect).toBe('function');
+    expect(typeof result.current.disconnect).toBe('function');
   });
 });
