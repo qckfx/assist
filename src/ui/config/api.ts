@@ -3,6 +3,7 @@
  */
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
 
 export const API_ENDPOINTS = {
   START: '/start',
@@ -17,3 +18,9 @@ export const API_ENDPOINTS = {
 
 // API request timeout in milliseconds
 export const API_TIMEOUT = 30000;
+
+// WebSocket configuration
+export const SOCKET_RECONNECTION_ATTEMPTS = 5;
+export const SOCKET_RECONNECTION_DELAY = 1000;
+export const SOCKET_RECONNECTION_DELAY_MAX = 5000;
+export const SOCKET_TIMEOUT = 20000;
