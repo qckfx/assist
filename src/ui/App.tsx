@@ -2,17 +2,20 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import Layout from '@/components/Layout';
 import Terminal from '@/components/Terminal';
 import { TerminalProvider, useTerminal } from '@/context/TerminalContext';
+import { WebSocketProvider } from '@/context/WebSocketContext';
 
 function App() {
   return (
     <ThemeProvider defaultTheme="dark">
-      <TerminalProvider>
-        <Layout>
-          <div className="flex items-center justify-center h-full p-4">
-            <TerminalContainer fullScreen />
-          </div>
-        </Layout>
-      </TerminalProvider>
+      <WebSocketProvider>
+        <TerminalProvider>
+          <Layout>
+            <div className="flex items-center justify-center h-full p-4">
+              <TerminalContainer fullScreen />
+            </div>
+          </Layout>
+        </TerminalProvider>
+      </WebSocketProvider>
     </ThemeProvider>
   );
 }

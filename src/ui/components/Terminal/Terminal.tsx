@@ -11,6 +11,9 @@ import { useTheme } from '@/components/ThemeProvider';
 import Announcer from '@/components/Announcer';
 import { generateAriaId, prefersReducedMotion } from '@/utils/accessibility';
 import { useIsSmallScreen } from '@/hooks/useMediaQuery';
+import { TypingIndicator } from '@/components/TypingIndicator';
+import ProgressIndicator from '@/components/ProgressIndicator';
+import ConnectionIndicator from '@/components/ConnectionIndicator';
 
 export interface TerminalProps {
   className?: string;
@@ -26,6 +29,10 @@ export interface TerminalProps {
   };
   ariaLabel?: string;
   mobileFullScreen?: boolean;
+  sessionId?: string;
+  showConnectionIndicator?: boolean;
+  showTypingIndicator?: boolean;
+  showProgressIndicator?: boolean;
 }
 
 export function Terminal({
@@ -38,6 +45,10 @@ export function Terminal({
   theme,
   ariaLabel = 'Terminal interface',
   mobileFullScreen = true,
+  sessionId,
+  showConnectionIndicator = true,
+  showTypingIndicator = true,
+  showProgressIndicator = true,
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -61,6 +72,19 @@ export function Terminal({
   const terminalContext = useTerminal();
   const { theme: appTheme } = useTheme();
   const themeToUse = theme || terminalContext.state.theme;
+  
+  // Join WebSocket session if provided
+  useEffect(() => {
+    if (sessionId) {
+      console.log(`Terminal joining WebSocket session: ${sessionId}`);
+      terminalContext.joinSession(sessionId);
+      
+      return () => {
+        console.log(`Terminal leaving WebSocket session: ${sessionId}`);
+        terminalContext.leaveSession();
+      };
+    }
+  }, [sessionId, terminalContext.joinSession, terminalContext.leaveSession]);
   
   // Debug the themes
   useEffect(() => {
@@ -229,6 +253,9 @@ export function Terminal({
           qckfx Terminal
         </div>
         <div className="flex items-center space-x-2">
+          {showConnectionIndicator && sessionId && (
+            <ConnectionIndicator className="mr-2" showText={false} />
+          )}
           <button
             className="hover:text-white text-sm"
             onClick={() => setShowSettings(true)}
@@ -262,10 +289,25 @@ export function Terminal({
           className="terminal-message-animation"
           ariaLabelledBy={ids.output}
         />
+        
+        {/* Add typing indicator */}
+        {showTypingIndicator && terminalContext.typingIndicator && (
+          <TypingIndicator className="mx-4 my-2" />
+        )}
+        
+        {/* Add tool execution progress */}
+        {showProgressIndicator && terminalContext.currentToolExecution && (
+          <ProgressIndicator
+            className="mx-4 my-2"
+            operation={`Running ${terminalContext.currentToolExecution.name}...`}
+            startTime={terminalContext.currentToolExecution.startTime}
+          />
+        )}
+        
         <InputField 
           ref={inputRef}
           onSubmit={handleCommand} 
-          disabled={inputDisabled} 
+          disabled={inputDisabled || terminalContext.state.isProcessing} 
           className="terminal-input"
           ariaLabel="Terminal input"
           ariaLabelledBy={`${ids.input}-label`}
