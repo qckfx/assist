@@ -89,12 +89,18 @@ describe('Terminal Component', () => {
     });
   });
   
-  it('calls onClear when Ctrl+L shortcut is triggered', () => {
+  it('calls onClear when keyboard shortcut is triggered', () => {
     const mockOnClear = vi.fn();
     renderWithProviders(<Terminal onClear={mockOnClear} />);
     
     const terminal = screen.getByTestId('terminal-container');
-    fireEvent.keyDown(terminal, { key: 'l', ctrlKey: true });
+    
+    // Determine platform to use the correct shortcut (Cmd+K on Mac, Ctrl+K elsewhere)
+    const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    fireEvent.keyDown(terminal, { 
+      key: 'k', 
+      [isMac ? 'metaKey' : 'ctrlKey']: true 
+    });
     
     expect(mockOnClear).toHaveBeenCalled();
   });

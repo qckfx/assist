@@ -66,8 +66,12 @@ describe('App', () => {
     // Get the terminal container
     const terminal = screen.getByTestId('terminal-container');
     
-    // Simulate Ctrl+L keyboard shortcut
-    fireEvent.keyDown(terminal, { key: 'l', ctrlKey: true });
+    // Simulate Ctrl+K (or Cmd+K on Mac) keyboard shortcut
+    const isMac = navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    fireEvent.keyDown(terminal, { 
+      key: 'k', 
+      [isMac ? 'metaKey' : 'ctrlKey']: true 
+    });
     
     // Verify welcome messages are cleared and "Terminal cleared" message is shown
     expect(screen.queryByText(/Welcome to qckfx Terminal/i)).not.toBeInTheDocument();

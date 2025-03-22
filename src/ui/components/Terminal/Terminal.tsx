@@ -292,7 +292,7 @@ export function Terminal({
       <div className="sr-only">
         Press question mark to view keyboard shortcuts. 
         Use arrow keys to navigate command history.
-        Press Control+L to clear the terminal.
+        Press {isMac ? 'Command+K' : 'Control+K'} to clear the terminal.
       </div>
     </div>
   );
