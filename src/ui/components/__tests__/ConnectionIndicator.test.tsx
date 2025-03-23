@@ -7,9 +7,10 @@ import { vi } from 'vitest';
 // Mock the useConnectionStatus hook
 vi.mock('../../hooks/useConnectionStatus', () => ({
   useConnectionStatus: vi.fn(() => ({
-    connectionStatus: ConnectionStatus.CONNECTED,
-    statusMessage: 'Connected',
-    attemptReconnect: vi.fn(),
+    status: 'connected',
+    error: null,
+    connect: vi.fn(),
+    isConnected: true
   })),
 }));
 
@@ -19,10 +20,12 @@ describe('ConnectionIndicator Component', () => {
   });
   
   it('renders the connection indicator with connected status', () => {
+    const mockConnect = vi.fn();
     (useConnectionStatus as jest.Mock).mockReturnValue({
-      connectionStatus: ConnectionStatus.CONNECTED,
-      statusMessage: 'Connected',
-      attemptReconnect: vi.fn(),
+      status: 'connected',
+      error: null,
+      connect: mockConnect,
+      isConnected: true
     });
     
     render(<ConnectionIndicator />);
@@ -33,10 +36,12 @@ describe('ConnectionIndicator Component', () => {
   });
   
   it('renders with disconnected status', () => {
+    const mockConnect = vi.fn();
     (useConnectionStatus as jest.Mock).mockReturnValue({
-      connectionStatus: ConnectionStatus.DISCONNECTED,
-      statusMessage: 'Disconnected',
-      attemptReconnect: vi.fn(),
+      status: 'disconnected',
+      error: null,
+      connect: mockConnect,
+      isConnected: false
     });
     
     render(<ConnectionIndicator />);
@@ -44,37 +49,44 @@ describe('ConnectionIndicator Component', () => {
     expect(screen.getByText('Disconnected')).toBeInTheDocument();
   });
   
-  it('renders with reconnecting status', () => {
+  it('renders with connecting status', () => {
+    const mockConnect = vi.fn();
     (useConnectionStatus as jest.Mock).mockReturnValue({
-      connectionStatus: ConnectionStatus.RECONNECTING,
-      statusMessage: 'Reconnecting (Attempt 1)',
-      attemptReconnect: vi.fn(),
+      status: 'connecting',
+      reconnectAttempts: 1,
+      error: null,
+      connect: mockConnect,
+      isConnected: false,
+      isConnecting: true
     });
     
     render(<ConnectionIndicator />);
     
-    expect(screen.getByText('Reconnecting (Attempt 1)')).toBeInTheDocument();
+    expect(screen.getByText('Connecting...')).toBeInTheDocument();
   });
   
-  it('calls attemptReconnect when clicked', () => {
-    const mockAttemptReconnect = vi.fn();
+  it('calls connect when clicked', () => {
+    const mockConnect = vi.fn();
     (useConnectionStatus as jest.Mock).mockReturnValue({
-      connectionStatus: ConnectionStatus.DISCONNECTED,
-      statusMessage: 'Disconnected',
-      attemptReconnect: mockAttemptReconnect,
+      status: 'disconnected',
+      error: null,
+      connect: mockConnect,
+      isConnected: false
     });
     
     render(<ConnectionIndicator />);
     
     fireEvent.click(screen.getByRole('button'));
-    expect(mockAttemptReconnect).toHaveBeenCalledTimes(1);
+    expect(mockConnect).toHaveBeenCalledTimes(1);
   });
   
   it('hides text when showText is false', () => {
+    const mockConnect = vi.fn();
     (useConnectionStatus as jest.Mock).mockReturnValue({
-      connectionStatus: ConnectionStatus.CONNECTED,
-      statusMessage: 'Connected',
-      attemptReconnect: vi.fn(),
+      status: 'connected',
+      error: null,
+      connect: mockConnect,
+      isConnected: true
     });
     
     render(<ConnectionIndicator showText={false} />);
