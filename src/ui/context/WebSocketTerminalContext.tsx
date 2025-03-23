@@ -1,8 +1,11 @@
 /**
  * WebSocket-enhanced Terminal Context
+ * 
+ * Provides a context for Terminal UI components to interact with WebSocket
+ * functionality, managing sessions and event subscriptions.
  */
-import React, { createContext, useContext, ReactNode, useCallback, useEffect, useState } from 'react';
-import { useTerminal, TerminalProvider } from './TerminalContext';
+import React, { createContext, useContext, ReactNode, useCallback, useEffect, useState, useRef } from 'react';
+import { useTerminal } from './TerminalContext';
 import { useTerminalWebSocket } from '@/hooks/useTerminalWebSocket';
 import { useStreamingMessages } from '@/hooks/useStreamingMessages';
 import { useTerminalCommands } from '@/hooks/useTerminalCommands';
@@ -45,49 +48,89 @@ export function WebSocketTerminalProvider({
   children: ReactNode;
   initialSessionId?: string;
 }) {
-  const { addSystemMessage, addErrorMessage, setProcessing } = useTerminal();
+  // Get terminal methods from context
+  const { addSystemMessage, addErrorMessage, setProcessing, isProcessing } = useTerminal();
+  
+  // Track session ID with both state and ref
   const [sessionId, setSessionId] = useState<string | undefined>(initialSessionId);
+  const sessionIdRef = useRef<string | undefined>(initialSessionId);
   
-  // Initialize hooks
-  const { connectionStatus, isConnected } = useTerminalWebSocket(sessionId);
-  const { isStreaming } = useStreamingMessages({ sessionId });
-  const { handleCommand } = useTerminalCommands({ sessionId });
-  const { hasPendingPermissions, resolvePermission } = usePermissionManager({ sessionId });
+  // Track initialization state
+  const isInitializedRef = useRef<boolean>(false);
   
-  // Create a new session
+  // Initialize WebSocket connection with the session ID
+  // The hook does not reconnect unless the session ID actually changes
+  const { 
+    connectionStatus, 
+    isConnected, 
+    connect: connectToSession,
+  } = useTerminalWebSocket(sessionId) || {};
+  
+  // Initialize feature hooks with stable sessionId reference
+  const { isStreaming } = useStreamingMessages({ 
+    sessionId: sessionIdRef.current 
+  });
+  
+  const { handleCommand } = useTerminalCommands({ 
+    sessionId: sessionIdRef.current 
+  });
+  
+  const { hasPendingPermissions, resolvePermission } = usePermissionManager({ 
+    sessionId: sessionIdRef.current 
+  });
+  
+  // Update ref when state changes
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+  
+  // Create a new session with retry logic
   const createSession = useCallback(async () => {
     try {
+      // Update UI state
       setProcessing(true);
       addSystemMessage('Creating new session...');
       
-      console.log('Requesting new session from API...');
+      console.log('[WebSocketTerminalContext] Requesting new session from API...');
       
+      // Create session via API
       const response = await apiClient.startSession();
-      console.log('Session creation response:', response);
+      console.log('[WebSocketTerminalContext] Session creation response:', response);
       
+      // Handle successful response
       if (response.success && response.data?.sessionId) {
         const newSessionId = response.data.sessionId;
-        console.log(`Session created successfully: ${newSessionId}`);
+        console.log(`[WebSocketTerminalContext] Session created successfully: ${newSessionId}`);
         
+        // Update session state
         setSessionId(newSessionId);
-        addSystemMessage(`Connected to session: ${newSessionId}`);
+        sessionIdRef.current = newSessionId;
+        
+        // Connect to the session via WebSocket if possible
+        if (isConnected && typeof connectToSession === 'function') {
+          connectToSession(newSessionId);
+        }
+        
+        addSystemMessage(`Session created: ${newSessionId}`);
         return newSessionId;
       } else {
-        console.error('Failed to create session - invalid response:', response);
+        console.error('[WebSocketTerminalContext] Failed to create session - invalid response:', response);
         throw new Error('Failed to create session: Invalid response from server');
       }
     } catch (error) {
-      console.error('Failed to create session:', error);
+      console.error('[WebSocketTerminalContext] Failed to create session:', error);
       addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
     } finally {
       setProcessing(false);
     }
-  }, [addSystemMessage, addErrorMessage, setProcessing]);
+  }, [addSystemMessage, addErrorMessage, setProcessing, isConnected, connectToSession]);
   
-  // Abort processing
+  // Abort processing with error handling
   const abortProcessing = useCallback(async () => {
-    if (!sessionId) {
+    const currentSessionId = sessionIdRef.current;
+    
+    if (!currentSessionId) {
       addErrorMessage('No active session to abort');
       return;
     }
@@ -105,12 +148,19 @@ export function WebSocketTerminalProvider({
     } catch (error) {
       addErrorMessage(`Failed to abort: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [sessionId, addSystemMessage, addErrorMessage, setProcessing]);
+  }, [addSystemMessage, addErrorMessage, setProcessing]);
   
   // Automatically create a session on mount if none provided, with retries
   useEffect(() => {
+    // Only run initialization once
+    if (isInitializedRef.current) {
+      return;
+    }
+    
     // Only create session if we don't have one and we haven't tried yet
     if (!initialSessionId && !sessionId) {
+      isInitializedRef.current = true;
+      
       // Add retry logic with backoff
       let retryAttempt = 0;
       const maxRetries = 3;
@@ -138,7 +188,7 @@ export function WebSocketTerminalProvider({
       const handleSessionCreationError = (error: Error | unknown) => {
         console.error("[WebSocketTerminalContext] Session creation failed:", error);
         
-        // Immediately show error message for test environment
+        // Immediately show error message
         addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
         
         // Retry with exponential backoff
@@ -160,17 +210,20 @@ export function WebSocketTerminalProvider({
       return () => {
         isMounted = false;
       };
+    } else {
+      // Mark as initialized if we already have a session
+      isInitializedRef.current = true;
     }
   }, [initialSessionId, sessionId, createSession, addErrorMessage]);
   
-  // Context value
+  // Build the context value with stable references
   const value: WebSocketTerminalContextProps = {
     connectionStatus,
     isConnected,
     sessionId,
     createSession,
     handleCommand,
-    isProcessing: false, // This will be managed by TerminalContext
+    isProcessing, // Use the value from TerminalContext
     abortProcessing,
     isStreaming,
     hasPendingPermissions,
@@ -178,11 +231,9 @@ export function WebSocketTerminalProvider({
   };
   
   return (
-    <TerminalProvider>
-      <WebSocketTerminalContext.Provider value={value}>
-        {children}
-      </WebSocketTerminalContext.Provider>
-    </TerminalProvider>
+    <WebSocketTerminalContext.Provider value={value}>
+      {children}
+    </WebSocketTerminalContext.Provider>
   );
 }
 

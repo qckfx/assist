@@ -1,28 +1,67 @@
 /**
  * Hook for connecting WebSocket to Terminal interface using React Context
+ * 
+ * This hook connects the WebSocket functionality to the Terminal UI,
+ * handling session management and reflecting connection status in the UI.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { useTerminal } from '@/context/TerminalContext';
 import { ConnectionStatus } from '@/types/api';
 
 /**
  * Hook that connects WebSocket events to Terminal UI
+ * with improved session management and state tracking
  */
 export function useTerminalWebSocket(sessionId?: string) {
+  // Track session join state
   const [hasJoined, setHasJoined] = useState(false);
-  const { connectionStatus, isConnected, joinSession, leaveSession } = useWebSocket();
+  
+  // Track previous values to prevent unnecessary effects
+  const prevSessionIdRef = useRef<string | undefined>(undefined);
+  const prevConnectionStatusRef = useRef<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
+  const currentSessionIdRef = useRef<string | undefined>(sessionId);
+  
+  // Use the base WebSocket hook with stable callbacks
+  const { 
+    connectionStatus, 
+    isConnected, 
+    currentSessionId: contextSessionId,
+    joinSession, 
+    leaveSession,
+  } = useWebSocket();
+  
+  // Terminal UI methods for feedback
   const { addSystemMessage, addErrorMessage } = useTerminal();
   
-  // Join the session when sessionId changes and we're connected
+  // Join the session when needed based on tracked state changes
   useEffect(() => {
-    if (!sessionId || !isConnected) return;
+    // Skip if no session ID provided
+    if (!sessionId) return;
     
-    // Don't attempt to join if we've already joined
-    if (!hasJoined) {
+    // Get previous values for comparison
+    const prevSessionId = prevSessionIdRef.current;
+    const prevStatus = prevConnectionStatusRef.current;
+    
+    // Update refs for next render
+    prevSessionIdRef.current = sessionId;
+    prevConnectionStatusRef.current = connectionStatus;
+    currentSessionIdRef.current = sessionId;
+    
+    // Determine if we need to join based on state changes
+    const sessionIdChanged = sessionId !== prevSessionId;
+    const justConnected = 
+      connectionStatus === ConnectionStatus.CONNECTED && 
+      prevStatus !== ConnectionStatus.CONNECTED;
+    
+    const shouldJoin = 
+      isConnected && 
+      !hasJoined && 
+      (sessionIdChanged || justConnected);
+    
+    // Join session if needed
+    if (shouldJoin) {
       console.log(`[useTerminalWebSocket] Joining session ${sessionId} (connected: ${isConnected})`);
-      
-      // Directly join the session without delay
       joinSession(sessionId);
       setHasJoined(true);
       addSystemMessage(`Connected to session: ${sessionId}`);
@@ -30,17 +69,46 @@ export function useTerminalWebSocket(sessionId?: string) {
     
     // Clean up when unmounting or when sessionId changes
     return () => {
-      if (hasJoined && sessionId) {
+      // Only leave if we're actually joined to this session
+      if (hasJoined && sessionId === currentSessionIdRef.current) {
         console.log(`[useTerminalWebSocket] Leaving session ${sessionId}`);
         leaveSession(sessionId);
         setHasJoined(false);
         addSystemMessage('Disconnected from session');
       }
     };
-  }, [sessionId, hasJoined, isConnected, joinSession, leaveSession, addSystemMessage]);
+  }, [
+    sessionId, 
+    hasJoined, 
+    isConnected, 
+    connectionStatus, 
+    joinSession, 
+    leaveSession, 
+    addSystemMessage
+  ]);
   
-  // Monitor connection status changes
+  // Track last notification time to prevent message spam
+  const lastMessageRef = useRef<Record<ConnectionStatus, number>>({
+    [ConnectionStatus.CONNECTED]: 0,
+    [ConnectionStatus.CONNECTING]: 0,
+    [ConnectionStatus.DISCONNECTED]: 0,
+    [ConnectionStatus.ERROR]: 0,
+    [ConnectionStatus.RECONNECTING]: 0,
+  });
+  
+  // Monitor connection status changes with debounce to prevent message spam
   useEffect(() => {
+    const now = Date.now();
+    const minInterval = 2000; // 2 seconds between same status messages
+    
+    // Only show messages if we haven't shown this status recently
+    if (now - lastMessageRef.current[connectionStatus] < minInterval) {
+      return;
+    }
+    
+    // Update last notification time
+    lastMessageRef.current[connectionStatus] = now;
+    
     // Always handle connection status changes, even if we don't have a session
     // This ensures tests work correctly too
     switch (connectionStatus) {
@@ -61,35 +129,70 @@ export function useTerminalWebSocket(sessionId?: string) {
       case ConnectionStatus.DISCONNECTED:
         if (hasJoined) {
           addErrorMessage('WebSocket disconnected');
+          
+          // Reset join status when disconnected
+          setHasJoined(false);
         }
         break;
     }
   }, [connectionStatus, hasJoined, addSystemMessage, addErrorMessage]);
   
-  // Function to connect to a session
+  // Function to connect to a session with validation
   const connect = useCallback((sid: string) => {
-    if (!sid || hasJoined) return false;
+    if (!sid) {
+      addErrorMessage('Cannot connect: No session ID provided');
+      return false;
+    }
     
+    if (hasJoined && sid === currentSessionIdRef.current) {
+      console.log(`[useTerminalWebSocket] Already connected to session ${sid}`);
+      return false;
+    }
+    
+    if (!isConnected) {
+      addSystemMessage('Waiting for WebSocket connection...');
+      // The connection will be established when WebSocket connects
+      currentSessionIdRef.current = sid;
+      return false;
+    }
+    
+    console.log(`[useTerminalWebSocket] Manually connecting to session ${sid}`);
     joinSession(sid);
     setHasJoined(true);
+    currentSessionIdRef.current = sid;
     addSystemMessage(`Connected to session: ${sid}`);
     return true;
-  }, [hasJoined, joinSession, addSystemMessage]);
+  }, [hasJoined, isConnected, joinSession, addSystemMessage, addErrorMessage]);
   
-  // Function to disconnect from a session
+  // Function to disconnect from a session with validation
   const disconnect = useCallback(() => {
-    if (!sessionId || !hasJoined) return false;
+    const sid = currentSessionIdRef.current;
     
-    leaveSession(sessionId);
+    if (!sid) {
+      addErrorMessage('Cannot disconnect: No active session');
+      return false;
+    }
+    
+    if (!hasJoined) {
+      console.log(`[useTerminalWebSocket] Not connected to any session`);
+      return false;
+    }
+    
+    console.log(`[useTerminalWebSocket] Manually disconnecting from session ${sid}`);
+    leaveSession(sid);
     setHasJoined(false);
+    currentSessionIdRef.current = undefined;
     addSystemMessage('Disconnected from session');
     return true;
-  }, [sessionId, hasJoined, leaveSession, addSystemMessage]);
+  }, [hasJoined, leaveSession, addSystemMessage, addErrorMessage]);
   
+  // Return a stable interface
   return {
     connectionStatus,
     isConnected,
     hasJoined,
+    sessionId: currentSessionIdRef.current,
+    contextSessionId, // The session ID from the WebSocket context
     connect,
     disconnect,
   };
