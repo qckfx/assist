@@ -10,3 +10,9 @@ export {
   SocketConnectionManager,
   getSocketConnectionManager 
 } from './SocketConnectionManager';
+
+// Export MessageBufferManager
+export {
+  WebSocketMessageBufferManager,
+  getWebSocketMessageBufferManager
+} from './WebSocketMessageBufferManager';
