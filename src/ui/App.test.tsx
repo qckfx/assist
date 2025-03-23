@@ -70,7 +70,7 @@ vi.mock('./components/ThemeProvider', () => ({
 
 // Mock Terminal component to avoid rendering complexities
 vi.mock('./components/Terminal', () => ({
-  default: ({ onCommand, onClear, messages }: { onCommand: (command: string) => void, onClear: () => void, messages: Array<{ id: string, content: string, type: string, timestamp: Date }> }) => (
+  default: ({ onCommand, messages }: { onCommand: (command: string) => void, onClear?: () => void, messages: Array<{ id: string, content: string, type: string, timestamp: Date }> }) => (
     <div data-testid="terminal-container">
       <div data-testid="messages">
         {messages && messages.map((msg: { id: string, content: string, type: string, timestamp: Date }) => (
@@ -149,8 +149,8 @@ describe('App', () => {
   it('clears the terminal when clear function is triggered', async () => {
     render(<App />);
     
-    // Get the terminal container
-    const terminal = screen.getByTestId('terminal-container');
+    // Get the terminal container and verify it's rendered
+    screen.getByTestId('terminal-container');
     
     // Need to manually call the onClear handler due to how the keyboard shortcuts are set up
     // The onClear function is passed to the mocked Terminal component but the test isn't properly
