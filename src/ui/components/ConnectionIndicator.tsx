@@ -21,32 +21,49 @@ export function ConnectionIndicator({
   className = ''
 }: ConnectionIndicatorProps) {
   const { 
-    connectionStatus, 
-    statusMessage, 
-    attemptReconnect 
+    status, 
+    error,
+    connect
   } = useConnectionStatus();
+  
+  // Get the appropriate status message
+  const getStatusMessage = () => {
+    switch (status) {
+      case 'connected':
+        return 'Connected';
+      case 'connecting':
+        return 'Connecting...';
+      case 'disconnected':
+        return 'Disconnected';
+      case 'error':
+        return `Error: ${error?.message || 'Connection failed'}`;
+      default:
+        return 'Unknown status';
+    }
+  };
   
   // Determine the color class based on connection status
   const getStatusColorClass = () => {
-    switch (connectionStatus) {
-      case ConnectionStatus.CONNECTED:
+    switch (status) {
+      case 'connected':
         return 'bg-green-500';
-      case ConnectionStatus.CONNECTING:
-      case ConnectionStatus.RECONNECTING:
+      case 'connecting':
         return 'bg-yellow-500 animate-pulse';
-      case ConnectionStatus.DISCONNECTED:
+      case 'disconnected':
         return 'bg-red-500';
-      case ConnectionStatus.ERROR:
+      case 'error':
         return 'bg-red-600';
       default:
         return 'bg-gray-500';
     }
   };
   
+  const statusMessage = getStatusMessage();
+  
   return (
     <div 
       className={`flex items-center gap-2 ${className}`}
-      onClick={attemptReconnect}
+      onClick={() => connect()}
       role="button"
       aria-label={`Connection status: ${statusMessage}. Click to reconnect.`}
     >

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MessageBufferManager } from '../MessageBufferManager';
 
 describe('MessageBufferManager', () => {
-  let flushCallback: vi.Mock;
+  let flushCallback: ReturnType<typeof vi.fn>;
   let buffer: MessageBufferManager<string>;
   
   beforeEach(() => {
@@ -59,7 +59,7 @@ describe('MessageBufferManager', () => {
     
     // Total processed items should equal input size
     const totalProcessed = flushCallback.mock.calls.reduce(
-      (acc, call) => acc + call[0].length, 0
+      (acc: number, call: any[]) => acc + call[0].length, 0
     );
     expect(totalProcessed).toBe(items.length);
   });

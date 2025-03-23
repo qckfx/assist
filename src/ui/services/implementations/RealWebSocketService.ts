@@ -71,7 +71,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
       event === WebSocketEvent.PROCESSING_STARTED ||
       event === WebSocketEvent.SESSION_UPDATED
     ) {
-      this.throttledEmit(event, ...args);
+      this.throttledEmit(event, args[0]);
       return true;
     }
     

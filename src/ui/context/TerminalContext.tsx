@@ -460,7 +460,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
   const leaveSession = useCallback(async () => {
     try {
       if (websocketContext) {
-        await websocketContext.leaveSession();
+        const sessionId = websocketContext.currentSessionId;
+        if (sessionId) {
+          await websocketContext.leaveSession(sessionId);
+        }
       }
     } catch (error) {
       console.error('Error leaving WebSocket session:', error);
