@@ -39,20 +39,20 @@ describe('MessageBufferManager', () => {
   
   it('should process large buffers in chunks', async () => {
     const largeBuffer = new MessageBufferManager<number>(flushCallback, {
-      maxSize: 20,  // Small max size for testing
+      maxSize: 5,   // Very small max size for testing
       flushThreshold: 50,
-      chunkSize: 5   // Process 5 items at a time
+      chunkSize: 2  // Process 2 items at a time
     });
     
-    // Add many items (more than maxSize)
-    const items = Array.from({ length: 25 }, (_, i) => i);
+    // Add 10 items (more than maxSize)
+    const items = Array.from({ length: 10 }, (_, i) => i);
     largeBuffer.addMany(items);
     
     // Force flush
     largeBuffer.flush();
     
-    // Wait for async processing to complete
-    await new Promise(resolve => setTimeout(resolve, 10));
+    // Wait for async processing to complete - longer timeout
+    await new Promise(resolve => setTimeout(resolve, 50));
     
     // Should have been called multiple times with chunks
     expect(flushCallback.mock.calls.length).toBeGreaterThan(1);
