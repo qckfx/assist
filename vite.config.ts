@@ -47,7 +47,17 @@ export default defineConfig(({ command, mode }) => {
     },
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src/ui')
+        '@': resolve(__dirname, 'src/ui'),
+        // Handle Node.js 'events' module with a browser polyfill
+        'events': 'events'
+      }
+    },
+    optimizeDeps: {
+      esbuildOptions: {
+        // Enable Node.js built-in modules for browser compatibility
+        define: {
+          global: 'globalThis'
+        }
       }
     },
     server: {
