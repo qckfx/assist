@@ -20,7 +20,7 @@ export const API_ENDPOINTS = {
 export const API_TIMEOUT = 30000;
 
 // WebSocket configuration
-export const SOCKET_RECONNECTION_ATTEMPTS = 5;
-export const SOCKET_RECONNECTION_DELAY = 1000;
-export const SOCKET_RECONNECTION_DELAY_MAX = 5000;
-export const SOCKET_TIMEOUT = 20000;
+export const SOCKET_RECONNECTION_ATTEMPTS = 10; // Increased for better resilience
+export const SOCKET_RECONNECTION_DELAY = 1000; 
+export const SOCKET_RECONNECTION_DELAY_MAX = 10000; // Increased max delay to avoid overwhelming server
+export const SOCKET_TIMEOUT = 30000; // Increased timeout for slower development environments

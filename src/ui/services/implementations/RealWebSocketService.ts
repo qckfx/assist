@@ -89,6 +89,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
 
     this.updateConnectionStatus(ConnectionStatus.CONNECTING);
 
+    // Improved Socket.io configuration for better development experience
     this.socket = io(SOCKET_URL, {
       autoConnect: true,
       reconnection: true,
@@ -97,10 +98,36 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
       reconnectionDelayMax: SOCKET_RECONNECTION_DELAY_MAX,
       timeout: SOCKET_TIMEOUT,
       forceNew: true,
+      // Advanced error handling and reconnection strategy
+      transportOptions: {
+        polling: {
+          extraHeaders: {
+            'X-Client-Version': '1.0.0', // Helps with debugging
+          }
+        }
+      }
     });
 
+    console.log('WebSocket initializing connection to server...');
+    
+    // Enhanced initialization - retry connection if initial attempt fails
+    this.setupInitialConnectionRetry();
     this.setupSocketEventHandlers();
     this.startBufferFlushInterval();
+  }
+  
+  /**
+   * Set up retry mechanism for initial connection
+   * This helps during development when the server might not be ready immediately
+   */
+  private setupInitialConnectionRetry(): void {
+    // If not connected after 3 seconds, try forcing a reconnection
+    setTimeout(() => {
+      if (this.socket && this.connectionStatus !== ConnectionStatus.CONNECTED) {
+        console.log('WebSocket initial connection timeout - attempting reconnection...');
+        this.reconnect(); // Force reconnection
+      }
+    }, 3000);
   }
 
   /**
