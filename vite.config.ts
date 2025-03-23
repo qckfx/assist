@@ -62,14 +62,20 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       proxy: {
-        '/api': 'http://localhost:3000',
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api/, '/api'),
+        },
         '/socket.io': {
           target: 'http://localhost:3000',
-          ws: true
+          ws: true,
+          changeOrigin: true
         }
       },
       open: '/index.html',
       port: 5173,
+      host: '0.0.0.0',
     },
   };
 });
