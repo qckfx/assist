@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { vi } from 'vitest';
 import { ShortcutsPanel } from '../ShortcutsPanel';
 import { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
 

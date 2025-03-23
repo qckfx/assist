@@ -4,7 +4,7 @@ import App from './App';
 
 // Mock both context hooks to avoid dependencies
 vi.mock('./context/WebSocketContext', () => ({
-  WebSocketProvider: ({ children }) => children,
+  WebSocketProvider: ({ children }: { children: React.ReactNode }) => children,
   useWebSocketContext: () => ({
     connectionStatus: 'CONNECTED',
     isConnected: true,
@@ -27,7 +27,7 @@ const mockAddToHistory = vi.fn();
 
 // Mock terminal context with working implementation
 vi.mock('./context/TerminalContext', () => ({
-  TerminalProvider: ({ children }) => children,
+  TerminalProvider: ({ children }: { children: React.ReactNode }) => children,
   useTerminal: () => ({
     addSystemMessage: mockAddSystemMessage,
     addErrorMessage: mockAddErrorMessage,
@@ -61,7 +61,7 @@ vi.mock('./context/TerminalContext', () => ({
 
 // Mock ThemeProvider
 vi.mock('./components/ThemeProvider', () => ({
-  ThemeProvider: ({ children }) => children,
+  ThemeProvider: ({ children }: { children: React.ReactNode }) => children,
   useTheme: () => ({
     theme: 'dark',
     setTheme: vi.fn()
@@ -70,10 +70,10 @@ vi.mock('./components/ThemeProvider', () => ({
 
 // Mock Terminal component to avoid rendering complexities
 vi.mock('./components/Terminal', () => ({
-  default: ({ onCommand, onClear, messages }) => (
+  default: ({ onCommand, onClear, messages }: { onCommand: (command: string) => void, onClear: () => void, messages: Array<{ id: string, content: string, type: string, timestamp: Date }> }) => (
     <div data-testid="terminal-container">
       <div data-testid="messages">
-        {messages && messages.map(msg => (
+        {messages && messages.map((msg: { id: string, content: string, type: string, timestamp: Date }) => (
           <div key={msg.id} data-testid="message">
             {msg.content}
           </div>
@@ -81,7 +81,7 @@ vi.mock('./components/Terminal', () => ({
       </div>
       <input 
         data-testid="input-field" 
-        onKeyDown={(e) => e.key === 'Enter' && onCommand && onCommand(e.target.value)}
+        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && onCommand && onCommand((e.target as HTMLInputElement).value)}
       />
       <button data-testid="show-shortcuts">?</button>
       <div data-testid="shortcuts-panel">Shortcuts panel</div>

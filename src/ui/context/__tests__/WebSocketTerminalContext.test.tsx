@@ -52,7 +52,7 @@ vi.mock('@/context/TerminalContext', () => ({
     clearMessages: vi.fn(),
     addToHistory: vi.fn(),
   }),
-  TerminalProvider: ({ children }) => React.createElement(React.Fragment, null, children)
+  TerminalProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children)
 }));
 
 vi.mock('@/services/apiClient', () => ({
@@ -158,7 +158,7 @@ describe('WebSocketTerminalContext', () => {
   });
   
   it('should provide session-related properties and methods', async () => {
-    const wrapper = ({ children }) => (
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
       <WebSocketTerminalProvider initialSessionId="test-session">
         {children}
       </WebSocketTerminalProvider>
@@ -196,7 +196,7 @@ describe('WebSocketTerminalContext', () => {
   });
   
   it('should handle abort operation', async () => {
-    const wrapper = ({ children }) => (
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
       <WebSocketTerminalProvider initialSessionId="test-session">
         {children}
       </WebSocketTerminalProvider>
@@ -235,7 +235,7 @@ describe('WebSocketTerminalContext', () => {
   });
   
   it('should handle command submission', async () => {
-    const wrapper = ({ children }) => (
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
       <WebSocketTerminalProvider initialSessionId="test-session">
         {children}
       </WebSocketTerminalProvider>
@@ -251,7 +251,7 @@ describe('WebSocketTerminalContext', () => {
   });
   
   it('should handle permission resolution', async () => {
-    const wrapper = ({ children }) => (
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
       <WebSocketTerminalProvider initialSessionId="test-session">
         {children}
       </WebSocketTerminalProvider>
@@ -270,7 +270,7 @@ describe('WebSocketTerminalContext', () => {
     // Mock API error
     mockAbortOperation.mockRejectedValueOnce(new Error('Abort error'));
     
-    const wrapper = ({ children }) => (
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
       <WebSocketTerminalProvider initialSessionId="test-session">
         {children}
       </WebSocketTerminalProvider>
@@ -294,7 +294,7 @@ describe('WebSocketTerminalContext', () => {
       error: { message: 'Failed to abort' } 
     });
     
-    const wrapper = ({ children }) => (
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
       <WebSocketTerminalProvider initialSessionId="test-session">
         {children}
       </WebSocketTerminalProvider>

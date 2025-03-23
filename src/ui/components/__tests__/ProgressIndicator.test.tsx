@@ -51,7 +51,7 @@ describe('ProgressIndicator Component', () => {
     
     // Instead of checking the text content, let's manually verify the component's 
     // time formatting logic by checking the format of elapsed time
-    const formatTime = (seconds) => {
+    const formatTime = (seconds: number) => {
       const minutes = Math.floor(seconds / 60);
       const secs = seconds % 60;
       return `${minutes}:${secs.toString().padStart(2, '0')}`;
