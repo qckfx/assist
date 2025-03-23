@@ -67,6 +67,7 @@ export enum WebSocketEvent {
   PROCESSING_ERROR = 'processing_error',
   PROCESSING_ABORTED = 'processing_aborted',
   TOOL_EXECUTION = 'tool_execution',
+  TOOL_EXECUTION_BATCH = 'tool_execution_batch',
   PERMISSION_REQUESTED = 'permission_requested',
   PERMISSION_RESOLVED = 'permission_resolved',
   SESSION_UPDATED = 'session_updated',
@@ -96,7 +97,13 @@ export interface WebSocketEventMap {
   [WebSocketEvent.PROCESSING_COMPLETED]: { sessionId: string; result: any; };
   [WebSocketEvent.PROCESSING_ERROR]: { sessionId: string; error: { name: string; message: string; stack?: string; }; };
   [WebSocketEvent.PROCESSING_ABORTED]: { sessionId: string; };
-  [WebSocketEvent.TOOL_EXECUTION]: { sessionId: string; tool: string; result: any; };
+  [WebSocketEvent.TOOL_EXECUTION]: { sessionId: string; tool: any; result: any; };
+  [WebSocketEvent.TOOL_EXECUTION_BATCH]: { 
+    toolId: string; 
+    results: Array<{ sessionId: string; tool: any; result: any; }>;
+    isBatched: boolean;
+    batchSize: number;
+  };
   [WebSocketEvent.PERMISSION_REQUESTED]: { sessionId: string; permission: any; };
   [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };
   [WebSocketEvent.SESSION_UPDATED]: SessionData;

@@ -17,6 +17,7 @@ import {
   SOCKET_RECONNECTION_DELAY_MAX,
   SOCKET_TIMEOUT
 } from '@/config/api';
+import { throttle } from '@/utils/performance';
 
 export class RealWebSocketService extends EventEmitter implements IWebSocketService {
   private socket: Socket | null = null;
@@ -24,11 +25,58 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
   private reconnectAttempts = 0;
   private currentSessionId: string | null = null;
   private messageBuffer: Map<string, any[]> = new Map();
-  private flushInterval: NodeJS.Timeout | null = null;
+  private flushIntervalTimer: NodeJS.Timeout | null = null;
+  
+  // Message buffer for tool execution results
+  private toolResultBuffer: Record<string, any[]> = {};
+  // Last time tool results were flushed
+  private lastToolFlush: Record<string, number> = {};
+  // Max buffer size before forcing a flush
+  private readonly maxBufferSize = 50;
+  // Auto-flush interval in ms
+  private readonly flushIntervalMs = 500;
+  // Throttle event emission for frequently updated tools
+  private readonly throttleInterval = 100;
+
+  // Throttled event emitter for high-frequency events
+  private throttledEmit = throttle(
+    (event: string, data: any) => {
+      super.emit(event, data);
+    },
+    this.throttleInterval
+  );
 
   constructor() {
     super();
     this.initializeSocket();
+  }
+  
+  /**
+   * Override the emit method to handle buffering
+   */
+  public emit(event: string, ...args: any[]): boolean {
+    // For tool execution events, use buffering
+    if (event === WebSocketEvent.TOOL_EXECUTION) {
+      const data = args[0];
+      const toolId = data.tool?.id;
+      
+      if (toolId) {
+        this.bufferToolResult(toolId, data);
+        return true;
+      }
+    }
+    
+    // Use throttled emit for high-frequency events
+    if (
+      event === WebSocketEvent.PROCESSING_STARTED ||
+      event === WebSocketEvent.SESSION_UPDATED
+    ) {
+      this.throttledEmit(event, ...args);
+      return true;
+    }
+    
+    // Default behavior for other events
+    return super.emit(event, ...args);
   }
 
   /**
@@ -235,11 +283,11 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
    * Start interval for flushing buffered events
    */
   private startBufferFlushInterval(): void {
-    if (this.flushInterval) {
-      clearInterval(this.flushInterval);
+    if (this.flushIntervalTimer) {
+      clearInterval(this.flushIntervalTimer);
     }
     
-    this.flushInterval = setInterval(() => {
+    this.flushIntervalTimer = setInterval(() => {
       this.flushBuffers();
     }, 100); // Flush every 100ms
   }
@@ -253,6 +301,72 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
         this.emit(`${event}:batch`, messages);
         this.messageBuffer.set(event, []);
       }
+    });
+    
+    // Also flush tool buffers
+    this.flushAllToolBuffers();
+  }
+  
+  /**
+   * Buffer tool results and flush when appropriate
+   */
+  private bufferToolResult(toolId: string, data: any): void {
+    // Initialize buffer if needed
+    if (!this.toolResultBuffer[toolId]) {
+      this.toolResultBuffer[toolId] = [];
+      this.lastToolFlush[toolId] = Date.now();
+    }
+    
+    // Add to buffer
+    this.toolResultBuffer[toolId].push(data);
+    
+    // Check if we should flush
+    const bufferSize = this.toolResultBuffer[toolId].length;
+    const timeSinceLastFlush = Date.now() - this.lastToolFlush[toolId];
+    
+    // Flush if buffer is full or enough time has passed
+    if (bufferSize >= this.maxBufferSize || timeSinceLastFlush >= this.flushIntervalMs) {
+      this.flushToolBuffer(toolId);
+    } else {
+      // Schedule a flush after the interval
+      setTimeout(() => {
+        if (this.toolResultBuffer[toolId]?.length > 0) {
+          this.flushToolBuffer(toolId);
+        }
+      }, this.flushIntervalMs - timeSinceLastFlush);
+    }
+  }
+  
+  /**
+   * Flush the buffer for a specific tool
+   */
+  private flushToolBuffer(toolId: string): void {
+    if (!this.toolResultBuffer[toolId] || this.toolResultBuffer[toolId].length === 0) {
+      return;
+    }
+    
+    // Create a batched event with all buffered data
+    const batchedData = {
+      toolId,
+      results: [...this.toolResultBuffer[toolId]],
+      isBatched: true,
+      batchSize: this.toolResultBuffer[toolId].length,
+    };
+    
+    // Emit the batched event
+    super.emit(WebSocketEvent.TOOL_EXECUTION_BATCH, batchedData);
+    
+    // Clear buffer and update last flush time
+    this.toolResultBuffer[toolId] = [];
+    this.lastToolFlush[toolId] = Date.now();
+  }
+  
+  /**
+   * Flush all tool buffers
+   */
+  public flushAllToolBuffers(): void {
+    Object.keys(this.toolResultBuffer).forEach(toolId => {
+      this.flushToolBuffer(toolId);
     });
   }
 
@@ -279,14 +393,18 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
    * Close the WebSocket connection
    */
   public disconnect(): void {
+    // Flush any pending buffers
+    this.flushBuffers();
+    this.flushAllToolBuffers();
+    
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
     
-    if (this.flushInterval) {
-      clearInterval(this.flushInterval);
-      this.flushInterval = null;
+    if (this.flushIntervalTimer) {
+      clearInterval(this.flushIntervalTimer);
+      this.flushIntervalTimer = null;
     }
     
     this.updateConnectionStatus(ConnectionStatus.DISCONNECTED);
@@ -356,15 +474,17 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
     }
     
     // 2. Clear all timers and intervals
-    if (this.flushInterval) {
-      clearInterval(this.flushInterval);
-      this.flushInterval = null;
+    if (this.flushIntervalTimer) {
+      clearInterval(this.flushIntervalTimer);
+      this.flushIntervalTimer = null;
       console.log('RealWebSocketService: Cleared flush interval');
     }
     
     // 3. Clear all data structures
     this.messageBuffer.clear();
-    console.log('RealWebSocketService: Cleared message buffer');
+    this.toolResultBuffer = {};
+    this.lastToolFlush = {};
+    console.log('RealWebSocketService: Cleared message buffers');
     
     // 4. Reset all state variables
     this.currentSessionId = null;

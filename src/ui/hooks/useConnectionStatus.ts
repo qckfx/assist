@@ -1,68 +1,91 @@
-/**
- * React hook for connection status management
- */
-import { useState, useEffect, useCallback } from 'react';
-import { useWebSocket } from './useWebSocket';
-import { ConnectionStatus } from '../types/api';
+import { useState, useEffect, useRef } from 'react';
+import { 
+  ConnectionManager, 
+  ConnectionState,
+  ConnectionManagerOptions
+} from '../utils/ConnectionManager';
+
+export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
 
 /**
- * Hook for monitoring connection status
+ * Hook to provide connection status and visual indicators
  */
-export function useConnectionStatus() {
-  const { connectionStatus, reconnect } = useWebSocket();
-  const [hasBeenConnected, setHasBeenConnected] = useState(false);
+export function useConnectionStatus(options: ConnectionManagerOptions = {}) {
+  const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  const [reconnectMessage, setReconnectMessage] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<Error | null>(null);
+  const connectionManager = useRef<ConnectionManager | null>(null);
   
-  // Track connection status changes
+  // Effect to set up connection monitoring
   useEffect(() => {
-    if (connectionStatus === ConnectionStatus.CONNECTED) {
-      setHasBeenConnected(true);
-      setReconnectAttempts(0);
-      setReconnectMessage(null);
-    } else if (connectionStatus === ConnectionStatus.RECONNECTING) {
-      setReconnectAttempts((prev) => prev + 1);
-      setReconnectMessage(`Reconnecting... Attempt ${reconnectAttempts + 1}`);
-    } else if (connectionStatus === ConnectionStatus.ERROR) {
-      setReconnectMessage('Connection error. Click to reconnect.');
-    } else if (connectionStatus === ConnectionStatus.DISCONNECTED && hasBeenConnected) {
-      setReconnectMessage('Disconnected. Click to reconnect.');
+    // Create the connection manager if it doesn't exist
+    if (!connectionManager.current) {
+      connectionManager.current = new ConnectionManager(options);
     }
-  }, [connectionStatus, hasBeenConnected, reconnectAttempts]);
+    
+    const manager = connectionManager.current;
+    
+    // Initial connection attempt
+    manager.connect().catch((error) => {
+      setLastError(error instanceof Error ? error : new Error(String(error)));
+    });
+    
+    // Set up event handlers
+    const handleStateChange = (state: ConnectionState) => {
+      setStatus(state);
+    };
+    
+    const handleReconnecting = (attempts: number) => {
+      setReconnectAttempts(attempts);
+    };
+    
+    const handleError = (error: Error) => {
+      setLastError(error);
+    };
+    
+    manager.on('state_change', handleStateChange);
+    manager.on('reconnecting', handleReconnecting);
+    manager.on('error', handleError);
+    
+    // Set initial state
+    setStatus(manager.getState());
+    
+    // Clean up
+    return () => {
+      if (manager) {
+        manager.removeListener('state_change', handleStateChange);
+        manager.removeListener('reconnecting', handleReconnecting);
+        manager.removeListener('error', handleError);
+        manager.dispose();
+        connectionManager.current = null;
+      }
+    };
+  }, [options]);
   
-  // Function to attempt manual reconnection
-  const attemptReconnect = useCallback(() => {
-    setReconnectMessage('Reconnecting...');
-    reconnect();
-  }, [reconnect]);
-  
-  // Format a user-friendly status message
-  const getStatusMessage = useCallback(() => {
-    switch (connectionStatus) {
-      case ConnectionStatus.CONNECTING:
-        return 'Connecting...';
-      case ConnectionStatus.CONNECTED:
-        return 'Connected';
-      case ConnectionStatus.DISCONNECTED:
-        return hasBeenConnected ? 'Disconnected' : 'Not connected';
-      case ConnectionStatus.RECONNECTING:
-        return `Reconnecting (Attempt ${reconnectAttempts + 1})`;
-      case ConnectionStatus.ERROR:
-        return 'Connection error';
-      default:
-        return 'Unknown status';
+  const connect = () => {
+    if (connectionManager.current) {
+      return connectionManager.current.connect();
     }
-  }, [connectionStatus, hasBeenConnected, reconnectAttempts]);
+    return Promise.reject(new Error('Connection manager not initialized'));
+  };
+  
+  const disconnect = () => {
+    if (connectionManager.current) {
+      connectionManager.current.disconnect();
+    }
+  };
   
   return {
-    connectionStatus,
-    isConnected: connectionStatus === ConnectionStatus.CONNECTED,
-    isReconnecting: connectionStatus === ConnectionStatus.RECONNECTING,
-    hasError: connectionStatus === ConnectionStatus.ERROR,
-    statusMessage: getStatusMessage(),
-    reconnectMessage,
+    status,
     reconnectAttempts,
-    attemptReconnect,
+    isConnected: status === 'connected',
+    isConnecting: status === 'connecting',
+    isDisconnected: status === 'disconnected',
+    hasError: status === 'error',
+    error: lastError,
+    // Expose direct methods to control connection
+    connect,
+    disconnect,
   };
 }
 

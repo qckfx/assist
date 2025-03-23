@@ -3,6 +3,7 @@ import { TerminalState, TerminalAction, TerminalMessage } from '@/types/terminal
 import { MessageType } from '@/components/Message';
 import { WebSocketEvent } from '@/types/api';
 import { useWebSocketContext } from './WebSocketContext';
+import MessageBufferManager from '../utils/MessageBufferManager';
 
 // Initial state
 const initialState: TerminalState = {
@@ -208,6 +209,56 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
   // Get WebSocket context
   const websocketContext = useWebSocketContext();
   
+  // Create message buffer for tool executions
+  const toolMessageBuffer = useRef(
+    new MessageBufferManager<{ toolId: string; message: string }>(
+      (items) => {
+        if (items.length === 0) return;
+        
+        // Process all items at once as a batch
+        if (items.length === 1) {
+          // Single item, just add normally
+          dispatch({ 
+            type: 'ADD_MESSAGE', 
+            payload: {
+              id: `tool-${Date.now()}`,
+              content: items[0].message,
+              type: 'tool',
+              timestamp: new Date()
+            }
+          });
+        } else {
+          // Combine multiple items for the same tool
+          const byTool = items.reduce((acc, item) => {
+            if (!acc[item.toolId]) {
+              acc[item.toolId] = [];
+            }
+            acc[item.toolId].push(item.message);
+            return acc;
+          }, {} as Record<string, string[]>);
+          
+          // Add combined messages
+          Object.entries(byTool).forEach(([toolId, messages]) => {
+            dispatch({ 
+              type: 'ADD_MESSAGE', 
+              payload: {
+                id: `tool-${Date.now()}-${toolId}`,
+                content: messages.join('\n'), 
+                type: 'tool',
+                timestamp: new Date()
+              }
+            });
+          });
+        }
+      },
+      { 
+        maxSize: 100,
+        flushThreshold: 10,
+        chunkSize: 5
+      }
+    )
+  );
+  
   // Set up WebSocket event handling
   useEffect(() => {
     // Skip if no websocket context available
@@ -270,6 +321,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       tool, 
       result 
     }: { sessionId: string, tool: any, result: any }) => {
+      // Set current tool so UI can show progress
       dispatch({ 
         type: 'SET_CURRENT_TOOL_EXECUTION',
         payload: {
@@ -279,19 +331,28 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
         }
       });
       
-      // Add tool output message
+      // For high-output tools, buffer messages
       const toolOutput = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-      dispatch({ 
-        type: 'ADD_MESSAGE', 
-        payload: {
-          id: `tool-${Date.now()}`,
-          content: `Running ${tool.name}...\n${toolOutput}`,
-          type: 'tool',
-          timestamp: new Date()
-        }
+      const message = `Running ${tool.name}...\n${toolOutput}`;
+      
+      // Add to buffer instead of directly dispatching
+      toolMessageBuffer.current.add({
+        toolId: tool.id || 'unknown',
+        message
       });
       
-      dispatch({ type: 'SET_CURRENT_TOOL_EXECUTION', payload: null });
+      // High-frequency tools don't need to clear the execution indicator
+      // but still need to show the indicator initially
+      if (!isHighFrequencyTool(tool.id || '')) {
+        dispatch({ type: 'SET_CURRENT_TOOL_EXECUTION', payload: null });
+      }
+    };
+    
+    // Helper to identify high-frequency tools
+    const isHighFrequencyTool = (toolId: string) => {
+      // Tools that tend to emit many events in rapid succession
+      const highFrequencyTools = ['FileReadTool', 'GrepTool', 'GlobTool', 'BashTool'];
+      return highFrequencyTools.some(id => toolId.includes(id));
     };
     
     // Handler for permission requested event
@@ -345,6 +406,16 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
   }, [websocketContext]);
   
+  // Flush buffers when changing pages or unmounting
+  useEffect(() => {
+    return () => {
+      // Make sure to flush any pending tool messages
+      if (toolMessageBuffer.current) {
+        toolMessageBuffer.current.flush();
+      }
+    };
+  }, []);
+  
   // Helper functions to make common actions easier
   const addMessage = (content: string, type: MessageType = 'system') => {
     const message: TerminalMessage = {
@@ -374,26 +445,27 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
   // Add function to join a WebSocket session
   const joinSession = useCallback(async (sessionId: string) => {
     try {
-      await websocketRef.current.joinSession(sessionId);
+      if (websocketContext) {
+        await websocketContext.joinSession(sessionId);
+      }
     } catch (error) {
       console.error('Error joining WebSocket session:', error);
       addErrorMessage(`Failed to connect to live updates: ${
         error instanceof Error ? error.message : String(error)
       }`);
     }
-  }, []);
+  }, [websocketContext]);
   
   // Add function to leave a WebSocket session
   const leaveSession = useCallback(async () => {
     try {
-      const currentSessionId = websocketRef.current.getCurrentSessionId();
-      if (currentSessionId) {
-        await websocketRef.current.leaveSession(currentSessionId);
+      if (websocketContext) {
+        await websocketContext.leaveSession();
       }
     } catch (error) {
       console.error('Error leaving WebSocket session:', error);
     }
-  }, []);
+  }, [websocketContext]);
   
   // Context value
   const value = {
