@@ -3,7 +3,7 @@
  * Updated to work with the new context-based architecture
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ConnectionStatus } from '../../types/api';
+import { ConnectionStatus, WebSocketEvent } from '../../types/api';
 import { WebSocketServiceFactory } from '../factories/WebSocketServiceFactory';
 import { MockWebSocketService } from '../implementations/MockWebSocketService';
 import { IWebSocketService } from '../interfaces/IWebSocketService';
@@ -123,7 +123,7 @@ describe('MockWebSocketService', () => {
     service.on('processing_started', listener);
     
     const testData = { sessionId: 'test-session' };
-    service.simulateEvent('processing_started', testData);
+    service.simulateEvent(WebSocketEvent.PROCESSING_STARTED, testData);
     
     expect(listener).toHaveBeenCalledWith(testData);
   });

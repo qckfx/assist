@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, renderHook, act } from '@testing-library/react';
 import { WebSocketProvider, useWebSocketContext, WebSocketContext } from '../WebSocketContext';
-import { ConnectionStatus } from '../../types/api';
+import { ConnectionStatus, WebSocketEvent } from '../../types/api';
 import { Socket } from 'socket.io-client';
 
 // Mock socket.io-client
@@ -98,11 +98,11 @@ describe('WebSocketContext', () => {
     
     // Mock callback
     const mockCallback = vi.fn();
-    let unsubscribe: () => void;
+    let unsubscribe: () => void = () => {};
     
     // Subscribe to an event
     act(() => {
-      unsubscribe = result.current.on('connect', mockCallback);
+      unsubscribe = result.current.on(WebSocketEvent.CONNECT, mockCallback);
     });
     
     // Verify it returns an unsubscribe function

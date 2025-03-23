@@ -18,8 +18,10 @@ export function clearMockEvents() {
 
 // Helper to simulate socket events
 export function simulateSocketEvent(event: string, ...args: any[]) {
-  if (mockSocket && typeof mockSocket._triggerEvent === 'function') {
-    mockSocket._triggerEvent(event, ...args);
+  // Access the _triggerEvent safely with type casting
+  const socket = mockSocket as any;
+  if (socket && typeof socket._triggerEvent === 'function') {
+    socket._triggerEvent(event, ...args);
   } else if (mockSocketEvents[event]) {
     mockSocketEvents[event].forEach((callback) => {
       callback(...args);
@@ -29,8 +31,10 @@ export function simulateSocketEvent(event: string, ...args: any[]) {
 
 // Helper to simulate socket.io events
 export function simulateSocketIoEvent(event: string, ...args: any[]) {
-  if (mockSocket && typeof mockSocket._triggerIoEvent === 'function') {
-    mockSocket._triggerIoEvent(event, ...args);
+  // Access the _triggerIoEvent safely with type casting
+  const socket = mockSocket as any;
+  if (socket && typeof socket._triggerIoEvent === 'function') {
+    socket._triggerIoEvent(event, ...args);
   } else if (mockSocketIoEvents[event]) {
     mockSocketIoEvents[event].forEach((callback) => {
       callback(...args);

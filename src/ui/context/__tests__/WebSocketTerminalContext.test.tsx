@@ -92,11 +92,32 @@ vi.mocked(useTerminal).mockReturnValue({
   addAssistantMessage: vi.fn(),
   addToolMessage: vi.fn(),
   setProcessing: vi.fn(),
-  state: { isProcessing: false, messages: [], history: [] },
+  state: { 
+    isProcessing: false, 
+    isStreaming: false,
+    messages: [], 
+    history: [],
+    theme: {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      colorScheme: 'dark'
+    },
+    typingIndicator: false,
+    progressIndicator: false,
+    streamBuffer: [],
+    currentToolExecution: null,
+  },
   dispatch: vi.fn(),
   addMessage: vi.fn(),
   clearMessages: vi.fn(),
   addToHistory: vi.fn(),
+  joinSession: vi.fn(),
+  leaveSession: vi.fn(),
+  isStreaming: false,
+  typingIndicator: false,
+  progressIndicator: false,
+  streamBuffer: [],
+  currentToolExecution: null,
 });
 
 vi.mocked(useTerminalCommands).mockReturnValue({
@@ -104,6 +125,7 @@ vi.mocked(useTerminalCommands).mockReturnValue({
 });
 
 vi.mocked(usePermissionManager).mockReturnValue({
+  pendingPermissions: [],
   hasPendingPermissions: false,
   resolvePermission: mockResolvePermission,
 });

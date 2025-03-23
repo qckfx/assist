@@ -23,6 +23,9 @@ const mockContextValue = {
   off: mockOff,
   onBatch: vi.fn(),
   offBatch: vi.fn(),
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+  socket: {} as any,
 };
 
 // Mock context wrapper

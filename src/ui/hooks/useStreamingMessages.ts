@@ -79,7 +79,7 @@ export function useStreamingMessages({
     });
     
     // Handle streaming content
-    const unsubscribeStream = subscribe('stream_content', (data: any) => {
+    const unsubscribeStream = subscribe(WebSocketEvent.STREAM_CONTENT, (data: any) => {
       // Add to buffer, limiting size
       setCurrentBuffer(prev => {
         // If too large, concat and update streaming content directly
@@ -92,7 +92,7 @@ export function useStreamingMessages({
     });
     
     // Handle streaming content batches for better performance
-    const unsubscribeStreamBatch = subscribeToBatch('stream_content', (events: any[]) => {
+    const unsubscribeStreamBatch = subscribeToBatch(WebSocketEvent.STREAM_CONTENT, (events: any[]) => {
       if (events.length === 0) return;
       
       const contents = events.map(e => e.data.content);

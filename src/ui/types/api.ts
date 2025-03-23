@@ -71,6 +71,7 @@ export enum WebSocketEvent {
   PERMISSION_REQUESTED = 'permission_requested',
   PERMISSION_RESOLVED = 'permission_resolved',
   SESSION_UPDATED = 'session_updated',
+  STREAM_CONTENT = 'stream_content',
 }
 
 /**
@@ -107,4 +108,5 @@ export interface WebSocketEventMap {
   [WebSocketEvent.PERMISSION_REQUESTED]: { sessionId: string; permission: any; };
   [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };
   [WebSocketEvent.SESSION_UPDATED]: SessionData;
+  [WebSocketEvent.STREAM_CONTENT]: { sessionId: string; content: string; };
 }

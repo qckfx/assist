@@ -89,7 +89,7 @@ Session Information:
       setProcessing(true);
       
       // Send the query to the API
-      const response = await apiClient.sendQuery(sessionId, command);
+      const response = await apiClient.sendQuery(command);
       
       if (!response.success) {
         throw new Error(response.error?.message || 'Failed to process query');

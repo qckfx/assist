@@ -5,6 +5,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ConnectionStatus } from '@/types/api';
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
 
 // Create mock handlers that we can reference and modify in tests
 const mockHandleCommand = vi.fn();
@@ -64,7 +65,11 @@ const webSocketTerminalMock = {
 
 // Mock Terminal component
 vi.mock('../Terminal/Terminal', () => ({
-  default: vi.fn(({ onCommand, onClear, messages }) => (
+  default: vi.fn(({ onCommand, onClear, messages }: {
+    onCommand: (command: string) => void;
+    onClear: () => void;
+    messages: Array<{id: string; content: string; type: string; timestamp: Date}>;
+  }) => (
     <div data-testid="mock-terminal">
       <div data-testid="terminal-messages">
         {messages?.map((msg, i) => (
@@ -89,7 +94,7 @@ vi.mock('../TypingIndicator', () => ({
 
 // Mock PermissionRequest
 vi.mock('../PermissionRequest', () => ({
-  PermissionRequest: vi.fn(({ onResolved }) => (
+  PermissionRequest: vi.fn(({ onResolved }: { onResolved: (id: string, granted: boolean) => void }) => (
     <div data-testid="permission-request">
       <button data-testid="resolve-permission" onClick={() => onResolved('test-id', true)}>
         Approve
@@ -111,7 +116,7 @@ vi.mock('@/context/WebSocketTerminalContext', () => ({
     resolvePermission: webSocketTerminalMock.resolvePermission,
     abortProcessing: webSocketTerminalMock.abortProcessing,
   }),
-  WebSocketTerminalProvider: ({ children }) => <>{children}</>,
+  WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // Mock Terminal context
@@ -126,7 +131,7 @@ vi.mock('@/context/TerminalContext', () => ({
     },
     clearMessages: mockClearMessages,
   }),
-  TerminalProvider: ({ children }) => <>{children}</>,
+  TerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // Import the component AFTER all mocks are set up

@@ -82,7 +82,7 @@ interface WebSocketProviderProps {
 export function WebSocketProvider({ 
   children, 
   testMode = false,
-  mockSocket = null,
+  mockSocket,
 }: WebSocketProviderProps) {
   // Connection state
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -337,12 +337,12 @@ export function WebSocketProvider({
   ) => {
     if (!socket) return () => {};
     
-    // Set up the listener
-    socket.on(event, callback);
+    // Set up the listener with a type assertion for Socket.io compatibility
+    socket.on(event as string, callback as any);
     
     // Return unsubscribe function
     return () => {
-      socket.off(event, callback);
+      socket.off(event as string, callback as any);
     };
   }, [socket]);
 
@@ -354,10 +354,10 @@ export function WebSocketProvider({
     if (!socket) return () => {};
     
     const batchEvent = `${event}:batch`;
-    socket.on(batchEvent, callback);
+    socket.on(batchEvent, callback as any);
     
     return () => {
-      socket.off(batchEvent, callback);
+      socket.off(batchEvent, callback as any);
     };
   }, [socket]);
 

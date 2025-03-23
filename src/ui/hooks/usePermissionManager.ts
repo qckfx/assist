@@ -103,10 +103,7 @@ export function usePermissionManager({
     }
     
     try {
-      const response = await apiClient.resolvePermission({
-        id: permissionId,
-        granted,
-      });
+      const response = await apiClient.resolvePermission(permissionId, granted);
       
       if (!response.success) {
         throw new Error(response.error?.message || 'Failed to resolve permission');
