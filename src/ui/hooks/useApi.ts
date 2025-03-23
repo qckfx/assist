@@ -68,7 +68,7 @@ export function useStartSession(options = {}) {
 }
 
 export function useQuery(options = {}) {
-  return useApi<void, [string]>(
+  return useApi<void, [string, string]>(
     apiClient.sendQuery,
     options
   );

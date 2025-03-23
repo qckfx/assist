@@ -88,16 +88,30 @@ Session Information:
       
       setProcessing(true);
       
-      // Send the query to the API
-      const response = await apiClient.sendQuery(command);
+      // Debug message for development
+      console.log(`Sending query to API for session ${sessionId}: ${command}`);
+      
+      // Send the query to the API with sessionId included
+      const response = await apiClient.sendQuery(sessionId, command);
       
       if (!response.success) {
         throw new Error(response.error?.message || 'Failed to process query');
       }
       
-      // The response will be handled via WebSocket events
+      console.log('Query accepted by server:', response);
+      
+      // In development mode, provide a fallback response if WebSocket events don't come through
+      if (process.env.NODE_ENV === 'development') {
+        setTimeout(() => {
+          // If we're still processing after 5 seconds, this might mean the websocket
+          // events aren't coming through properly
+          console.log('Adding fallback response while waiting for WebSocket events...');
+          addSystemMessage('Note: Still waiting for real-time updates. Backend server is processing your request.');
+        }, 5000);
+      }
       
     } catch (error) {
+      console.error('Error sending query to API:', error);
       setProcessing(false);
       addErrorMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }

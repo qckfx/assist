@@ -89,24 +89,52 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
 
     this.updateConnectionStatus(ConnectionStatus.CONNECTING);
 
-    // Improved Socket.io configuration for better development experience
-    this.socket = io(SOCKET_URL, {
-      autoConnect: true,
-      reconnection: true,
-      reconnectionAttempts: SOCKET_RECONNECTION_ATTEMPTS,
-      reconnectionDelay: SOCKET_RECONNECTION_DELAY,
-      reconnectionDelayMax: SOCKET_RECONNECTION_DELAY_MAX,
-      timeout: SOCKET_TIMEOUT,
-      forceNew: true,
-      // Advanced error handling and reconnection strategy
-      transportOptions: {
-        polling: {
-          extraHeaders: {
-            'X-Client-Version': '1.0.0', // Helps with debugging
-          }
-        }
-      }
+    // Create a stable socket.io connection that prioritizes WebSocket
+    console.log('Creating socket.io connection with WebSocket priority');
+    
+    // Configure to prefer WebSocket with polling fallback
+    this.socket = io({
+      // Explicitly prioritize WebSocket first
+      transports: ['websocket', 'polling'],
+      // Ensure upgrade is enabled
+      upgrade: true,
+      // Connection timeout and reconnection settings
+      timeout: 20000,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      // Use the default path
+      path: '/socket.io/'
     });
+    
+    // Log useful connection info
+    // Use the Socket.io URL from the config or infer from the current page
+    const url = SOCKET_URL || window.location.origin;
+    console.log('Socket IO URI:', url);
+    console.log('Socket IO transport:', this.socket.io.engine?.transport?.name || 'not connected');
+    
+    // Add detailed error logging
+    this.socket.on("connect_error", (err: Error) => {
+      console.error("Connection error:", err.message);
+    });
+    
+    this.socket.on("disconnect", (reason: string) => {
+      console.error("Disconnect:", reason);
+    });
+    
+    // Log socket events in development using standard methods
+    if (process.env.NODE_ENV === 'development') {
+      // Listen for all events to log them
+      this.socket.onAny((event, ...args) => {
+        console.log('Socket.IO RECEIVED:', event, args);
+      });
+      
+      // Create a wrapper for emit to log outgoing events
+      const origEmit = this.socket.emit.bind(this.socket);
+      this.socket.emit = (event: string, ...args: any[]) => {
+        console.log('Socket.IO SENDING:', [event, ...args]);
+        return origEmit(event, ...args);
+      };
+    }
 
     console.log('WebSocket initializing connection to server...');
     

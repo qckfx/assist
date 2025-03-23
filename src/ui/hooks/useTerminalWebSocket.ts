@@ -14,36 +14,40 @@ export function useTerminalWebSocket(sessionId?: string) {
   const { connectionStatus, isConnected, joinSession, leaveSession } = useWebSocket();
   const { addSystemMessage, addErrorMessage } = useTerminal();
   
-  // Join the session when sessionId changes
+  // Join the session when sessionId changes and we're connected
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !isConnected) return;
     
+    // Don't attempt to join if we've already joined
     if (!hasJoined) {
+      console.log(`[useTerminalWebSocket] Joining session ${sessionId} (connected: ${isConnected})`);
+      
+      // Directly join the session without delay
       joinSession(sessionId);
       setHasJoined(true);
-      
-      // Log connection info
       addSystemMessage(`Connected to session: ${sessionId}`);
     }
     
     // Clean up when unmounting or when sessionId changes
     return () => {
       if (hasJoined && sessionId) {
+        console.log(`[useTerminalWebSocket] Leaving session ${sessionId}`);
         leaveSession(sessionId);
         setHasJoined(false);
         addSystemMessage('Disconnected from session');
       }
     };
-  }, [sessionId, hasJoined, joinSession, leaveSession, addSystemMessage]);
+  }, [sessionId, hasJoined, isConnected, joinSession, leaveSession, addSystemMessage]);
   
   // Monitor connection status changes
   useEffect(() => {
-    if (!sessionId || !hasJoined) return;
-    
-    // Handle different connection states
+    // Always handle connection status changes, even if we don't have a session
+    // This ensures tests work correctly too
     switch (connectionStatus) {
       case ConnectionStatus.CONNECTED:
-        addSystemMessage('WebSocket connection established');
+        if (hasJoined) {
+          addSystemMessage('WebSocket connection established');
+        }
         break;
         
       case ConnectionStatus.RECONNECTING:
@@ -60,7 +64,7 @@ export function useTerminalWebSocket(sessionId?: string) {
         }
         break;
     }
-  }, [connectionStatus, hasJoined, sessionId, addSystemMessage, addErrorMessage]);
+  }, [connectionStatus, hasJoined, addSystemMessage, addErrorMessage]);
   
   // Function to connect to a session
   const connect = useCallback((sid: string) => {

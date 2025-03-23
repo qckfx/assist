@@ -60,15 +60,24 @@ export function WebSocketTerminalProvider({
       setProcessing(true);
       addSystemMessage('Creating new session...');
       
+      console.log('Requesting new session from API...');
+      
       const response = await apiClient.startSession();
+      console.log('Session creation response:', response);
+      
       if (response.success && response.data?.sessionId) {
-        setSessionId(response.data.sessionId);
-        addSystemMessage(`Connected to session: ${response.data.sessionId}`);
-        return response.data.sessionId;
+        const newSessionId = response.data.sessionId;
+        console.log(`Session created successfully: ${newSessionId}`);
+        
+        setSessionId(newSessionId);
+        addSystemMessage(`Connected to session: ${newSessionId}`);
+        return newSessionId;
       } else {
-        throw new Error('Failed to create session');
+        console.error('Failed to create session - invalid response:', response);
+        throw new Error('Failed to create session: Invalid response from server');
       }
     } catch (error) {
+      console.error('Failed to create session:', error);
       addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
     } finally {
@@ -98,12 +107,61 @@ export function WebSocketTerminalProvider({
     }
   }, [sessionId, addSystemMessage, addErrorMessage, setProcessing]);
   
-  // Automatically create a session on mount if none provided
+  // Automatically create a session on mount if none provided, with retries
   useEffect(() => {
+    // Only create session if we don't have one and we haven't tried yet
     if (!initialSessionId && !sessionId) {
-      createSession();
+      // Add retry logic with backoff
+      let retryAttempt = 0;
+      const maxRetries = 3;
+      let isMounted = true; // Track component mount state
+      
+      const attemptSessionCreation = async () => {
+        if (!isMounted) return;
+        
+        try {
+          console.log(`[WebSocketTerminalContext] Attempting to create session (attempt ${retryAttempt + 1}/${maxRetries})`);
+          const newSessionId = await createSession();
+          
+          if (newSessionId && isMounted) {
+            console.log(`[WebSocketTerminalContext] Successfully created session: ${newSessionId}`);
+          } else if (isMounted) {
+            handleSessionCreationError(new Error("Failed to create session: No session ID returned"));
+          }
+        } catch (error) {
+          if (isMounted) {
+            handleSessionCreationError(error);
+          }
+        }
+      };
+      
+      const handleSessionCreationError = (error: Error | unknown) => {
+        console.error("[WebSocketTerminalContext] Session creation failed:", error);
+        
+        // Immediately show error message for test environment
+        addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
+        
+        // Retry with exponential backoff
+        if (retryAttempt < maxRetries && isMounted) {
+          retryAttempt++;
+          const backoffTime = 1000 * Math.pow(2, retryAttempt);
+          console.log(`[WebSocketTerminalContext] Retrying in ${backoffTime}ms...`);
+          
+          setTimeout(attemptSessionCreation, backoffTime);
+        } else if (isMounted) {
+          addErrorMessage(`Failed to create session after ${maxRetries} attempts. Please try again later.`);
+        }
+      };
+      
+      // Start the first attempt
+      attemptSessionCreation();
+      
+      // Cleanup function
+      return () => {
+        isMounted = false;
+      };
     }
-  }, [initialSessionId, sessionId, createSession]);
+  }, [initialSessionId, sessionId, createSession, addErrorMessage]);
   
   // Context value
   const value: WebSocketTerminalContextProps = {

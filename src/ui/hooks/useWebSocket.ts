@@ -1,7 +1,7 @@
 /**
  * React hook for WebSocket connectivity using React Context
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useWebSocketContext } from '../context/WebSocketContext';
 import { WebSocketEvent, WebSocketEventMap } from '../types/api';
 
@@ -29,10 +29,14 @@ export function useWebSocket(sessionId?: string) {
     return context.onBatch(event, callback);
   }, [context]);
   
-  // Join a session if provided
-  if (sessionId && context.currentSessionId !== sessionId) {
-    context.joinSession(sessionId);
-  }
+  // Join a session if provided, but don't react to it in the hook
+  // This prevents excessive reconnection attempts
+  useEffect(() => {
+    if (sessionId && context.currentSessionId !== sessionId && context.isConnected) {
+      console.log(`[useWebSocket] Joining session ${sessionId}`);
+      context.joinSession(sessionId);
+    }
+  }, [sessionId, context.currentSessionId, context.isConnected, context.joinSession]);
   
   return {
     connectionStatus: context.connectionStatus,
