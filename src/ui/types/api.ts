@@ -68,6 +68,9 @@ export enum WebSocketEvent {
   PROCESSING_ABORTED = 'processing_aborted',
   TOOL_EXECUTION = 'tool_execution',
   TOOL_EXECUTION_BATCH = 'tool_execution_batch',
+  TOOL_EXECUTION_STARTED = 'tool_execution_started',
+  TOOL_EXECUTION_COMPLETED = 'tool_execution_completed',
+  TOOL_EXECUTION_ERROR = 'tool_execution_error',
   PERMISSION_REQUESTED = 'permission_requested',
   PERMISSION_RESOLVED = 'permission_resolved',
   SESSION_UPDATED = 'session_updated',
@@ -104,6 +107,46 @@ export interface WebSocketEventMap {
     results: Array<{ sessionId: string; tool: any; result: any; }>;
     isBatched: boolean;
     batchSize: number;
+  };
+  [WebSocketEvent.TOOL_EXECUTION_STARTED]: { 
+    sessionId: string;
+    tool: {
+      id: string;
+      name: string;
+    };
+    args?: Record<string, unknown>;
+    paramSummary: string;
+    timestamp: string;
+    isActive: boolean;
+    elapsedTimeMs?: number;
+  };
+  [WebSocketEvent.TOOL_EXECUTION_COMPLETED]: { 
+    sessionId: string;
+    tool: {
+      id: string;
+      name: string;
+    };
+    result: any;
+    paramSummary: string;
+    executionTime: number;
+    timestamp: string;
+    isActive: false;
+    startTime?: string;
+  };
+  [WebSocketEvent.TOOL_EXECUTION_ERROR]: { 
+    sessionId: string;
+    tool: {
+      id: string;
+      name: string;
+    };
+    error: {
+      message: string;
+      stack?: string;
+    };
+    paramSummary: string;
+    timestamp: string;
+    isActive: false;
+    startTime?: string;
   };
   [WebSocketEvent.PERMISSION_REQUESTED]: { sessionId: string; permission: any; };
   [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };

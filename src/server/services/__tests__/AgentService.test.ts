@@ -31,11 +31,44 @@ jest.mock('../SessionManager', () => {
 
 // Mock the agent
 jest.mock('../../../index', () => {
-  // Create a mock tool registry with executeFunction
+  // Create a mock tool registry with callback system
   const mockToolRegistry = {
-    executeFunction: jest.fn().mockResolvedValue({ result: 'Tool executed successfully' }),
     getTool: jest.fn().mockReturnValue({ name: 'MockTool' }),
     getToolDescriptions: jest.fn().mockReturnValue([]),
+    onToolExecutionStart: jest.fn().mockImplementation(callback => {
+      // Store the callback to manually trigger it in tests
+      mockToolRegistry._startCallback = callback;
+      // Return unregister function
+      return jest.fn();
+    }),
+    onToolExecutionComplete: jest.fn().mockImplementation(callback => {
+      // Store the callback to manually trigger it in tests
+      mockToolRegistry._completeCallback = callback;
+      // Return unregister function
+      return jest.fn();
+    }),
+    onToolExecutionError: jest.fn().mockImplementation(callback => {
+      // Store the callback to manually trigger it in tests
+      mockToolRegistry._errorCallback = callback;
+      // Return unregister function
+      return jest.fn();
+    }),
+    executeToolWithCallbacks: jest.fn().mockImplementation(async (toolId, args, context) => {
+      // Simulate the callback process
+      if (mockToolRegistry._startCallback) {
+        mockToolRegistry._startCallback(toolId, args, context);
+      }
+      
+      // Simulate tool execution
+      const result = { result: 'Tool executed successfully' };
+      
+      // Trigger complete callback
+      if (mockToolRegistry._completeCallback) {
+        mockToolRegistry._completeCallback(toolId, args, result, 100); // 100ms execution time
+      }
+      
+      return result;
+    }),
   };
   
   // Create a mock agent that includes the tool registry
@@ -49,7 +82,7 @@ jest.mock('../../../index', () => {
       },
       done: true
     }),
-    getToolRegistry: jest.fn().mockReturnValue(mockToolRegistry),
+    toolRegistry: mockToolRegistry,
   };
   
   return {
@@ -331,18 +364,26 @@ describe('AgentService', () => {
       agentService.on(AgentServiceEvent.TOOL_EXECUTION, toolExecutionHandler);
       
       // Get direct reference to the mock function from the mock system
-      const mockExecuteFunction = require('../../../index').createAgent().getToolRegistry().executeFunction;
+      const mockExecuteWithCallbacks = require('../../../index').createAgent().toolRegistry.executeToolWithCallbacks;
       
       // Set up the mock to simulate tool execution
-      mockExecuteFunction.mockImplementationOnce(async () => {
-        return { result: 'Mock tool result' };
+      mockExecuteWithCallbacks.mockImplementationOnce(async (toolId, args, context) => {
+        const mockToolRegistry = require('../../../index').createAgent().toolRegistry;
+        if (mockToolRegistry._startCallback) {
+          mockToolRegistry._startCallback(toolId, args, context);
+        }
+        const result = { result: 'Mock tool result' };
+        if (mockToolRegistry._completeCallback) {
+          mockToolRegistry._completeCallback(toolId, args, result, 100);
+        }
+        return result;
       });
       
       // Process a query to trigger the tool execution
       await agentService.processQuery('mock-session-id', 'Test query using tools');
       
-      // Verify that the tool execution functions were wrapped
-      expect(mockExecuteFunction).toHaveBeenCalled();
+      // Verify that the tool execution function was called
+      expect(mockExecuteWithCallbacks).toHaveBeenCalled();
       
       // Verify events were emitted in the correct order with the right data
       expect(toolExecutionStartedHandler).toHaveBeenCalledWith(expect.objectContaining({
@@ -384,11 +425,20 @@ describe('AgentService', () => {
       agentService.on(AgentServiceEvent.TOOL_EXECUTION_ERROR, toolExecutionErrorHandler);
       
       // Get direct reference to the mock function
-      const mockExecuteFunction = require('../../../index').createAgent().getToolRegistry().executeFunction;
+      const mockExecuteWithCallbacks = require('../../../index').createAgent().toolRegistry.executeToolWithCallbacks;
       
       // Make the tool execution fail
       const mockError = new Error('Tool execution failed');
-      mockExecuteFunction.mockRejectedValueOnce(mockError);
+      mockExecuteWithCallbacks.mockImplementationOnce(async (toolId, args, context) => {
+        const mockToolRegistry = require('../../../index').createAgent().toolRegistry;
+        if (mockToolRegistry._startCallback) {
+          mockToolRegistry._startCallback(toolId, args, context);
+        }
+        if (mockToolRegistry._errorCallback) {
+          mockToolRegistry._errorCallback(toolId, args, mockError);
+        }
+        throw mockError;
+      });
       
       // Create another mock to avoid unhandled rejection in the test
       const mockAgent = require('../../../index').createAgent();
