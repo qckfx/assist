@@ -70,11 +70,14 @@ export function useTerminalWebSocket(sessionId?: string) {
     // Clean up when unmounting or when sessionId changes
     return () => {
       // Only leave if we're actually joined to this session
-      if (hasJoined && sessionId === currentSessionIdRef.current) {
+      // and we're actually unmounting (not just re-rendering with the same session ID)
+      const currentSession = currentSessionIdRef.current;
+      if (hasJoined && sessionId && sessionId === currentSession && sessionId !== prevSessionIdRef.current) {
         console.log(`[useTerminalWebSocket] Leaving session ${sessionId}`);
         leaveSession(sessionId);
         setHasJoined(false);
-        addSystemMessage('Disconnected from session');
+        // Don't show disconnection message on screen refresh
+        // addSystemMessage('Disconnected from session'); 
       }
     };
   }, [
@@ -96,10 +99,22 @@ export function useTerminalWebSocket(sessionId?: string) {
     [ConnectionStatus.RECONNECTING]: 0,
   });
   
+  // Track if we've already shown the connected message for this session
+  const hasShownConnectedMessageRef = useRef<boolean>(false);
+  
   // Monitor connection status changes with debounce to prevent message spam
   useEffect(() => {
     const now = Date.now();
     const minInterval = 2000; // 2 seconds between same status messages
+    const prevStatus = prevConnectionStatusRef.current;
+    
+    // Skip if status hasn't actually changed from previous status
+    if (prevStatus === connectionStatus) {
+      return;
+    }
+    
+    // Update ref to track current status for next render
+    prevConnectionStatusRef.current = connectionStatus;
     
     // Only show messages if we haven't shown this status recently
     if (now - lastMessageRef.current[connectionStatus] < minInterval) {
@@ -113,8 +128,9 @@ export function useTerminalWebSocket(sessionId?: string) {
     // This ensures tests work correctly too
     switch (connectionStatus) {
       case ConnectionStatus.CONNECTED:
-        if (hasJoined) {
+        if (hasJoined && !hasShownConnectedMessageRef.current) {
           addSystemMessage('WebSocket connection established');
+          hasShownConnectedMessageRef.current = true; // Only show once per session
         }
         break;
         
@@ -124,11 +140,13 @@ export function useTerminalWebSocket(sessionId?: string) {
         
       case ConnectionStatus.ERROR:
         addErrorMessage('WebSocket connection error');
+        hasShownConnectedMessageRef.current = false; // Reset so we can show connected message again
         break;
         
       case ConnectionStatus.DISCONNECTED:
         if (hasJoined) {
           addErrorMessage('WebSocket disconnected');
+          hasShownConnectedMessageRef.current = false; // Reset so we can show connected message again
           
           // Reset join status when disconnected
           setHasJoined(false);

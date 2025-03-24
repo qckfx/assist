@@ -2,22 +2,22 @@
  * WebSocket Context for React components
  * 
  * This file provides a React Context that manages WebSocket connections,
- * replacing the EventEmitter-based WebSocketService with a React-friendly approach.
+ * using the SocketConnectionManager and WebSocketMessageBufferManager
+ * to handle connections outside of React's render cycle.
  */
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 import { 
   ConnectionStatus, 
   WebSocketEvent,
   WebSocketEventMap
 } from '../types/api';
 import {
-  SOCKET_URL,
-  SOCKET_RECONNECTION_ATTEMPTS,
-  SOCKET_RECONNECTION_DELAY,
-  SOCKET_RECONNECTION_DELAY_MAX,
-  SOCKET_TIMEOUT
-} from '../config/api';
+  SocketConnectionManager,
+  getSocketConnectionManager,
+  WebSocketMessageBufferManager,
+  getWebSocketMessageBufferManager
+} from '../utils/websocket';
 
 // Type definitions for the context
 export interface WebSocketContextValue {
@@ -76,292 +76,157 @@ interface WebSocketProviderProps {
 /**
  * WebSocket Provider component
  * 
- * Manages the WebSocket connection and provides access to WebSocket
- * functionality through React Context.
+ * Provides a React interface to SocketConnectionManager functionality.
+ * Keeps reactive state synchronized with ConnectionManager.
  */
 export function WebSocketProvider({ 
   children, 
   testMode = false,
   mockSocket,
 }: WebSocketProviderProps) {
-  // Connection state
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // Reference to the ConnectionManager and MessageBufferManager
+  const connectionManager = useRef<SocketConnectionManager>(getSocketConnectionManager());
+  const messageBuffer = useRef<WebSocketMessageBufferManager>(getWebSocketMessageBufferManager());
   
-  // Message buffer for batch processing
-  const messageBufferRef = useRef<Map<string, Array<any>>>(new Map());
-  const flushIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Initialize socket connection
-  const initializeSocket = useCallback(() => {
-    // Skip for test mode
-    if (testMode && !mockSocket) {
-      console.log('WebSocketContext: Test mode enabled, using mock connection');
-      setConnectionStatus(ConnectionStatus.CONNECTED);
-      return;
-    }
-
-    // Clean up any existing socket
-    if (socket) {
-      socket.disconnect();
-    }
-
-    // Update status to connecting
-    setConnectionStatus(ConnectionStatus.CONNECTING);
-
-    // Create socket instance
-    const newSocket = mockSocket || io(SOCKET_URL, {
-      autoConnect: true,
-      reconnection: true,
-      reconnectionAttempts: SOCKET_RECONNECTION_ATTEMPTS,
-      reconnectionDelay: SOCKET_RECONNECTION_DELAY,
-      reconnectionDelayMax: SOCKET_RECONNECTION_DELAY_MAX,
-      timeout: SOCKET_TIMEOUT,
-      forceNew: true,
-    });
-
-    // Set up socket event handlers
-    newSocket.on(WebSocketEvent.CONNECT, () => {
-      console.log('WebSocketContext: Connected to server');
-      setConnectionStatus(ConnectionStatus.CONNECTED);
-      setReconnectAttempts(0);
-      
-      // Rejoin session if needed
-      if (currentSessionId) {
-        newSocket.emit(WebSocketEvent.JOIN_SESSION, currentSessionId);
-      }
-    });
-
-    newSocket.on(WebSocketEvent.DISCONNECT, (reason: string) => {
-      console.log(`WebSocketContext: Disconnected: ${reason}`);
-      setConnectionStatus(ConnectionStatus.DISCONNECTED);
-    });
-
-    newSocket.on(WebSocketEvent.ERROR, (error: any) => {
-      console.error('WebSocketContext: Connection error:', error);
-      setConnectionStatus(ConnectionStatus.ERROR);
-    });
-
-    newSocket.io.on('reconnect_attempt', (attempt: number) => {
-      console.log(`WebSocketContext: Reconnection attempt ${attempt}`);
-      setReconnectAttempts(attempt);
-      setConnectionStatus(ConnectionStatus.RECONNECTING);
-    });
-
-    // Set the socket
-    setSocket(newSocket);
-
-    // Start buffer flush interval
-    if (flushIntervalRef.current) {
-      clearInterval(flushIntervalRef.current);
-    }
-    
-    flushIntervalRef.current = setInterval(() => {
-      flushBuffers();
-    }, 100);
-
-    // Clean up function
-    return () => {
-      console.log('WebSocketContext: Running socket initialization cleanup');
-      
-      if (newSocket) {
-        // Remove all socket event listeners first
-        newSocket.off();
-        
-        // Also clean up socket.io listeners
-        if (newSocket.io) {
-          newSocket.io.off();
-        }
-        
-        // Disconnect
-        newSocket.disconnect();
-        
-        console.log('WebSocketContext: Disconnected socket in cleanup');
-      }
-      
-      if (flushIntervalRef.current) {
-        clearInterval(flushIntervalRef.current);
-        flushIntervalRef.current = null;
-        console.log('WebSocketContext: Cleared flush interval in cleanup');
-      }
-      
-      // Help with garbage collection by nullifying references
-      // This is especially important for socket.io which can retain references
-      if (socket) {
-        setSocket(null);
-      }
-    };
-  }, [testMode, mockSocket, socket, currentSessionId]);
-
-  // Effect to initialize socket on mount
+  // React state for UI updates
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
+    connectionManager.current.getStatus()
+  );
+  const [reconnectAttempts, setReconnectAttempts] = useState(
+    connectionManager.current.getReconnectAttempts()
+  );
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(
+    connectionManager.current.getCurrentSessionId()
+  );
+  
+  // One-time setup of ConnectionManager event listeners
   useEffect(() => {
-    const cleanup = initializeSocket();
+    const manager = connectionManager.current;
+    const buffer = messageBuffer.current;
     
-    // Clean up when component unmounts
-    return () => {
-      if (cleanup) cleanup();
-      
-      // IMPORTANT: Thorough cleanup to prevent memory leaks
-      
-      // 1. Clear timers
-      if (flushIntervalRef.current) {
-        clearInterval(flushIntervalRef.current);
-        flushIntervalRef.current = null;
-      }
-      
-      // 2. Disconnect and clean up socket
-      if (socket) {
-        // Remove all socket event listeners
-        socket.off();
-        
-        // Clean up socket.io reconnection listeners
-        if (socket.io) {
-          socket.io.off();
-        }
-        
-        // Disconnect the socket
-        socket.disconnect();
-        
-        // Clear reference
-        setSocket(null);
-      }
-      
-      // 3. Clear data structures
-      messageBufferRef.current.clear();
-      
-      // 4. Reset state
-      setConnectionStatus(ConnectionStatus.DISCONNECTED);
-      setReconnectAttempts(0);
-      setCurrentSessionId(null);
-      
-      console.log('WebSocketContext: Completed thorough cleanup on unmount');
+    // Listen for connection status changes
+    const handleStatusChange = (status: ConnectionStatus) => {
+      console.log(`WebSocketContext: Connection status changed to ${status}`);
+      setConnectionStatus(status);
     };
-  }, [initializeSocket]);
-
-  // Add an event to the buffer for batch processing
-  const bufferEvent = useCallback((event: string, data: any) => {
-    if (!messageBufferRef.current.has(event)) {
-      messageBufferRef.current.set(event, []);
-    }
     
-    const buffer = messageBufferRef.current.get(event);
-    if (buffer) {
-      buffer.push({
-        timestamp: Date.now(),
-        data
-      });
-    }
-  }, []);
-
-  // Flush all buffered events
-  const flushBuffers = useCallback(() => {
-    if (!socket) return;
+    // Listen for reconnect attempts
+    const handleReconnectAttempt = (attempts: number) => {
+      console.log(`WebSocketContext: Reconnect attempt ${attempts}`);
+      setReconnectAttempts(attempts);
+    };
     
-    messageBufferRef.current.forEach((messages, event) => {
-      if (messages.length > 0) {
-        socket.emit(`${event}:batch`, messages);
-        messageBufferRef.current.set(event, []);
-      }
-    });
-  }, [socket]);
-
-  // Join a session
-  const joinSession = useCallback((sessionId: string) => {
-    if (!socket || connectionStatus !== ConnectionStatus.CONNECTED) {
-      // Store for later use when connected
+    // Listen for session changes
+    const handleSessionChange = (sessionId: string | null) => {
+      console.log(`WebSocketContext: Session changed to ${sessionId}`);
       setCurrentSessionId(sessionId);
-      console.log(`WebSocketContext: Will join session ${sessionId} when connected`);
-      return;
+    };
+    
+    // Set up listeners
+    manager.on('status_change', handleStatusChange);
+    manager.on('reconnect_attempt', handleReconnectAttempt);
+    manager.on('session_change', handleSessionChange);
+    
+    // Start message buffer
+    buffer.start();
+    
+    // Initialize connection if not in test mode
+    if (!testMode && !mockSocket) {
+      console.log('WebSocketContext: Initializing connection');
+      manager.connect();
+    } else if (testMode) {
+      console.log('WebSocketContext: Test mode, skipping connection');
+      setConnectionStatus(ConnectionStatus.CONNECTED);
     }
-
-    // Leave current session if different
-    if (currentSessionId && currentSessionId !== sessionId) {
-      socket.emit(WebSocketEvent.LEAVE_SESSION, currentSessionId);
-    }
-
-    // Join new session
-    socket.emit(WebSocketEvent.JOIN_SESSION, sessionId);
-    setCurrentSessionId(sessionId);
-    console.log(`WebSocketContext: Joined session ${sessionId}`);
-  }, [socket, connectionStatus, currentSessionId]);
-
-  // Leave a session
+    
+    // Cleanup function
+    return () => {
+      console.log('WebSocketContext: Cleaning up');
+      
+      // Remove event listeners
+      manager.off('status_change', handleStatusChange);
+      manager.off('reconnect_attempt', handleReconnectAttempt);
+      manager.off('session_change', handleSessionChange);
+      
+      // Stop message buffer
+      buffer.stop();
+      buffer.removeAllListeners();
+    };
+  }, [testMode, mockSocket]); // Only dependencies that affect initialization
+  
+  // Join a session - stabilized with useCallback
+  const joinSession = useCallback((sessionId: string) => {
+    console.log(`WebSocketContext: Joining session ${sessionId}`);
+    connectionManager.current.joinSession(sessionId);
+  }, []);
+  
+  // Leave a session - stabilized with useCallback
   const leaveSession = useCallback((sessionId: string) => {
-    if (!socket || connectionStatus !== ConnectionStatus.CONNECTED) {
-      console.log(`WebSocketContext: Cannot leave session ${sessionId}: not connected`);
-      return;
-    }
-
-    socket.emit(WebSocketEvent.LEAVE_SESSION, sessionId);
-    
-    if (currentSessionId === sessionId) {
-      setCurrentSessionId(null);
-    }
-    
-    console.log(`WebSocketContext: Left session ${sessionId}`);
-  }, [socket, connectionStatus, currentSessionId]);
-
-  // Connect to server
+    console.log(`WebSocketContext: Leaving session ${sessionId}`);
+    connectionManager.current.leaveSession(sessionId);
+  }, []);
+  
+  // Connect to server - stabilized with useCallback
   const connect = useCallback(() => {
-    initializeSocket();
-  }, [initializeSocket]);
-
-  // Disconnect from server
+    console.log('WebSocketContext: Connecting');
+    connectionManager.current.connect();
+  }, []);
+  
+  // Disconnect from server - stabilized with useCallback
   const disconnect = useCallback(() => {
-    if (socket) {
-      socket.disconnect();
-      setConnectionStatus(ConnectionStatus.DISCONNECTED);
-    }
-    
-    if (flushIntervalRef.current) {
-      clearInterval(flushIntervalRef.current);
-      flushIntervalRef.current = null;
-    }
-  }, [socket]);
-
-  // Manually reconnect
+    console.log('WebSocketContext: Disconnecting');
+    connectionManager.current.disconnect();
+  }, []);
+  
+  // Manually reconnect - stabilized with useCallback
   const reconnect = useCallback(() => {
-    if (socket) {
-      socket.connect();
-    } else {
-      initializeSocket();
-    }
-  }, [socket, initializeSocket]);
-
-  // Subscribe to events
+    console.log('WebSocketContext: Reconnecting');
+    connectionManager.current.reconnect();
+  }, []);
+  
+  // Subscribe to events - stabilized with useCallback
   const on = useCallback(<T extends WebSocketEvent>(
     event: T, 
     callback: (data: WebSocketEventMap[T]) => void
   ) => {
-    if (!socket) return () => {};
+    const socket = connectionManager.current.getSocket();
+    if (!socket) {
+      console.log(`WebSocketContext: Cannot subscribe to ${event}, no socket`);
+      return () => {};
+    }
     
-    // Set up the listener with a type assertion for Socket.io compatibility
+    // Set up the listener
     socket.on(event as string, callback as any);
     
     // Return unsubscribe function
     return () => {
       socket.off(event as string, callback as any);
     };
-  }, [socket]);
-
-  // Subscribe to batch events
+  }, []);
+  
+  // Subscribe to batch events - stabilized with useCallback
   const onBatch = useCallback(<T extends WebSocketEvent>(
     event: T, 
     callback: (data: Array<{ timestamp: number; data: WebSocketEventMap[T] }>) => void
   ) => {
-    if (!socket) return () => {};
+    const buffer = messageBuffer.current;
     
-    const batchEvent = `${event}:batch`;
-    socket.on(batchEvent, callback as any);
+    // Set up a buffer listener
+    buffer.onFlush(event as string, callback as any);
     
+    // Subscribe to raw events to add them to the buffer
+    const unsubscribe = on(event, (data) => {
+      buffer.add(event as string, data);
+    });
+    
+    // Return combined unsubscribe function
     return () => {
-      socket.off(batchEvent, callback as any);
+      unsubscribe();
+      buffer.removeListener(event as string);
     };
-  }, [socket]);
-
-  // Create context value
+  }, [on]);
+  
+  // Create context value with stable references
   const contextValue: WebSocketContextValue = {
     connectionStatus,
     isConnected: connectionStatus === ConnectionStatus.CONNECTED,
@@ -374,9 +239,9 @@ export function WebSocketProvider({
     reconnect,
     on,
     onBatch,
-    socket,
+    socket: connectionManager.current.getSocket(),
   };
-
+  
   return (
     <WebSocketContext.Provider value={contextValue}>
       {children}

@@ -1,87 +1,69 @@
-import { useState, useEffect, useRef } from 'react';
-import { 
-  ConnectionManager, 
-  ConnectionState,
-  ConnectionManagerOptions
-} from '../utils/ConnectionManager';
-
-export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
+import { useState, useEffect } from 'react';
+import { useWebSocketContext } from '../context/WebSocketContext';
+import { ConnectionStatus } from '../types/api';
 
 /**
  * Hook to provide connection status and visual indicators
+ * This is now a wrapper around the WebSocketContext to maintain API compatibility
  */
-export function useConnectionStatus(options: ConnectionManagerOptions = {}) {
-  const [status, setStatus] = useState<ConnectionStatus>('connecting');
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+export function useConnectionStatus() {
+  const { 
+    connectionStatus, 
+    isConnected, 
+    reconnectAttempts, 
+    connect: contextConnect, 
+    disconnect: contextDisconnect 
+  } = useWebSocketContext();
+  
   const [lastError, setLastError] = useState<Error | null>(null);
-  const connectionManager = useRef<ConnectionManager | null>(null);
   
-  // Effect to set up connection monitoring
+  // Set up error tracking from the connection status
   useEffect(() => {
-    // Create the connection manager if it doesn't exist
-    if (!connectionManager.current) {
-      connectionManager.current = new ConnectionManager(options);
+    if (connectionStatus === ConnectionStatus.ERROR) {
+      setLastError(new Error('WebSocket connection error'));
+    } else if (connectionStatus === ConnectionStatus.CONNECTED) {
+      setLastError(null); // Clear error when connected
     }
-    
-    const manager = connectionManager.current;
-    
-    // Initial connection attempt
-    manager.connect().catch((error) => {
-      setLastError(error instanceof Error ? error : new Error(String(error)));
-    });
-    
-    // Set up event handlers
-    const handleStateChange = (state: ConnectionState) => {
-      setStatus(state);
-    };
-    
-    const handleReconnecting = (attempts: number) => {
-      setReconnectAttempts(attempts);
-    };
-    
-    const handleError = (error: Error) => {
-      setLastError(error);
-    };
-    
-    manager.on('state_change', handleStateChange);
-    manager.on('reconnecting', handleReconnecting);
-    manager.on('error', handleError);
-    
-    // Set initial state
-    setStatus(manager.getState());
-    
-    // Clean up
-    return () => {
-      if (manager) {
-        manager.removeListener('state_change', handleStateChange);
-        manager.removeListener('reconnecting', handleReconnecting);
-        manager.removeListener('error', handleError);
-        manager.dispose();
-        connectionManager.current = null;
-      }
-    };
-  }, [options]);
+  }, [connectionStatus]);
   
+  // Map context's Promise-based connect to this hook's API
   const connect = () => {
-    if (connectionManager.current) {
-      return connectionManager.current.connect();
+    try {
+      contextConnect();
+      return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(error);
     }
-    return Promise.reject(new Error('Connection manager not initialized'));
   };
   
   const disconnect = () => {
-    if (connectionManager.current) {
-      connectionManager.current.disconnect();
+    contextDisconnect();
+  };
+  
+  // Map the ConnectionStatus enum to the string values this hook used to return
+  const mapStatus = (status: ConnectionStatus): 'connected' | 'disconnected' | 'connecting' | 'error' => {
+    switch (status) {
+      case ConnectionStatus.CONNECTED:
+        return 'connected';
+      case ConnectionStatus.DISCONNECTED:
+        return 'disconnected';
+      case ConnectionStatus.CONNECTING:
+      case ConnectionStatus.RECONNECTING:
+        return 'connecting';
+      case ConnectionStatus.ERROR:
+        return 'error';
+      default:
+        return 'disconnected';
     }
   };
   
   return {
-    status,
+    status: mapStatus(connectionStatus),
     reconnectAttempts,
-    isConnected: status === 'connected',
-    isConnecting: status === 'connecting',
-    isDisconnected: status === 'disconnected',
-    hasError: status === 'error',
+    isConnected,
+    isConnecting: connectionStatus === ConnectionStatus.CONNECTING || connectionStatus === ConnectionStatus.RECONNECTING,
+    isDisconnected: connectionStatus === ConnectionStatus.DISCONNECTED,
+    hasError: connectionStatus === ConnectionStatus.ERROR,
     error: lastError,
     // Expose direct methods to control connection
     connect,

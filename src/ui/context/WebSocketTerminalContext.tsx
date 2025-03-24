@@ -97,22 +97,25 @@ export function WebSocketTerminalProvider({
       const response = await apiClient.startSession();
       console.log('[WebSocketTerminalContext] Session creation response:', response);
       
-      // Handle successful response
-      if (response.success && response.data?.sessionId) {
-        const newSessionId = response.data.sessionId;
-        console.log(`[WebSocketTerminalContext] Session created successfully: ${newSessionId}`);
+      // Handle response - apiClient returns standardized format with data property
+      // Check for sessionId in data (raw response) or in response.data (standardized wrapper)
+      const sessionData = response.data || response;
+      
+      if (sessionData && sessionData.sessionId) {
+        const sessionId = sessionData.sessionId;
+        console.log(`[WebSocketTerminalContext] Session created successfully: ${sessionId}`);
         
         // Update session state
-        setSessionId(newSessionId);
-        sessionIdRef.current = newSessionId;
+        setSessionId(sessionId);
+        sessionIdRef.current = sessionId;
         
         // Connect to the session via WebSocket if possible
         if (isConnected && typeof connectToSession === 'function') {
-          connectToSession(newSessionId);
+          connectToSession(sessionId);
         }
         
-        addSystemMessage(`Session created: ${newSessionId}`);
-        return newSessionId;
+        addSystemMessage(`Session created: ${sessionId}`);
+        return sessionId;
       } else {
         console.error('[WebSocketTerminalContext] Failed to create session - invalid response:', response);
         throw new Error('Failed to create session: Invalid response from server');
