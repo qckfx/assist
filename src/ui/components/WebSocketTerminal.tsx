@@ -60,7 +60,7 @@ export function WebSocketTerminal({
   }, [autoConnect, hasConnected]);
   
   return (
-    <div className="relative w-full max-w-full flex flex-col" style={{ height: "calc(100% - 20px)" }}>
+    <div className="relative w-full max-w-full flex flex-col" style={{ height: "calc(100% - 20px)" }} data-testid="websocket-terminal">
       {/* Connection indicator now integrated directly in the Terminal title bar */}
       
       <Terminal

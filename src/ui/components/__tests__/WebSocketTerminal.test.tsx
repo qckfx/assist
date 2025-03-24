@@ -65,10 +65,20 @@ const webSocketTerminalMock = {
 
 // Mock Terminal component
 vi.mock('../Terminal/Terminal', () => ({
-  default: vi.fn(({ onCommand, onClear, messages }: {
+  default: vi.fn(({ 
+    onCommand, 
+    onClear, 
+    messages, 
+    showConnectionIndicator, 
+    showTypingIndicator,
+    connectionStatus 
+  }: {
     onCommand: (command: string) => void;
     onClear: () => void;
     messages: Array<{id: string; content: string; type: string; timestamp: Date}>;
+    showConnectionIndicator?: boolean;
+    showTypingIndicator?: boolean;
+    connectionStatus?: string;
   }) => (
     <div data-testid="mock-terminal">
       <div data-testid="terminal-messages">
@@ -76,6 +86,10 @@ vi.mock('../Terminal/Terminal', () => ({
           <div key={i} data-testid={`message-${msg.type}`}>{msg.content}</div>
         ))}
       </div>
+      {showConnectionIndicator && <div data-testid="connection-indicator" />}
+      {showTypingIndicator && (webSocketTerminalMock.isProcessing || webSocketTerminalMock.isStreaming) && (
+        <div data-testid="typing-indicator" />
+      )}
       <button data-testid="send-command" onClick={() => onCommand('test command')}>Send</button>
       <button data-testid="clear-terminal" onClick={() => onClear()}>Clear</button>
     </div>

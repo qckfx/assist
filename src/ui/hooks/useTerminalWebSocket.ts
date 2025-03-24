@@ -70,14 +70,13 @@ export function useTerminalWebSocket(sessionId?: string) {
     // Clean up when unmounting or when sessionId changes
     return () => {
       // Only leave if we're actually joined to this session
-      // and we're actually unmounting (not just re-rendering with the same session ID)
       const currentSession = currentSessionIdRef.current;
-      if (hasJoined && sessionId && sessionId === currentSession && sessionId !== prevSessionIdRef.current) {
+      if (hasJoined && sessionId) {
         console.log(`[useTerminalWebSocket] Leaving session ${sessionId}`);
         leaveSession(sessionId);
         setHasJoined(false);
-        // Don't show disconnection message on screen refresh
-        // addSystemMessage('Disconnected from session'); 
+        // Show disconnection message when unmounting
+        addSystemMessage('Disconnected from session');
       }
     };
   }, [
@@ -106,18 +105,10 @@ export function useTerminalWebSocket(sessionId?: string) {
   useEffect(() => {
     const now = Date.now();
     const minInterval = 2000; // 2 seconds between same status messages
-    const prevStatus = prevConnectionStatusRef.current;
     
-    // Skip if status hasn't actually changed from previous status
-    if (prevStatus === connectionStatus) {
-      return;
-    }
-    
-    // Update ref to track current status for next render
-    prevConnectionStatusRef.current = connectionStatus;
-    
-    // Only show messages if we haven't shown this status recently
-    if (now - lastMessageRef.current[connectionStatus] < minInterval) {
+    // Skip if status hasn't actually changed (will update prevStatus at end of effect)
+    if (prevConnectionStatusRef.current === connectionStatus && 
+        now - lastMessageRef.current[connectionStatus] < minInterval) {
       return;
     }
     
@@ -153,6 +144,9 @@ export function useTerminalWebSocket(sessionId?: string) {
         }
         break;
     }
+    
+    // Update ref to track current status for next render
+    prevConnectionStatusRef.current = connectionStatus;
   }, [connectionStatus, hasJoined, addSystemMessage, addErrorMessage]);
   
   // Function to connect to a session with validation
