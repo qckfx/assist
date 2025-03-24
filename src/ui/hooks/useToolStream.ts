@@ -349,9 +349,13 @@ export function useToolStream(sessionId?: string) {
     const toolName = tool.name;
     
     setState(prev => {
+      // Generate a consistent ID based on the tool ID so we can update it later
+      // but also include a timestamp for uniqueness between different executions
+      const executionId = `${toolId}-${new Date(timestamp).getTime()}`;
+      
       // Create a new ToolExecution object
       const execution: ToolExecution = {
-        id: `${toolId}-${Date.now()}`,
+        id: executionId,
         tool: toolId,
         toolName,
         status: 'running',
@@ -363,13 +367,13 @@ export function useToolStream(sessionId?: string) {
       // Add to toolExecutions
       const toolExecutions = {
         ...prev.toolExecutions,
-        [toolId]: execution
+        [executionId]: execution
       };
       
       // Update active tools
       const activeTools = {
         ...prev.activeTools,
-        [toolId]: true
+        [executionId]: true
       };
       
       return {
@@ -388,15 +392,46 @@ export function useToolStream(sessionId?: string) {
     const toolId = tool.id;
     
     setState(prev => {
+      // Generate the expected execution ID from startTime if available
+      const expectedStartTime = startTime ? new Date(startTime).getTime() : null;
+      
+      // Find the existing execution by looking for a matching ID pattern or tool ID
+      let matchingExecution: ToolExecution | null = null;
+      let matchingExecutionId: string | null = null;
+      
+      // First try to find a tool with the same start time
+      if (expectedStartTime) {
+        const expectedId = `${toolId}-${expectedStartTime}`;
+        if (prev.toolExecutions[expectedId]) {
+          matchingExecution = prev.toolExecutions[expectedId];
+          matchingExecutionId = expectedId;
+        }
+      }
+      
+      // If no match by start time, look for a running tool with matching tool ID
+      if (!matchingExecution) {
+        Object.entries(prev.toolExecutions).forEach(([id, execution]) => {
+          if (execution.tool === toolId && execution.status === 'running') {
+            matchingExecution = execution;
+            matchingExecutionId = id;
+          }
+        });
+      }
+      
+      // If still no match, create a fallback ID
+      if (!matchingExecutionId) {
+        matchingExecutionId = `${toolId}-${expectedStartTime || Date.now()}`;
+      }
+      
       // Get the existing execution or create a new one if none exists
-      const prevExecution = prev.toolExecutions[toolId] || {
-        id: `${toolId}-${Date.now()}`,
+      const prevExecution = matchingExecution || {
+        id: matchingExecutionId,
         tool: toolId,
         toolName: tool.name,
         status: 'running',
         args: {},
         paramSummary: paramSummary || 'Tool execution',
-        startTime: startTime ? new Date(startTime).getTime() : Date.now() - (executionTime || 0),
+        startTime: expectedStartTime || Date.now() - (executionTime || 0),
       };
       
       // Update with completion data
@@ -426,11 +461,11 @@ export function useToolStream(sessionId?: string) {
         },
         toolExecutions: {
           ...prev.toolExecutions,
-          [toolId]: execution,
+          [matchingExecutionId]: execution,
         },
         activeTools: {
           ...prev.activeTools,
-          [toolId]: false,
+          [matchingExecutionId]: false,
         },
         activeToolCount: Math.max(prev.activeToolCount - 1, 0),
         toolHistory,
@@ -445,15 +480,46 @@ export function useToolStream(sessionId?: string) {
     const toolId = tool.id;
     
     setState(prev => {
+      // Generate the expected execution ID from startTime if available
+      const expectedStartTime = startTime ? new Date(startTime).getTime() : null;
+      
+      // Find the existing execution by looking for a matching ID pattern or tool ID
+      let matchingExecution: ToolExecution | null = null;
+      let matchingExecutionId: string | null = null;
+      
+      // First try to find a tool with the same start time
+      if (expectedStartTime) {
+        const expectedId = `${toolId}-${expectedStartTime}`;
+        if (prev.toolExecutions[expectedId]) {
+          matchingExecution = prev.toolExecutions[expectedId];
+          matchingExecutionId = expectedId;
+        }
+      }
+      
+      // If no match by start time, look for a running tool with matching tool ID
+      if (!matchingExecution) {
+        Object.entries(prev.toolExecutions).forEach(([id, execution]) => {
+          if (execution.tool === toolId && execution.status === 'running') {
+            matchingExecution = execution;
+            matchingExecutionId = id;
+          }
+        });
+      }
+      
+      // If still no match, create a fallback ID
+      if (!matchingExecutionId) {
+        matchingExecutionId = `${toolId}-${expectedStartTime || Date.now()}`;
+      }
+      
       // Get the existing execution or create a new one
-      const prevExecution = prev.toolExecutions[toolId] || {
-        id: `${toolId}-${Date.now()}`,
+      const prevExecution = matchingExecution || {
+        id: matchingExecutionId,
         tool: toolId,
         toolName: tool.name,
         status: 'running',
         args: {},
         paramSummary: paramSummary || 'Tool execution',
-        startTime: startTime ? new Date(startTime).getTime() : Date.now() - 100, // Assume error happened shortly after start if no start time
+        startTime: expectedStartTime || Date.now() - 100, // Assume error happened shortly after start if no start time
       };
       
       // Update with error data
@@ -478,11 +544,11 @@ export function useToolStream(sessionId?: string) {
         ...prev,
         toolExecutions: {
           ...prev.toolExecutions,
-          [toolId]: execution,
+          [matchingExecutionId]: execution,
         },
         activeTools: {
           ...prev.activeTools,
-          [toolId]: false,
+          [matchingExecutionId]: false,
         },
         activeToolCount: Math.max(prev.activeToolCount - 1, 0),
         toolHistory,
@@ -552,16 +618,21 @@ export function useToolStream(sessionId?: string) {
   
   // Utility method to get active tools
   const getActiveTools = useCallback(() => {
-    return Object.entries(state.toolExecutions)
+    const tools = Object.entries(state.toolExecutions)
       .filter(([_, tool]) => tool.status === 'running')
       .map(([_, tool]) => tool);
+    console.log('Active tools:', tools.length, tools);
+    return tools;
   }, [state.toolExecutions]);
 
   // Utility method to get recent tools from the history
   const getRecentTools = useCallback((count = 5) => {
-    return state.toolHistory
+    const tools = state.toolHistory
+      .filter(tool => tool.status !== 'running') // Exclude running tools which are already in active
       .slice(-count)
       .reverse();
+    console.log('Recent tools:', tools.length, tools);
+    return tools;
   }, [state.toolHistory]);
 
   // Utility method to get a specific tool execution by ID

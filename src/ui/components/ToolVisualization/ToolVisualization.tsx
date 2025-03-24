@@ -19,11 +19,11 @@ export function ToolVisualization({
   showExpandedParams = false,
   onToggleExpand,
 }: ToolVisualizationProps) {
-  // Use the status to determine styling
+  // Use the status to determine styling - even more prominent background colors
   const statusStyles = {
-    running: 'border-blue-500 bg-blue-50 dark:bg-blue-900/30',
-    completed: 'border-green-500 bg-green-50 dark:bg-green-900/30',
-    error: 'border-red-500 bg-red-50 dark:bg-red-900/30',
+    running: 'border-blue-500 bg-blue-100 dark:bg-blue-800 shadow-md shadow-blue-500/50 dark:shadow-blue-800/50',
+    completed: 'border-green-500 bg-green-100 dark:bg-green-800 shadow-md shadow-green-500/50 dark:shadow-green-800/50',
+    error: 'border-red-500 bg-red-100 dark:bg-red-800 shadow-md shadow-red-500/50 dark:shadow-red-800/50',
   }[tool.status];
   
   // Format execution time if available
@@ -38,7 +38,7 @@ export function ToolVisualization({
     <div 
       className={cn(
         'tool-visualization border-l-4 px-3 py-2 my-2 rounded',
-        'transition-all duration-200',
+        'transition-all duration-500 ease-in-out',
         statusStyles,
         className
       )}
@@ -105,9 +105,23 @@ export function ToolVisualization({
       {/* Show a spinner for running tools */}
       {tool.status === 'running' && (
         <div className="w-full flex justify-center mt-1">
-          <div className="h-1 w-24 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden">
+          <div className="h-1 w-full bg-gray-200 dark:bg-gray-700 rounded overflow-hidden">
             <div className="h-full bg-blue-500 animate-pulse" style={{ width: '100%' }}></div>
           </div>
+        </div>
+      )}
+      
+      {/* Show a check mark for completed tools */}
+      {tool.status === 'completed' && (
+        <div className="w-full flex justify-end mt-1">
+          <span className="text-green-500 text-xl">✓</span>
+        </div>
+      )}
+      
+      {/* Show an X for error tools */}
+      {tool.status === 'error' && (
+        <div className="w-full flex justify-end mt-1">
+          <span className="text-red-500 text-xl">✗</span>
         </div>
       )}
     </div>
