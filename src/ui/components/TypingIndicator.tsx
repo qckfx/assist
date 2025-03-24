@@ -1,14 +1,15 @@
 /**
  * Typing indicator component for real-time agent responses
+ * 
+ * This component is purely presentational and doesn't manage its own visibility.
+ * The parent component controls when this is shown or hidden.
  */
 import React from 'react';
-import { useAgentEvents } from '../hooks/useAgentEvents';
 
 /**
  * Props for the TypingIndicator component
  */
 interface TypingIndicatorProps {
-  sessionId?: string;
   className?: string;
 }
 
@@ -16,15 +17,8 @@ interface TypingIndicatorProps {
  * Animated typing indicator that shows when the agent is processing
  */
 export function TypingIndicator({ 
-  sessionId,
   className = ''
 }: TypingIndicatorProps) {
-  const { isProcessing } = useAgentEvents(sessionId);
-  
-  if (!isProcessing) {
-    return null;
-  }
-  
   return (
     <div 
       className={`flex items-center gap-1 px-2 py-1 ${className}`}
