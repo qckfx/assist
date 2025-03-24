@@ -5,7 +5,7 @@ import { useState, useCallback } from 'react';
 import apiClient from '../services/apiClient';
 import type { SessionStartRequest } from '../types/api';
 
-export function useApi<T, P extends any[]>(
+export default function useApi<T, P extends any[]>(
   apiFunction: (...args: P) => Promise<{ success: boolean; data?: T; error?: any }>,
   options: {
     onSuccess?: (data: T) => void;
@@ -68,7 +68,7 @@ export function useStartSession(options = {}) {
 }
 
 export function useQuery(options = {}) {
-  return useApi<void, [string]>(
+  return useApi<void, [string, string]>(
     apiClient.sendQuery,
     options
   );

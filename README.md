@@ -234,15 +234,43 @@ Alternatively, you can use environment variables:
 - `QCKFX_PORT=<port>` - Specify the port for the web UI
 - `QCKFX_HOST=<host>` - Specify the host to bind to (default: localhost)
 
+### Terminal UI Documentation
+
+The terminal UI provides a rich, interactive experience with various features:
+
+- [Terminal UI Overview](docs/ui/terminal-ui.md)
+- [Keyboard Shortcuts](docs/ui/keyboard-shortcuts.md)
+- [Message Types](docs/ui/message-types.md)
+- [Theme Customization](docs/ui/theme-customization.md)
+- [Accessibility Features](docs/ui/accessibility.md)
+
 ### Development
 
-For frontend development, you can run the Vite dev server:
+For full-stack development with both backend and frontend:
 
+```bash
+npm run dev
 ```
+
+This will:
+1. Start the TypeScript watcher for backend code
+2. Launch the backend server on port 3000
+3. Wait for the backend to be ready
+4. Start the frontend UI server on port 5173
+
+You can then access the web UI at http://localhost:5173
+
+For frontend-only development, you can run just the Vite dev server:
+
+```bash
 npm run dev:ui
 ```
 
-This will start a development server with hot module replacement at http://localhost:5173.
+For backend-only development:
+
+```bash
+npm run dev:server
+```
 
 See [frontend development guide](docs/web-server/frontend-development.md) for more information.
 

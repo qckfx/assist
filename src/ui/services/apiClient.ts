@@ -48,25 +48,58 @@ async function apiRequest<T = any, D = any>(
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   
   try {
+    // Log API requests in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.group(`API Request: ${method} ${API_BASE_URL}${endpoint}`);
+      console.log('Request data:', data);
+    }
+    
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
+        'X-Client-Version': '1.0.0', // Add version for debugging
       },
       body: data ? JSON.stringify(data) : undefined,
       signal: controller.signal,
+      credentials: 'same-origin', // Include cookies for session handling
     });
     
     clearTimeout(timeoutId);
+    
+    // Log response in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries([...response.headers.entries()]));
+    }
     
     if (!response.ok) {
       await handleApiError(response);
     }
     
     const result = await response.json();
-    return result as ApiResponse<T>;
+    
+    // Log API response in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Response data:', result);
+      console.groupEnd();
+    }
+    
+    // Standardize response format for consistency
+    const standardizedResult: ApiResponse<T> = {
+      success: result.success || result.accepted || false,
+      data: result.data || result,
+      error: result.error
+    };
+    
+    return standardizedResult;
   } catch (error: any) {
     clearTimeout(timeoutId);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.error('API request error:', error);
+      console.groupEnd();
+    }
     
     if (error.name === 'AbortError') {
       throw {
@@ -92,8 +125,8 @@ export const apiClient = {
   /**
    * Send a query to the agent
    */
-  sendQuery: (query: string) => 
-    apiRequest<void>(API_ENDPOINTS.QUERY, 'POST', { query } as QueryRequest),
+  sendQuery: (sessionId: string, query: string) => 
+    apiRequest<void>(API_ENDPOINTS.QUERY, 'POST', { sessionId, query }),
   
   /**
    * Abort the current operation
