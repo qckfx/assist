@@ -12,7 +12,6 @@ import Announcer from '@/components/Announcer';
 import { generateAriaId, prefersReducedMotion } from '@/utils/accessibility';
 import { useIsSmallScreen } from '@/hooks/useMediaQuery';
 import { TypingIndicator } from '@/components/TypingIndicator';
-import ProgressIndicator from '@/components/ProgressIndicator';
 import { ConnectionIndicator } from '@/components/ConnectionIndicator';
 import { useToolStream } from '@/hooks/useToolStream';
 // We'll use this component in the future
@@ -35,7 +34,6 @@ export interface TerminalProps {
   sessionId?: string;
   showConnectionIndicator?: boolean;
   showTypingIndicator?: boolean;
-  showProgressIndicator?: boolean;
   showToolVisualizations?: boolean;
   connectionStatus?: string;
 }
@@ -53,7 +51,6 @@ export function Terminal({
   sessionId,
   showConnectionIndicator = true,
   showTypingIndicator = true,
-  showProgressIndicator = true,
   showToolVisualizations = true,
   connectionStatus,
 }: TerminalProps) {
@@ -345,15 +342,6 @@ export function Terminal({
           {/* Add typing indicator */}
           {showTypingIndicator && terminalContext.typingIndicator && (
             <TypingIndicator className="mx-4 my-2" />
-          )}
-          
-          {/* Add tool execution progress as fallback */}
-          {showProgressIndicator && terminalContext.currentToolExecution && !hasActiveTools && (
-            <ProgressIndicator
-              className="mx-4 my-2"
-              operation={`Running ${terminalContext.currentToolExecution.name}...`}
-              startTime={terminalContext.currentToolExecution.startTime}
-            />
           )}
         </div>
         
