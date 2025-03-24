@@ -11,7 +11,7 @@ interface PermissionRequest {
   id: string;
   toolId: string;
   toolName?: string;
-  args: Record<string, any>;
+  args: Record<string, unknown>;
   timestamp: string;
 }
 
@@ -33,15 +33,15 @@ export function usePermissionManager({
   
   // Subscribe to permission request events
   useEffect(() => {
-    const handlePermissionRequested = (data: { sessionId: string; permission: any }) => {
+    const handlePermissionRequested = (data: { sessionId: string; permission: Record<string, unknown> }) => {
       const { permission } = data;
       
       // Check if this tool should be auto-approved
-      if (autoApproveTools.includes(permission.toolId)) {
+      if (autoApproveTools.includes(permission.toolId as string)) {
         // Auto-approve the permission
-        resolvePermission(permission.id, true)
+        resolvePermission(permission.id as string, true)
           .then(() => {
-            addSystemMessage(`Auto-approved permission for ${permission.toolId}`);
+            addSystemMessage(`Auto-approved permission for ${permission.toolId as string}`);
           })
           .catch(error => {
             addErrorMessage(`Failed to auto-approve permission: ${
@@ -55,11 +55,11 @@ export function usePermissionManager({
       setPendingPermissions(prev => [
         ...prev,
         {
-          id: permission.id,
-          toolId: permission.toolId,
-          toolName: permission.toolName || permission.toolId,
-          args: permission.args || {},
-          timestamp: permission.timestamp || new Date().toISOString(),
+          id: permission.id as string,
+          toolId: permission.toolId as string,
+          toolName: (permission.toolName as string) || (permission.toolId as string),
+          args: (permission.args as Record<string, unknown>) || {},
+          timestamp: (permission.timestamp as string) || new Date().toISOString(),
         },
       ]);
     };

@@ -8,7 +8,7 @@
  * Session joining/leaving is now handled by the SocketConnectionManager itself,
  * which maintains state independent of React's render cycle.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { useTerminal } from '@/context/TerminalContext';
 import { ConnectionStatus } from '@/types/api';

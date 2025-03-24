@@ -2,11 +2,10 @@
  * Tests for useWebSocket hook using React Context
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { useWebSocket } from '../useWebSocket';
-import { WebSocketProvider, WebSocketContext } from '../../context/WebSocketContext';
-import { ConnectionStatus, WebSocketEvent } from '../../types/api';
-import React from 'react';
+import { WebSocketProvider } from '../../context/WebSocketContext';
+import { ConnectionStatus, _WebSocketEvent } from '../../types/api';
 import { EventEmitter } from 'events';
 
 // Mock context values
@@ -14,7 +13,7 @@ const mockJoinSession = vi.fn();
 const mockLeaveSession = vi.fn();
 const mockOn = vi.fn(() => () => {});
 const mockOnBatch = vi.fn(() => () => {});
-const mockEmit = vi.fn();
+const _mockEmit = vi.fn();
 
 // Mock the connection manager
 class MockConnectionManager extends EventEmitter {
@@ -71,6 +70,9 @@ vi.mock('@/utils/websocket', () => ({
   getSocketConnectionManager: () => mockConnectionManager,
   getWebSocketMessageBufferManager: () => mockMessageBufferManager
 }));
+
+// Import WebSocketContext properly
+import { WebSocketContext } from '../../context/WebSocketContext';
 
 // Test wrapper with mocked context
 const TestWrapper = ({ children }: { children: React.ReactNode }) => (

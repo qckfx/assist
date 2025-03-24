@@ -1,7 +1,7 @@
 /**
  * React hook for tool execution events
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { WebSocketEvent } from '../types/api';
 import { throttle } from '@/utils/performance';
@@ -16,7 +16,7 @@ export interface ToolExecution {
   status: 'running' | 'completed' | 'error';
   args?: Record<string, unknown>;
   paramSummary?: string;
-  result?: any;
+  result?: unknown;
   error?: {
     message: string;
     stack?: string;
@@ -30,7 +30,7 @@ export interface ToolExecution {
 // Interface for batched tool executions
 export interface ToolExecutionBatch {
   toolId: string;
-  results: Array<any>;
+  results: Array<unknown>;
   isBatched: boolean;
   batchSize: number;
 }
@@ -42,7 +42,7 @@ export interface ToolExecutionBatch {
 const getImprovedToolDescription = (
   toolId: string, 
   toolName: string, 
-  data: any
+  data: Record<string, unknown>
 ): string => {
   // Check if data has args to use for description
   const args = data.tool?.args || data.args || {};
@@ -90,15 +90,16 @@ const getImprovedToolDescription = (
   
   // For result-based tool descriptions
   if (data.result) {
-    if (typeof data.result === 'object') {
+    const result = data.result as Record<string, unknown>;
+    if (typeof result === 'object' && result !== null) {
       // For search results, often includes counts
-      if ('count' in data.result || 'matches' in data.result) {
-        return `${toolName} found ${data.result.count || data.result.matches?.length || 'results'}`;
+      if ('count' in result || 'matches' in result) {
+        return `${toolName} found ${result.count || (result.matches as unknown[])?.length || 'results'}`;
       }
       
       // For file operations
-      if ('fileName' in data.result || 'file' in data.result) {
-        return `${toolName} processed ${data.result.fileName || data.result.file}`;
+      if ('fileName' in result || 'file' in result) {
+        return `${toolName} processed ${result.fileName || result.file}`;
       }
     }
   }
@@ -108,13 +109,13 @@ const getImprovedToolDescription = (
 };
 
 export function useToolStream(sessionId?: string) {
-  const { subscribe, subscribeToBatch } = useWebSocket(sessionId);
+  const { subscribe, subscribeToBatch: _subscribeToBatch } = useWebSocket(sessionId);
   
   // Enhanced state for tool executions
   const [state, setState] = useState<{
-    results: Record<string, any>;
+    results: Record<string, unknown>;
     activeTools: Record<string, boolean>;
-    latestExecution: any | null;
+    latestExecution: unknown | null;
     // New state for visualization
     toolExecutions: Record<string, ToolExecution>;
     activeToolCount: number;
@@ -131,12 +132,12 @@ export function useToolStream(sessionId?: string) {
   
   // Create a buffer for batched updates
   const [toolBuffers, setToolBuffers] = useState<
-    Record<string, Array<any>>
+    Record<string, Array<unknown>>
   >({});
   
   // Throttled state update for high-frequency tools
   const updateState = useCallback(
-    throttle((toolId: string, result: any, toolName: string = toolId) => {
+    throttle((toolId: string, result: unknown, toolName: string = toolId) => {
       setState(prev => {
         // Create a ToolExecution object for high-frequency tool updates with better description
         const execution: ToolExecution = {
@@ -236,10 +237,11 @@ export function useToolStream(sessionId?: string) {
     }
   }, []);
   
-  // Handle individual tool execution events
-  const handleToolExecution = useCallback((data: any) => {
-    const toolId = data.tool.id;
-    const toolName = data.tool.name || toolId;
+  // Handle individual tool execution events (can be removed if not called anywhere)
+  const _handleToolExecution = useCallback((data: Record<string, unknown>) => {
+    const tool = data.tool as Record<string, unknown>;
+    const toolId = tool.id as string;
+    const toolName = (tool.name as string) || toolId;
     
     // Create a ToolExecution object for the legacy event with a better description
     const execution: ToolExecution = {
@@ -413,10 +415,13 @@ export function useToolStream(sessionId?: string) {
   }, []);
   
   // Handler for tool execution started
-  const handleToolExecutionStarted = useCallback((data: any) => {
-    const { tool, args, paramSummary, timestamp } = data;
-    const toolId = tool.id;
-    const toolName = tool.name;
+  const handleToolExecutionStarted = useCallback((data: Record<string, unknown>) => {
+    const tool = data.tool as Record<string, unknown>;
+    const args = data.args as Record<string, unknown>;
+    const paramSummary = data.paramSummary as string;
+    const timestamp = data.timestamp as string;
+    const toolId = tool.id as string;
+    const toolName = tool.name as string;
     
     setState(prev => {
       // Generate a consistent ID based on the tool ID so we can update it later
@@ -457,9 +462,14 @@ export function useToolStream(sessionId?: string) {
   }, []);
   
   // Handler for tool execution completed with improved synchronization
-  const handleToolExecutionCompleted = useCallback((data: any) => {
-    const { tool, result, paramSummary, executionTime, timestamp, startTime } = data;
-    const toolId = tool.id;
+  const handleToolExecutionCompleted = useCallback((data: Record<string, unknown>) => {
+    const tool = data.tool as Record<string, unknown>;
+    const result = data.result as unknown;
+    const paramSummary = data.paramSummary as string;
+    const executionTime = data.executionTime as number | undefined;
+    const timestamp = data.timestamp as string;
+    const startTime = data.startTime as string | undefined;
+    const toolId = tool.id as string;
     
     setState(prev => {
       // Generate the expected execution ID from startTime if available
@@ -549,9 +559,13 @@ export function useToolStream(sessionId?: string) {
   }, []);
   
   // Handler for tool execution error
-  const handleToolExecutionError = useCallback((data: any) => {
-    const { tool, error, paramSummary, timestamp, startTime } = data;
-    const toolId = tool.id;
+  const handleToolExecutionError = useCallback((data: Record<string, unknown>) => {
+    const tool = data.tool as Record<string, unknown>;
+    const error = data.error as Record<string, unknown>;
+    const paramSummary = data.paramSummary as string;
+    const timestamp = data.timestamp as string;
+    const startTime = data.startTime as string | undefined;
+    const toolId = tool.id as string;
     
     setState(prev => {
       // Generate the expected execution ID from startTime if available
@@ -677,7 +691,7 @@ export function useToolStream(sessionId?: string) {
   }, []);
   
   // Function to access the full history of a specific tool
-  const getToolHistory = useCallback((toolId: string) => {
+  const getToolHistory = useCallback((toolId: string): Array<unknown> => {
     return toolBuffers[toolId] || [];
   }, [toolBuffers]);
   

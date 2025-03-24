@@ -25,7 +25,7 @@ export function useStreamingMessages({
   const [streamingContent, setStreamingContent] = useState('');
   
   const { subscribe, subscribeToBatch } = useWebSocket(sessionId);
-  const { state, dispatch } = useTerminal();
+  const { dispatch } = useTerminal();
   
   // Flush buffer at regular intervals to avoid excessive re-renders
   useEffect(() => {
@@ -53,8 +53,7 @@ export function useStreamingMessages({
     });
     
     // Handle processing completed
-    const unsubscribeComplete = subscribe(WebSocketEvent.PROCESSING_COMPLETED, (data) => {
-      const finalResult = data.result || '';
+    const unsubscribeComplete = subscribe(WebSocketEvent.PROCESSING_COMPLETED, (_data) => {
       // Use the final result to replace any streaming content
       setStreamingContent('');
       setCurrentBuffer([]);
@@ -79,7 +78,7 @@ export function useStreamingMessages({
     });
     
     // Handle streaming content
-    const unsubscribeStream = subscribe(WebSocketEvent.STREAM_CONTENT, (data: any) => {
+    const unsubscribeStream = subscribe(WebSocketEvent.STREAM_CONTENT, (data: { content: string }) => {
       // Add to buffer, limiting size
       setCurrentBuffer(prev => {
         // If too large, concat and update streaming content directly
@@ -92,7 +91,7 @@ export function useStreamingMessages({
     });
     
     // Handle streaming content batches for better performance
-    const unsubscribeStreamBatch = subscribeToBatch(WebSocketEvent.STREAM_CONTENT, (events: any[]) => {
+    const unsubscribeStreamBatch = subscribeToBatch(WebSocketEvent.STREAM_CONTENT, (events: Array<{ data: { content: string } }>) => {
       if (events.length === 0) return;
       
       const contents = events.map(e => e.data.content);
