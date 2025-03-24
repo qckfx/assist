@@ -1,7 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ConnectionIndicator } from '../ConnectionIndicator';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
-import { _ConnectionStatus } from '../../types/api';
 import { vi } from 'vitest';
 
 // Mock the useConnectionStatus hook

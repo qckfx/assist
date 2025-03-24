@@ -70,15 +70,13 @@ vi.mock('../Terminal/Terminal', () => ({
     onClear, 
     messages, 
     showConnectionIndicator, 
-    showTypingIndicator,
-    _connectionStatus 
+    showTypingIndicator
   }: {
     onCommand: (command: string) => void;
     onClear: () => void;
     messages: Array<{id: string; content: string; type: string; timestamp: Date}>;
     showConnectionIndicator?: boolean;
     showTypingIndicator?: boolean;
-    connectionStatus?: string;
   }) => (
     <div data-testid="mock-terminal">
       <div data-testid="terminal-messages">

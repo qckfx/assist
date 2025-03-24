@@ -45,7 +45,9 @@ const getImprovedToolDescription = (
   data: Record<string, unknown>
 ): string => {
   // Check if data has args to use for description
-  const args = data.tool?.args || data.args || {};
+  const args = (typeof data.tool === 'object' && data.tool !== null && 'args' in data.tool) ? 
+    (data.tool.args as Record<string, unknown>) : 
+    ('args' in data ? (data.args as Record<string, unknown>) : {});
   
   // Specialized descriptions based on common tool types
   if (toolName.includes('Glob')) {
@@ -108,8 +110,8 @@ const getImprovedToolDescription = (
   return `${toolName} completed`;
 };
 
-export function useToolStream(sessionId?: string) {
-  const { subscribe, subscribeToBatch: _subscribeToBatch } = useWebSocket(sessionId);
+export function useToolStream() {
+  const { subscribe, subscribeToBatch: _subscribeToBatch } = useWebSocket();
   
   // Enhanced state for tool executions
   const [state, setState] = useState<{
@@ -136,17 +138,17 @@ export function useToolStream(sessionId?: string) {
   >({});
   
   // Throttled state update for high-frequency tools
-  const updateState = useCallback(
-    throttle((toolId: string, result: unknown, toolName: string = toolId) => {
-      setState(prev => {
+  // Create a properly typed wrapper function for throttle
+  const updateStateImpl = useCallback((toolId: string, result: unknown, toolName?: string) => {
+    setState(prev => {
         // Create a ToolExecution object for high-frequency tool updates with better description
         const execution: ToolExecution = {
           id: `${toolId}-${Date.now()}`,
           tool: toolId,
-          toolName,
+          toolName: toolName || toolId,
           status: 'completed', // High-frequency tools update so quickly we treat them as immediately completed
           result,
-          paramSummary: getImprovedToolDescription(toolId, toolName, { tool: { args: {} }, result }),
+          paramSummary: getImprovedToolDescription(toolId, toolName || toolId, { tool: { args: {} }, result }),
           startTime: Date.now() - 50, // Approximate startTime
           endTime: Date.now(),
           executionTime: 50, // Approximate execution time
@@ -176,8 +178,13 @@ export function useToolStream(sessionId?: string) {
           toolHistory,
         };
       });
-    }, 100),
-    []
+    }, []
+  );
+  
+  // Apply throttle to the implementation function with proper typing
+  const updateState = useCallback(
+    throttle<typeof updateStateImpl>(updateStateImpl, 100), 
+    [updateStateImpl]
   );
   
   // Handle batch tool execution events
@@ -192,8 +199,9 @@ export function useToolStream(sessionId?: string) {
     
     // Update state with the latest result only (for UI responsiveness)
     if (results.length > 0) {
-      const latestResult = results[results.length - 1];
-      const toolName = latestResult.tool?.name || toolId;
+      const latestResult = results[results.length - 1] as Record<string, unknown>;
+      const toolObj = latestResult.tool as Record<string, unknown> || {};
+      const toolName = (toolObj.name as string) || toolId;
       
       // Create a ToolExecution object for the batch
       const execution: ToolExecution = {
@@ -201,7 +209,7 @@ export function useToolStream(sessionId?: string) {
         tool: toolId,
         toolName,
         status: 'completed', // Batch events are considered completed immediately
-        result: latestResult.result,
+        result: latestResult.result as unknown,
         paramSummary: `Batch execution (${results.length} items)`,
         startTime: Date.now() - (results.length * 50), // Rough estimate of start time
         endTime: Date.now(),
@@ -219,7 +227,7 @@ export function useToolStream(sessionId?: string) {
           ...prev,
           results: {
             ...prev.results,
-            [toolId]: latestResult.result,
+            [toolId]: latestResult.result as unknown,
           },
           activeTools: {
             ...prev.activeTools,
@@ -510,7 +518,7 @@ export function useToolStream(sessionId?: string) {
       const prevExecution = matchingExecution || {
         id: matchingExecutionId,
         tool: toolId,
-        toolName: tool.name,
+        toolName: typeof tool.name === "string" ? tool.name : toolId,
         status: 'running',
         args: {},
         paramSummary: paramSummary || 'Tool execution',
@@ -561,7 +569,7 @@ export function useToolStream(sessionId?: string) {
   // Handler for tool execution error
   const handleToolExecutionError = useCallback((data: Record<string, unknown>) => {
     const tool = data.tool as Record<string, unknown>;
-    const error = data.error as Record<string, unknown>;
+    const error = data.error as { message: string; stack?: string };
     const paramSummary = data.paramSummary as string;
     const timestamp = data.timestamp as string;
     const startTime = data.startTime as string | undefined;
@@ -603,7 +611,7 @@ export function useToolStream(sessionId?: string) {
       const prevExecution = matchingExecution || {
         id: matchingExecutionId,
         tool: toolId,
-        toolName: tool.name,
+        toolName: typeof tool.name === "string" ? tool.name : toolId,
         status: 'running',
         args: {},
         paramSummary: paramSummary || 'Tool execution',

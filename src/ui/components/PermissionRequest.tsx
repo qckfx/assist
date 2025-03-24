@@ -17,7 +17,7 @@ interface PermissionRequestProps {
  * Component that displays and handles tool permission requests
  */
 export function PermissionRequest({ 
-  sessionId,
+  sessionId: _sessionId, // Parameter renamed to mark as unused
   className = '',
   onResolved
 }: PermissionRequestProps) {
@@ -25,7 +25,7 @@ export function PermissionRequest({
     permissionRequests, 
     resolvePermission, 
     hasPermissionRequests 
-  } = usePermissionRequests(sessionId);
+  } = usePermissionRequests();
   
   if (!hasPermissionRequests) {
     return null;

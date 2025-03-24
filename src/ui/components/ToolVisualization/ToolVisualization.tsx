@@ -25,7 +25,7 @@ const getToolDescription = (tool: ToolExecution): string => {
   }
   
   // If we have result object with a pattern field (common in search tools)
-  if (tool.result && typeof tool.result === 'object' && tool.result.pattern) {
+  if (tool.result && typeof tool.result === 'object' && 'pattern' in tool.result && typeof tool.result.pattern === 'string') {
     return `Searching for: ${tool.result.pattern}`;
   }
   

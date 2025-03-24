@@ -73,7 +73,7 @@ export function Terminal({
   });
   
   // Initialize the tool stream hook to get active tool information
-  const { getActiveTools, getRecentTools, hasActiveTools, toolHistory, activeToolCount } = useToolStream(sessionId);
+  const { getActiveTools, getRecentTools, hasActiveTools, toolHistory, activeToolCount } = useToolStream();
   
   // Use provided theme or get from context
   const terminalContext = useTerminal();

@@ -6,7 +6,6 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { _ConnectionStatus } from '../../types/api';
 import { WebSocketServiceFactory } from '../../services/factories/WebSocketServiceFactory';
 import { MockWebSocketService } from '../../services/implementations/MockWebSocketService';
 
