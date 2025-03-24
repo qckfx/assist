@@ -14,6 +14,8 @@ import { useIsSmallScreen } from '@/hooks/useMediaQuery';
 import { TypingIndicator } from '@/components/TypingIndicator';
 import ProgressIndicator from '@/components/ProgressIndicator';
 import { ConnectionIndicator } from '@/components/ConnectionIndicator';
+import { useToolStream } from '@/hooks/useToolStream';
+import { ToolVisualizations } from '@/components/ToolVisualization';
 
 export interface TerminalProps {
   className?: string;
@@ -33,6 +35,7 @@ export interface TerminalProps {
   showConnectionIndicator?: boolean;
   showTypingIndicator?: boolean;
   showProgressIndicator?: boolean;
+  showToolVisualizations?: boolean;
   connectionStatus?: string;
 }
 
@@ -50,6 +53,7 @@ export function Terminal({
   showConnectionIndicator = true,
   showTypingIndicator = true,
   showProgressIndicator = true,
+  showToolVisualizations = true,
   connectionStatus,
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -69,6 +73,9 @@ export function Terminal({
     output: generateAriaId('terminal-output'),
     input: generateAriaId('terminal-input'),
   });
+  
+  // Initialize the tool stream hook to get active tool information
+  const { getActiveTools, getRecentTools, hasActiveTools } = useToolStream(sessionId);
   
   // Use provided theme or get from context
   const terminalContext = useTerminal();
@@ -313,13 +320,33 @@ export function Terminal({
             ariaLabelledBy={ids.output}
           />
           
+          {/* Tool Visualizations */}
+          {showToolVisualizations && (
+            <div className="mx-4 my-2">
+              <ToolVisualizations
+                tools={getActiveTools()}
+                className="mb-2"
+                maxVisible={3}
+              />
+              
+              {/* Only show recent tools if no active tools */}
+              {!hasActiveTools && (
+                <ToolVisualizations
+                  tools={getRecentTools(2)}
+                  compact={true}
+                  maxVisible={2}
+                />
+              )}
+            </div>
+          )}
+          
           {/* Add typing indicator */}
           {showTypingIndicator && terminalContext.typingIndicator && (
             <TypingIndicator className="mx-4 my-2" />
           )}
           
-          {/* Add tool execution progress */}
-          {showProgressIndicator && terminalContext.currentToolExecution && (
+          {/* Add tool execution progress as fallback */}
+          {showProgressIndicator && terminalContext.currentToolExecution && !hasActiveTools && (
             <ProgressIndicator
               className="mx-4 my-2"
               operation={`Running ${terminalContext.currentToolExecution.name}...`}

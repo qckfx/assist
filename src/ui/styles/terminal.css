@@ -125,6 +125,31 @@
   }
 }
 
+/* Tool visualization in terminal context */
+.terminal .tool-visualizations {
+  margin-bottom: 1rem;
+  max-width: calc(100% - 2rem); /* 1rem padding on each side */
+}
+
+/* Ensure proper scrolling with tool visualizations */
+.terminal .terminal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--terminal-border) transparent;
+}
+
+.terminal .terminal-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.terminal .terminal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.terminal .terminal-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--terminal-border);
+  border-radius: 3px;
+}
+
 /* Screen reader only class */
 .sr-only {
   position: absolute;

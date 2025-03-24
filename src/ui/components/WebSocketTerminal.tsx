@@ -73,6 +73,7 @@ export function WebSocketTerminal({
         sessionId={sessionId}
         showConnectionIndicator={showConnectionStatus}
         showTypingIndicator={showTypingIndicator}
+        showToolVisualizations={true}
         connectionStatus={connectionStatus}
       />
       
