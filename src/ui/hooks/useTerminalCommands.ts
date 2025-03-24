@@ -20,6 +20,7 @@ export function useTerminalCommands({ sessionId }: UseTerminalCommandsOptions = 
     addErrorMessage,
     setProcessing,
     addToHistory,
+    dispatch,  // Get the dispatch function for direct state updates
   } = useTerminal();
 
   // Process a terminal command
@@ -86,7 +87,13 @@ Session Information:
         throw new Error('No active session. Please create a new session.');
       }
       
+      // Set both processing and typing indicator states
       setProcessing(true);
+      
+      // Manually add the typing indicator (ensures it's shown before WebSocket event)
+      if (typeof dispatch === 'function') {
+        dispatch({ type: 'SET_TYPING_INDICATOR', payload: true });
+      }
       
       // Debug message for development
       console.log(`Sending query to API for session ${sessionId}: ${command}`);
@@ -94,25 +101,25 @@ Session Information:
       // Send the query to the API with sessionId included
       const response = await apiClient.sendQuery(sessionId, command);
       
-      if (!response.success) {
+      // Check for success or accepted - handle both API response formats
+      if (!response.success && !response.accepted) {
         throw new Error(response.error?.message || 'Failed to process query');
       }
       
       console.log('Query accepted by server:', response);
       
-      // In development mode, provide a fallback response if WebSocket events don't come through
-      if (process.env.NODE_ENV === 'development') {
-        setTimeout(() => {
-          // If we're still processing after 5 seconds, this might mean the websocket
-          // events aren't coming through properly
-          console.log('Adding fallback response while waiting for WebSocket events...');
-          addSystemMessage('Note: Still waiting for real-time updates. Backend server is processing your request.');
-        }, 5000);
-      }
+      // The typing indicator is now shown explicitly above
+      // and will be automatically hidden when processing is complete
       
     } catch (error) {
       console.error('Error sending query to API:', error);
       setProcessing(false);
+      
+      // Clear typing indicator state
+      if (typeof dispatch === 'function') {
+        dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
+      }
+      
       addErrorMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }, [
@@ -123,6 +130,7 @@ Session Information:
     addErrorMessage,
     setProcessing,
     addToHistory,
+    dispatch,
   ]);
   
   return { handleCommand };

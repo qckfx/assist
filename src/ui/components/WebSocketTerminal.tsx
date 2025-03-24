@@ -37,10 +37,12 @@ export function WebSocketTerminal({
     isStreaming,
     hasPendingPermissions,
     resolvePermission,
-    abortProcessing
+    abortProcessing,
+    sessionId
   } = useWebSocketTerminal();
   
-  const { state, clearMessages } = useTerminal();
+  // Get both state and the typing indicator state directly from TerminalContext
+  const { state, clearMessages, typingIndicator } = useTerminal();
   const [hasConnected, setHasConnected] = useState(false);
   
   // Check if we've ever connected
@@ -58,12 +60,8 @@ export function WebSocketTerminal({
   }, [autoConnect, hasConnected]);
   
   return (
-    <div className="relative">
-      {showConnectionStatus && (
-        <div className="absolute top-2 right-2 z-10">
-          <ConnectionIndicator />
-        </div>
-      )}
+    <div className="relative w-full max-w-full flex flex-col" style={{ height: "calc(100% - 20px)" }}>
+      {/* Connection indicator now integrated directly in the Terminal title bar */}
       
       <Terminal
         className={className}
@@ -72,13 +70,13 @@ export function WebSocketTerminal({
         inputDisabled={!isConnected && hasConnected}
         fullScreen={fullScreen}
         onClear={clearMessages}
+        sessionId={sessionId}
+        showConnectionIndicator={showConnectionStatus}
+        showTypingIndicator={showTypingIndicator}
+        connectionStatus={connectionStatus}
       />
       
-      {showTypingIndicator && (isProcessing || isStreaming) && (
-        <div className="absolute bottom-14 left-4">
-          <TypingIndicator />
-        </div>
-      )}
+      {/* Typing indicator is now handled inside the Terminal component */}
       
       {showPermissionRequests && hasPendingPermissions && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
