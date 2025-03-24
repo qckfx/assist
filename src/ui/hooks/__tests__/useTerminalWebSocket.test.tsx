@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { ConnectionStatus, _WebSocketEvent } from '../../types/api';
+import { ConnectionStatus } from '../../types/api';
 import { EventEmitter } from 'events';
 
 // Create hoisted mocks for terminal functions
@@ -15,15 +15,16 @@ const mockAddErrorMessage = vi.fn();
 const mockSetProcessing = vi.fn();
 
 // Create a mock event emitter for the Socket Connection Manager
-class MockEventEmitter extends EventEmitter {}
+class MockEventEmitter extends EventEmitter {
+  joinSession = vi.fn();
+  leaveSession = vi.fn();
+  getSessionState = vi.fn().mockReturnValue({
+    currentSessionId: 'test-session-id',
+    hasJoined: true,
+    pendingSession: null
+  });
+}
 const mockConnectionManager = new MockEventEmitter();
-mockConnectionManager.joinSession = vi.fn();
-mockConnectionManager.leaveSession = vi.fn();
-mockConnectionManager.getSessionState = vi.fn().mockReturnValue({
-  currentSessionId: 'test-session-id',
-  hasJoined: true,
-  pendingSession: null
-});
 
 // Use vi.hoisted for mock function that will be manipulated in tests
 const mockUseWebSocketFn = vi.hoisted(() => 
@@ -63,7 +64,6 @@ vi.mock('../useWebSocket', () => ({
 
 // Import the hook after mocks are set up
 import { useTerminalWebSocket } from '../useTerminalWebSocket';
-import { _getSocketConnectionManager } from '@/utils/websocket';
 
 describe('useTerminalWebSocket using React Context', () => {
   beforeEach(() => {

@@ -16,7 +16,7 @@ interface UseStreamingMessagesOptions {
  * Hook that manages real-time streaming of message content from WebSocket events
  */
 export function useStreamingMessages({
-  sessionId,
+  sessionId: _sessionId, // Parameter renamed to mark as unused
   bufferInterval = 100, // Update buffer every 100ms
   maxBufferLength = 1000 // Limit buffer size to avoid excess rendering
 }: UseStreamingMessagesOptions = {}) {
@@ -24,7 +24,7 @@ export function useStreamingMessages({
   const [currentBuffer, setCurrentBuffer] = useState<string[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
   
-  const { subscribe, subscribeToBatch } = useWebSocket(sessionId);
+  const { subscribe, subscribeToBatch } = useWebSocket();
   const { dispatch } = useTerminal();
   
   // Flush buffer at regular intervals to avoid excessive re-renders

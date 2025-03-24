@@ -8,8 +8,8 @@ import { WebSocketEvent, SessionData } from '../types/api';
 /**
  * Hook for subscribing to agent-related events
  */
-export function useAgentEvents(sessionId?: string) {
-  const { subscribe } = useWebSocket(sessionId);
+export function useAgentEvents() {
+  const { subscribe } = useWebSocket();
   const [isProcessing, setIsProcessing] = useState(false);
   const [session, setSession] = useState<SessionData | null>(null);
   const [lastError, setLastError] = useState<{ 

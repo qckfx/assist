@@ -108,7 +108,7 @@ const mockConnectToSession = vi.fn().mockReturnValue(true);
 
 // Get references to the module functions to access mock implementations
 import { useTerminalWebSocket } from '@/hooks/useTerminalWebSocket';
-import { _useStreamingMessages } from '@/hooks/useStreamingMessages';  
+  
 import { useTerminalCommands } from '@/hooks/useTerminalCommands';
 import { usePermissionManager } from '@/hooks/usePermissionManager';
 import { useTerminal } from '@/context/TerminalContext';
@@ -121,7 +121,6 @@ vi.mocked(useTerminal).mockReturnValue({
   addErrorMessage: mockAddErrorMessage,
   addUserMessage: vi.fn(),
   addAssistantMessage: vi.fn(),
-  addToolMessage: vi.fn(),
   setProcessing: vi.fn(),
   isProcessing: false,
   state: { 
@@ -135,9 +134,7 @@ vi.mocked(useTerminal).mockReturnValue({
       colorScheme: 'dark'
     },
     typingIndicator: false,
-    progressIndicator: false,
     streamBuffer: [],
-    currentToolExecution: null,
   },
   dispatch: vi.fn(),
   addMessage: vi.fn(),
@@ -147,9 +144,7 @@ vi.mocked(useTerminal).mockReturnValue({
   leaveSession: vi.fn(),
   isStreaming: false,
   typingIndicator: false,
-  progressIndicator: false,
   streamBuffer: [],
-  currentToolExecution: null,
 });
 
 vi.mocked(useTerminalCommands).mockReturnValue({

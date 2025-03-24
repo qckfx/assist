@@ -5,6 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { WebSocketProvider, useWebSocketContext } from '../WebSocketContext';
+import { ConnectionStatus } from '../../types/api';
 
 // Mock the websocket utilities
 vi.mock('@/ui/utils/websocket', () => {

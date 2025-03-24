@@ -25,7 +25,7 @@ const mockContextValue = {
   offBatch: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
-  socket: {} as any,
+  socket: null,
 };
 
 // Mock context wrapper
@@ -38,7 +38,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe('useToolStream', () => {
-  let subscribedEvents: Record<string, (data: any) => void> = {};
+  let subscribedEvents: Record<string, (data: unknown) => void> = {};
   
   beforeEach(() => {
     // Reset mocks
@@ -57,7 +57,7 @@ describe('useToolStream', () => {
   
   it('should handle individual tool executions', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // Verify initial state
     expect(result.current.state.results).toEqual({});
@@ -105,7 +105,7 @@ describe('useToolStream', () => {
   
   it('should handle batched tool executions', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // Simulate a batched tool execution event
     act(() => {
@@ -138,7 +138,7 @@ describe('useToolStream', () => {
   
   it('should mark tools as inactive when processing completes', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // Simulate a tool execution started event
     act(() => {
@@ -172,7 +172,7 @@ describe('useToolStream', () => {
     vi.useFakeTimers();
     
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // Simulate multiple rapid tool executions from a high-frequency tool using the new events
     act(() => {
@@ -211,7 +211,7 @@ describe('useToolStream', () => {
   
   it('should clear results and tool history', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // Simulate a tool execution using the new events
     act(() => {
@@ -255,7 +255,7 @@ describe('useToolStream', () => {
   // New tests for enhanced visualization functionality
   it('should handle tool execution started events', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // Simulate a tool execution started event
     act(() => {
@@ -278,7 +278,7 @@ describe('useToolStream', () => {
   
   it('should handle tool execution completed events', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // First, simulate a tool started event
     const startTimestamp = new Date().toISOString();
@@ -317,7 +317,7 @@ describe('useToolStream', () => {
   
   it('should handle tool execution error events', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // First, simulate a tool started event
     act(() => {
@@ -352,7 +352,7 @@ describe('useToolStream', () => {
   
   it('should properly update tools on processing completed', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // Simulate multiple tool started events
     act(() => {
@@ -392,7 +392,7 @@ describe('useToolStream', () => {
   
   it('should provide recent tools through getRecentTools', () => {
     // Render the hook
-    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    const { result } = renderHook(() => useToolStream(), { wrapper });
     
     // Simulate multiple tool execution cycles with consistent timestamps
     act(() => {

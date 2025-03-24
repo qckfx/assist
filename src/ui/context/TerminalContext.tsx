@@ -198,20 +198,20 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (!websocketContext) return;
     
     // Handler for processing started event
-    const handleProcessingStarted = ({ sessionId }: { sessionId: string }) => {
+    const handleProcessingStarted = ({ _sessionId }: { _sessionId: string }) => {
       dispatch({ type: 'SET_PROCESSING', payload: true });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: true });
     };
     
     // Handler for processing completed event
-    const handleProcessingCompleted = ({ sessionId, result }: { sessionId: string, result: unknown }) => {
+    const handleProcessingCompleted = ({ _sessionId, _result }: { _sessionId: string, _result: unknown }) => {
       dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
       dispatch({ type: 'CLEAR_STREAM_BUFFER' });
     };
     
     // Handler for processing error event
-    const handleProcessingError = ({ sessionId, error }: { sessionId: string, error: { name: string; message: string; stack?: string } }) => {
+    const handleProcessingError = ({ _sessionId, error }: { _sessionId: string, error: { name: string; message: string; stack?: string } }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -227,7 +227,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
     
     // Handler for processing aborted event
-    const handleProcessingAborted = ({ sessionId }: { sessionId: string }) => {
+    const handleProcessingAborted = ({ _sessionId }: { _sessionId: string }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -244,16 +244,16 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for tool execution event - now handled by tool visualization
     const handleToolExecution = ({ 
-      sessionId, 
-      tool, 
-      result 
+      _sessionId, 
+      _tool, 
+      _result 
     }: { 
-      sessionId: string, 
-      tool: { 
+      _sessionId: string, 
+      _tool: { 
         id: string; 
         name: string;
       }, 
-      result: unknown 
+      _result: unknown 
     }) => {
       // Tool execution is now handled by the ToolVisualization component
       // No need to track current tool in TerminalContext anymore
@@ -262,13 +262,15 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for permission requested event
     const handlePermissionRequested = ({ 
-      sessionId, 
+      _sessionId, 
       permission 
     }: { 
-      sessionId: string, 
+      _sessionId: string, 
       permission: { 
         toolId: string;
         id: string;
+        args: Record<string, unknown>;
+        timestamp: string;
       }
     }) => {
       dispatch({ 
@@ -284,10 +286,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for permission resolved event
     const handlePermissionResolved = ({ 
-      sessionId, 
+      _sessionId, 
       permissionId, 
       resolution 
-    }: { sessionId: string, permissionId: string, resolution: boolean }) => {
+    }: { _sessionId: string, permissionId: string, resolution: boolean }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -330,14 +332,51 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
     
     // Register event listeners using context's 'on' method which returns cleanup functions
+    // Wrapper functions to handle parameter type mismatches
+    const processStartedWrapper = (data: { sessionId: string }) => handleProcessingStarted({ _sessionId: data.sessionId });
+    
+    const processCompletedWrapper = (data: { sessionId: string, result: unknown }) => 
+      handleProcessingCompleted({ _sessionId: data.sessionId, _result: data.result });
+    
+    const processErrorWrapper = (data: { sessionId: string, error: { name: string; message: string; stack?: string } }) => 
+      handleProcessingError({ _sessionId: data.sessionId, error: data.error });
+    
+    const processAbortedWrapper = (data: { sessionId: string }) => 
+      handleProcessingAborted({ _sessionId: data.sessionId });
+    
+    const toolExecutionWrapper = (data: { sessionId: string, tool: { id: string; name: string }, result: unknown }) => 
+      handleToolExecution({ 
+        _sessionId: data.sessionId, 
+        _tool: data.tool, 
+        _result: data.result 
+      });
+    
+    const permissionRequestedWrapper = (data: { sessionId: string, permission: { id: string; toolId: string; args: Record<string, unknown>; timestamp: string; } }) => 
+      handlePermissionRequested({ 
+        _sessionId: data.sessionId, 
+        permission: { 
+          toolId: data.permission.toolId, 
+          id: data.permission.id,
+          args: data.permission.args,
+          timestamp: data.permission.timestamp
+        } 
+      });
+    
+    const permissionResolvedWrapper = (data: { sessionId: string, permissionId: string, resolution: boolean }) => 
+      handlePermissionResolved({ 
+        _sessionId: data.sessionId, 
+        permissionId: data.permissionId, 
+        resolution: data.resolution 
+      });
+    
     const cleanupFunctions = [
-      websocketContext.on(WebSocketEvent.PROCESSING_STARTED, handleProcessingStarted),
-      websocketContext.on(WebSocketEvent.PROCESSING_COMPLETED, handleProcessingCompleted),
-      websocketContext.on(WebSocketEvent.PROCESSING_ERROR, handleProcessingError),
-      websocketContext.on(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted),
-      websocketContext.on(WebSocketEvent.TOOL_EXECUTION, handleToolExecution),
-      websocketContext.on(WebSocketEvent.PERMISSION_REQUESTED, handlePermissionRequested),
-      websocketContext.on(WebSocketEvent.PERMISSION_RESOLVED, handlePermissionResolved),
+      websocketContext.on(WebSocketEvent.PROCESSING_STARTED, processStartedWrapper),
+      websocketContext.on(WebSocketEvent.PROCESSING_COMPLETED, processCompletedWrapper),
+      websocketContext.on(WebSocketEvent.PROCESSING_ERROR, processErrorWrapper),
+      websocketContext.on(WebSocketEvent.PROCESSING_ABORTED, processAbortedWrapper),
+      websocketContext.on(WebSocketEvent.TOOL_EXECUTION, toolExecutionWrapper),
+      websocketContext.on(WebSocketEvent.PERMISSION_REQUESTED, permissionRequestedWrapper),
+      websocketContext.on(WebSocketEvent.PERMISSION_RESOLVED, permissionResolvedWrapper),
       websocketContext.on(WebSocketEvent.SESSION_UPDATED, handleSessionUpdated)
     ];
     

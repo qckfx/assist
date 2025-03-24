@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useWebSocket } from '../useWebSocket';
 import { WebSocketProvider } from '../../context/WebSocketContext';
-import { ConnectionStatus, _WebSocketEvent } from '../../types/api';
+import { ConnectionStatus, WebSocketEvent } from '../../types/api';
 import { EventEmitter } from 'events';
 
 // Mock context values
@@ -46,6 +46,12 @@ const mockContextValue = {
   on: mockOn,
   onBatch: mockOnBatch,
   socket: null,
+  currentSessionId: 'test-session-id',
+  joinSession: vi.fn(),
+  leaveSession: vi.fn(),
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+  offBatch: vi.fn()
 };
 
 // Mock WebSocketMessageBufferManager
@@ -129,7 +135,7 @@ describe('useWebSocket using React Context', () => {
     });
     
     const callback = vi.fn();
-    const event = 'connect' as any;
+    const event = 'connect' as WebSocketEvent;
     
     // Call subscribe
     const unsubscribe = result.current.subscribe(event, callback);
@@ -145,7 +151,7 @@ describe('useWebSocket using React Context', () => {
     });
     
     const callback = vi.fn();
-    const event = 'connect' as any;
+    const event = 'connect' as WebSocketEvent;
     
     // Call subscribeToBatch
     const unsubscribe = result.current.subscribeToBatch(event, callback);

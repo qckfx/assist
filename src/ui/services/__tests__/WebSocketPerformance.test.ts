@@ -25,8 +25,8 @@ const createLargeToolExecution = (size: number) => {
 
 // Create a simple version of the optimized service for testing
 class TestPerformanceService extends MockWebSocketService {
-  private messageBuffer = new Map<string, any[]>();
-  private toolResultBuffer: Record<string, any[]> = {};
+  private messageBuffer = new Map<string, unknown[]>();
+  private toolResultBuffer: Record<string, unknown[]> = {};
   private lastToolFlush: Record<string, number> = {};
   private readonly maxBufferSize = 50;
   private readonly flushIntervalMs = 500;
@@ -36,10 +36,14 @@ class TestPerformanceService extends MockWebSocketService {
   }
 
   // Override emit to use buffering for tool executions
-  public override emit(event: string, ...args: any[]): boolean {
+  public override emit(event: string, ...args: unknown[]): boolean {
     if (event === WebSocketEvent.TOOL_EXECUTION) {
-      const data = args[0];
-      const toolId = data.tool?.id;
+      const data = args[0] as Record<string, unknown>;
+      let toolId: string | undefined;
+      
+      if (typeof data.tool === 'object' && data.tool !== null && 'id' in data.tool) {
+        toolId = data.tool.id as string;
+      }
       
       if (toolId) {
         this.bufferToolResult(toolId, data);
@@ -51,7 +55,7 @@ class TestPerformanceService extends MockWebSocketService {
   }
 
   // Buffer tool execution results
-  private bufferToolResult(toolId: string, data: any): void {
+  private bufferToolResult(toolId: string, data: unknown): void {
     // Initialize buffer if needed
     if (!this.toolResultBuffer[toolId]) {
       this.toolResultBuffer[toolId] = [];

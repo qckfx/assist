@@ -5,7 +5,8 @@
 /**
  * Creates a throttled function that only invokes func at most once per every wait milliseconds
  */
-export function throttle<T extends (...args: unknown[]) => unknown>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function throttle<T extends (...args: any[]) => any>(
   func: T,
   wait: number = 100
 ): (...args: Parameters<T>) => void {
@@ -40,7 +41,8 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
  * Creates a debounced function that delays invoking func until after wait milliseconds
  * have elapsed since the last time the debounced function was invoked
  */
-export function debounce<T extends (...args: unknown[]) => unknown>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number = 100
 ): (...args: Parameters<T>) => void {
@@ -91,21 +93,23 @@ export function batch<T>(
 /**
  * Creates a function that memoizes the result of func
  */
-export function memoize<T extends (...args: unknown[]) => unknown>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function memoize<T extends (...args: any[]) => any>(
   func: T,
-  resolver?: (...args: Parameters<T>) => unknown
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolver?: (...args: Parameters<T>) => any
 ): T {
   const cache = new Map();
   
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return function(this: unknown, ...args: Parameters<T>): ReturnType<T> {
+  return function(this: unknown, ...args: Parameters<T>) {
     const key = resolver ? resolver.apply(this, args) : args[0];
     
     if (cache.has(key)) {
-      return cache.get(key);
+      return cache.get(key) as ReturnType<T>;
     }
     
-    const result = func.apply(this, args);
+    const result = func.apply(this, args) as ReturnType<T>;
     cache.set(key, result);
     return result;
   } as T;

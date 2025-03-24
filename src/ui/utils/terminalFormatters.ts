@@ -11,8 +11,13 @@ export function formatToolResult(toolName: string, result: unknown): string {
   }
   
   // Check if result is an error
-  if (result instanceof Error || (result && result.name && result.message)) {
-    return `Error: ${result.message || 'Unknown error'}`;
+  if (result instanceof Error || 
+      (typeof result === 'object' && 
+       result !== null && 
+       'name' in result && 
+       'message' in result && 
+       typeof result.message === 'string')) {
+    return `Error: ${(result as { message: string }).message || 'Unknown error'}`;
   }
   
   // Handle different tool types

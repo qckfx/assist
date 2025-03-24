@@ -52,8 +52,20 @@ export class ConnectionManager extends EventEmitter {
     
     // Set up event listeners
     this.webSocket.on(WebSocketEvent.CONNECT, this.handleConnect.bind(this));
-    this.webSocket.on(WebSocketEvent.DISCONNECT, this.handleDisconnect.bind(this));
-    this.webSocket.on(WebSocketEvent.ERROR, this.handleError.bind(this));
+    this.webSocket.on(WebSocketEvent.DISCONNECT, (reason: unknown) => {
+      // Socket.io passes a reason string, but our type definition expects void
+      // We need to adapt between them
+      this.handleDisconnect(typeof reason === 'string' ? reason : "unknown");
+    });
+    this.webSocket.on(WebSocketEvent.ERROR, (error: unknown) => {
+      // Create an Error object to match our expected handler
+      const errorObj = new Error(
+        typeof error === 'object' && error !== null && 'message' in error 
+          ? String(error.message) 
+          : 'Unknown error'
+      );
+      this.handleError(errorObj);
+    });
     
     // Start health check
     this.startHealthCheck();
@@ -80,7 +92,7 @@ export class ConnectionManager extends EventEmitter {
       };
       
       // Set up one-time error listener
-      const errorHandler = (error: Error | Record<string, unknown> | string) => {
+      const errorHandler = (error: unknown) => {
         this.setState(ConnectionState.ERROR);
         this.webSocket.off(WebSocketEvent.CONNECT, connectHandler);
         this.webSocket.off(WebSocketEvent.ERROR, errorHandler);
@@ -90,7 +102,15 @@ export class ConnectionManager extends EventEmitter {
           this.handleReconnect();
         }
         
-        reject(error);
+        // Convert the error to a suitable format for rejection
+        const errorMessage = 
+          typeof error === 'object' && error !== null && 'message' in error 
+            ? String(error.message) 
+            : typeof error === 'string' 
+              ? error 
+              : 'Unknown connection error';
+              
+        reject(new Error(errorMessage));
       };
       
       // Add listeners

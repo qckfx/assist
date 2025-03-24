@@ -59,7 +59,7 @@ describe('MessageBufferManager', () => {
     
     // Total processed items should equal input size
     const totalProcessed = flushCallback.mock.calls.reduce(
-      (acc: number, call: any[]) => acc + call[0].length, 0
+      (acc: number, call: unknown[]) => acc + (call[0] as number[]).length, 0
     );
     expect(totalProcessed).toBe(items.length);
   });

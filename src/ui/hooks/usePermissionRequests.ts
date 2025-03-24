@@ -19,8 +19,8 @@ export interface PermissionRequestData {
 /**
  * Hook for managing permission requests
  */
-export function usePermissionRequests(sessionId?: string) {
-  const { subscribe } = useWebSocket(sessionId);
+export function usePermissionRequests() {
+  const { subscribe } = useWebSocket();
   const [permissionRequests, setPermissionRequests] = useState<PermissionRequestData[]>([]);
   
   // Handle permission requested events
@@ -32,7 +32,7 @@ export function usePermissionRequests(sessionId?: string) {
       setPermissionRequests((prev) => [
         ...prev,
         {
-          permissionId: data.permission.permissionId,
+          permissionId: data.permission.id, // Use 'id' instead of 'permissionId'
           toolId: data.permission.toolId,
           args: data.permission.args,
           timestamp: data.permission.timestamp,

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, RefObject } from 'react';
+import { useEffect, useCallback } from 'react';
 
 export interface KeyboardShortcut {
   key: string;
@@ -11,7 +11,6 @@ export interface KeyboardShortcut {
 }
 
 export interface KeyboardShortcutsOptions {
-  targetRef?: RefObject<HTMLElement>;
   shortcuts: KeyboardShortcut[];
   enabled?: boolean;
 }
@@ -20,7 +19,6 @@ export interface KeyboardShortcutsOptions {
  * Hook to manage keyboard shortcuts
  */
 export function useKeyboardShortcuts({
-  _targetRef,
   shortcuts,
   enabled = true,
 }: KeyboardShortcutsOptions) {

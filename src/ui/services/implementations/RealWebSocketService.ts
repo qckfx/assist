@@ -34,7 +34,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
   private readonly throttleInterval = 100;
 
   // Throttled event emitter for high-frequency events
-  private throttledEmit = throttle(
+  private throttledEmit = throttle<(event: string, data: unknown) => void>(
     (event: string, data: unknown) => {
       super.emit(event, data);
     },
@@ -52,8 +52,12 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
   public emit(event: string, ...args: unknown[]): boolean {
     // For tool execution events, use buffering
     if (event === WebSocketEvent.TOOL_EXECUTION) {
-      const data = args[0];
-      const toolId = data.tool?.id;
+      const data = args[0] as Record<string, unknown>;
+      let toolId: string | undefined;
+      
+      if (typeof data.tool === 'object' && data.tool !== null && 'id' in data.tool) {
+        toolId = data.tool.id as string;
+      }
       
       if (toolId) {
         this.bufferToolResult(toolId, data);
@@ -167,9 +171,20 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
     this.socket.on(WebSocketEvent.ERROR, (error: Error | Record<string, unknown> | string) => {
       console.error('WebSocket error:', error);
       this.updateConnectionStatus(ConnectionStatus.ERROR);
+      
+      // Extract error message safely
+      let errorMessage = 'Unknown socket error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
       this.emit('connection', { 
         status: ConnectionStatus.ERROR, 
-        error: error.message || 'Unknown socket error' 
+        error: errorMessage
       });
     });
 

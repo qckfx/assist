@@ -28,7 +28,7 @@ export function usePermissionManager({
   autoApproveTools = ['LS', 'View', 'GlobTool', 'GrepTool'],
 }: UsePermissionManagerOptions = {}) {
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
-  const { subscribe } = useWebSocket(sessionId);
+  const { subscribe } = useWebSocket();
   const { addSystemMessage, addErrorMessage } = useTerminal();
   
   // Subscribe to permission request events
