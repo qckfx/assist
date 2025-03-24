@@ -326,15 +326,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
         }
       });
       
-      // For high-output tools, buffer messages
-      const toolOutput = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-      const message = `Running ${tool.name}...\n${toolOutput}`;
-      
-      // Add to buffer instead of directly dispatching
-      toolMessageBuffer.current.add({
-        toolId: tool.id || 'unknown',
-        message
-      });
+      // We no longer add tool outputs as messages since they'll be shown by the visualization component
       
       // High-frequency tools don't need to clear the execution indicator
       // but still need to show the indicator initially

@@ -75,7 +75,7 @@ export function Terminal({
   });
   
   // Initialize the tool stream hook to get active tool information
-  const { getActiveTools, getRecentTools, hasActiveTools } = useToolStream(sessionId);
+  const { getActiveTools, getRecentTools, hasActiveTools, toolHistory, activeToolCount } = useToolStream(sessionId);
   
   // Use provided theme or get from context
   const terminalContext = useTerminal();
@@ -95,12 +95,19 @@ export function Terminal({
     }
   }, [sessionId, terminalContext.joinSession, terminalContext.leaveSession]);
   
-  // Debug the themes
+  // Debug the themes and tools
   useEffect(() => {
     console.log('Terminal component received terminal theme:', themeToUse);
     console.log('Terminal color scheme:', themeToUse.colorScheme);
     console.log('App theme:', appTheme);
   }, [themeToUse, appTheme]);
+  
+  // Debug tool executions
+  useEffect(() => {
+    console.log('Tool history count:', toolHistory.length);
+    console.log('Active tool count:', activeToolCount);
+    console.log('Has active tools:', hasActiveTools);
+  }, [toolHistory, activeToolCount, hasActiveTools]);
   
   // Determine color scheme class and vars directly
   // If terminal is set to system, use the app theme, otherwise use terminal's setting
@@ -314,31 +321,30 @@ export function Terminal({
         id={ids.output}
       >
         <div className="flex-grow overflow-y-auto">
-          <MessageFeed 
-            messages={messages} 
-            className="terminal-message-animation"
-            ariaLabelledBy={ids.output}
-          />
-          
-          {/* Tool Visualizations */}
-          {showToolVisualizations && (
-            <div className="mx-4 my-2">
-              <ToolVisualizations
-                tools={getActiveTools()}
-                className="mb-2"
-                maxVisible={3}
+          {/* Recalculate tools on each render to ensure updates */}
+          {(() => {
+            // Capture current tools on each render
+            const activeTools = getActiveTools();
+            const recentTools = getRecentTools(5);
+            
+            console.log('Terminal rendering with active tools:', activeTools.length);
+            console.log('Terminal rendering with recent tools:', recentTools.length);
+            
+            const allTools = [...activeTools, ...recentTools];
+            const toolMap = Object.fromEntries(
+              allTools.map(tool => [tool.id, tool])
+            );
+            
+            return (
+              <MessageFeed 
+                messages={messages} 
+                className="terminal-message-animation"
+                ariaLabelledBy={ids.output}
+                toolExecutions={showToolVisualizations ? toolMap : {}}
+                showToolsInline={showToolVisualizations}
               />
-              
-              {/* Only show recent tools if no active tools */}
-              {!hasActiveTools && (
-                <ToolVisualizations
-                  tools={getRecentTools(2)}
-                  compact={true}
-                  maxVisible={2}
-                />
-              )}
-            </div>
-          )}
+            );
+          })()}
           
           {/* Add typing indicator */}
           {showTypingIndicator && terminalContext.typingIndicator && (
