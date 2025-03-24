@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, ReactNode, useEffect, useCallback } from 'react';
 import { TerminalState, TerminalAction, TerminalMessage } from '@/types/terminal';
 import { MessageType } from '@/components/Message';
-import { WebSocketEvent } from '@/types/api';
+import { WebSocketEvent, SessionData } from '@/types/api';
 import { useWebSocketContext } from './WebSocketContext';
 
 // Initial state
@@ -198,20 +198,20 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (!websocketContext) return;
     
     // Handler for processing started event
-    const handleProcessingStarted = ({ _sessionId }: { _sessionId: string }) => {
+    const handleProcessingStarted = ({ sessionId }: { sessionId: string }) => {
       dispatch({ type: 'SET_PROCESSING', payload: true });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: true });
     };
     
     // Handler for processing completed event
-    const handleProcessingCompleted = ({ _sessionId, _result }: { _sessionId: string, _result: unknown }) => {
+    const handleProcessingCompleted = ({ sessionId, result }: { sessionId: string, result: unknown }) => {
       dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
       dispatch({ type: 'CLEAR_STREAM_BUFFER' });
     };
     
     // Handler for processing error event
-    const handleProcessingError = ({ _sessionId, error }: { _sessionId: string, error: { name: string; message: string; stack?: string } }) => {
+    const handleProcessingError = ({ sessionId, error }: { sessionId: string, error: { name: string; message: string; stack?: string } }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -227,7 +227,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
     
     // Handler for processing aborted event
-    const handleProcessingAborted = ({ _sessionId }: { _sessionId: string }) => {
+    const handleProcessingAborted = ({ sessionId }: { sessionId: string }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -244,16 +244,16 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for tool execution event - now handled by tool visualization
     const handleToolExecution = ({ 
-      _sessionId, 
-      _tool, 
-      _result 
+      sessionId, 
+      tool, 
+      result 
     }: { 
-      _sessionId: string, 
-      _tool: { 
-        id?: string; 
-        name?: string;
+      sessionId: string, 
+      tool: { 
+        id: string; 
+        name: string;
       }, 
-      _result: unknown 
+      result: unknown 
     }) => {
       // Tool execution is now handled by the ToolVisualization component
       // No need to track current tool in TerminalContext anymore
@@ -262,10 +262,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for permission requested event
     const handlePermissionRequested = ({ 
-      _sessionId, 
+      sessionId, 
       permission 
     }: { 
-      _sessionId: string, 
+      sessionId: string, 
       permission: { 
         toolId: string;
         id: string;
@@ -284,10 +284,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for permission resolved event
     const handlePermissionResolved = ({ 
-      _sessionId, 
+      sessionId, 
       permissionId, 
       resolution 
-    }: { _sessionId: string, permissionId: string, resolution: boolean }) => {
+    }: { sessionId: string, permissionId: string, resolution: boolean }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -300,20 +300,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
     
     // Handler for session updated event - displays messages from the conversation history
-    const handleSessionUpdated = (sessionData: {
-      state?: {
-        conversationHistory?: Array<{
-          role: string;
-          content: Array<{
-            type: string;
-            text: string;
-          }>;
-        }>;
-      };
-    }) => {
-      // Check if session has state with conversation history
-      if (sessionData?.state?.conversationHistory) {
-        const history = sessionData.state.conversationHistory;
+    const handleSessionUpdated = (sessionData: SessionData) => {
+      // Check if session has history with conversation entries
+      if (sessionData?.history) {
+        const history = sessionData.history;
         
         // Only process the last message in the history if it's from the assistant
         const lastMessage = history[history.length - 1];
