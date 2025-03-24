@@ -62,7 +62,7 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
         ...state,
         messages: [
           {
-            id: `clear-${Date.now()}`,
+            id: `clear-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             content: 'Terminal cleared',
             type: 'system',
             timestamp: new Date(),
@@ -221,7 +221,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
           dispatch({ 
             type: 'ADD_MESSAGE', 
             payload: {
-              id: `tool-${Date.now()}`,
+              id: generateUniqueId('tool'),
               content: items[0].message,
               type: 'tool',
               timestamp: new Date()
@@ -242,7 +242,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
             dispatch({ 
               type: 'ADD_MESSAGE', 
               payload: {
-                id: `tool-${Date.now()}-${toolId}`,
+                id: generateUniqueId(`tool-${toolId}`),
                 content: messages.join('\n'), 
                 type: 'tool',
                 timestamp: new Date()
@@ -272,12 +272,6 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for processing completed event
     const handleProcessingCompleted = ({ sessionId, result }: { sessionId: string, result: any }) => {
-      dispatch({ type: 'ADD_MESSAGE', payload: {
-        id: `assistant-${Date.now()}`,
-        content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
-        type: 'assistant',
-        timestamp: new Date()
-      }});
       dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
       dispatch({ type: 'CLEAR_STREAM_BUFFER' });
@@ -288,7 +282,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
-          id: `error-${Date.now()}`,
+          id: generateUniqueId('error'),
           content: `Error: ${error.message}`,
           type: 'error',
           timestamp: new Date()
@@ -304,7 +298,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
-          id: `system-${Date.now()}`,
+          id: generateUniqueId('system'),
           content: 'Query processing was aborted',
           type: 'system',
           timestamp: new Date()
@@ -363,7 +357,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
-          id: `system-${Date.now()}`,
+          id: generateUniqueId('system'),
           content: `Permission requested for ${permission.toolId}`,
           type: 'system',
           timestamp: new Date()
@@ -380,12 +374,42 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
-          id: `system-${Date.now()}`,
+          id: generateUniqueId('system'),
           content: `Permission ${resolution ? 'granted' : 'denied'} for request ${permissionId}`,
           type: 'system',
           timestamp: new Date()
         }
       });
+    };
+    
+    // Handler for session updated event - displays messages from the conversation history
+    const handleSessionUpdated = (sessionData: any) => {
+      // Check if session has state with conversation history
+      if (sessionData && sessionData.state && sessionData.state.conversationHistory) {
+        const history = sessionData.state.conversationHistory;
+        
+        // Only process the last message in the history if it's from the assistant
+        const lastMessage = history[history.length - 1];
+        if (lastMessage && lastMessage.role === 'assistant') {
+          // Get the text content from the assistant's message
+          const textContent = lastMessage.content
+            .filter((item: any) => item.type === 'text')
+            .map((item: any) => item.text)
+            .join('\n');
+          
+          if (textContent.trim()) {
+            dispatch({ 
+              type: 'ADD_MESSAGE', 
+              payload: {
+                id: generateUniqueId('assistant'),
+                content: textContent,
+                type: 'assistant',
+                timestamp: new Date()
+              }
+            });
+          }
+        }
+      }
     };
     
     // Register event listeners using context's 'on' method which returns cleanup functions
@@ -396,7 +420,8 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       websocketContext.on(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted),
       websocketContext.on(WebSocketEvent.TOOL_EXECUTION, handleToolExecution),
       websocketContext.on(WebSocketEvent.PERMISSION_REQUESTED, handlePermissionRequested),
-      websocketContext.on(WebSocketEvent.PERMISSION_RESOLVED, handlePermissionResolved)
+      websocketContext.on(WebSocketEvent.PERMISSION_RESOLVED, handlePermissionResolved),
+      websocketContext.on(WebSocketEvent.SESSION_UPDATED, handleSessionUpdated)
     ];
     
     // Clean up event listeners
@@ -417,9 +442,16 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
   
   // Helper functions to make common actions easier
+  // Use a combination of timestamp and a random string for more unique IDs
+  const generateUniqueId = (prefix: string) => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    return `${prefix}-${timestamp}-${random}`;
+  };
+  
   const addMessage = (content: string, type: MessageType = 'system') => {
     const message: TerminalMessage = {
-      id: `${type}-${Date.now()}`,
+      id: generateUniqueId(type),
       content,
       type,
       timestamp: new Date(),

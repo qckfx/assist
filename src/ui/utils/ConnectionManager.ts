@@ -17,6 +17,8 @@ export interface ConnectionManagerOptions {
   maxReconnectAttempts?: number;
   reconnectDelay?: number;
   healthCheckInterval?: number;
+  maxBackoffDelay?: number;
+  healthCheckFailThreshold?: number; // How many health checks can fail before reconnecting
 }
 
 export class ConnectionManager extends EventEmitter {
@@ -24,16 +26,27 @@ export class ConnectionManager extends EventEmitter {
   private state: ConnectionState = ConnectionState.DISCONNECTED;
   private reconnectAttempts = 0;
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private healthCheckFailCount = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private options: Required<ConnectionManagerOptions>;
   
   constructor(options: ConnectionManagerOptions = {}) {
     super();
+
+    // Log initialization for debugging purposes
+    console.log('ConnectionManager: Initializing');
+    
+    // Get the current stack trace to help debug multiple instances
+    const stackTrace = new Error().stack;
+    console.log('ConnectionManager initialization stack trace:', stackTrace);
     
     this.options = {
       autoReconnect: true,
       maxReconnectAttempts: 10,
       reconnectDelay: 1000,
       healthCheckInterval: 30000,
+      maxBackoffDelay: 30000,
+      healthCheckFailThreshold: 2,
       ...options,
     };
     
@@ -126,9 +139,26 @@ export class ConnectionManager extends EventEmitter {
   private handleDisconnect(reason: string): void {
     this.setState(ConnectionState.DISCONNECTED);
     
-    // Attempt to reconnect if enabled
-    if (this.options.autoReconnect) {
-      this.handleReconnect();
+    // Log the disconnect reason
+    console.warn(`WebSocket disconnected: ${reason}`);
+    
+    // Transport close errors require special handling
+    if (reason === 'transport close' || reason === 'transport error') {
+      // Clear any existing reconnect timer
+      this.clearReconnectTimer();
+      
+      // For transport issues, attempt immediate reconnection with a small delay
+      if (this.options.autoReconnect) {
+        console.info('Transport close detected, scheduling immediate reconnection attempt');
+        this.reconnectTimer = setTimeout(() => {
+          this.handleReconnect();
+        }, 250); // Minimal delay for transport issues
+      }
+    } else {
+      // For normal disconnects, use standard reconnection
+      if (this.options.autoReconnect) {
+        this.handleReconnect();
+      }
     }
   }
   
@@ -138,9 +168,26 @@ export class ConnectionManager extends EventEmitter {
   private handleError(error: Error): void {
     this.setState(ConnectionState.ERROR);
     
+    // Log the error details
+    console.error('WebSocket error:', error);
+    
     // Attempt to reconnect if enabled
     if (this.options.autoReconnect) {
-      this.handleReconnect();
+      // For errors, clear any existing reconnect timer and try again
+      this.clearReconnectTimer();
+      this.reconnectTimer = setTimeout(() => {
+        this.handleReconnect();
+      }, 500); // Slightly longer delay for errors
+    }
+  }
+  
+  /**
+   * Clear any existing reconnect timer
+   */
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
   }
   
@@ -148,23 +195,51 @@ export class ConnectionManager extends EventEmitter {
    * Handle reconnection attempts
    */
   private handleReconnect(): void {
+    // Clear any existing reconnect timer
+    this.clearReconnectTimer();
+    
     if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
       this.emit('reconnect_failed', 'Maximum reconnection attempts reached');
+      
+      // Even after max attempts, schedule a final retry with a longer delay
+      // This helps with long-running dev sessions that might disconnect temporarily
+      this.reconnectTimer = setTimeout(() => {
+        console.log('Final reconnection attempt after max attempts reached');
+        this.reconnectAttempts = 0; // Reset the counter for a fresh start
+        this.webSocket.connect();
+      }, 60000); // Try again after a minute
+      
       return;
     }
     
     this.reconnectAttempts++;
     this.setState(ConnectionState.CONNECTING);
     
-    // Calculate backoff delay
+    // Calculate backoff delay with jitter to prevent reconnection storms
+    // Base delay with exponential backoff
+    const baseDelay = this.options.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1);
+    // Add jitter (±20% randomness)
+    const jitter = baseDelay * 0.2 * (Math.random() * 2 - 1);
+    // Apply final delay with max cap
     const delay = Math.min(
-      this.options.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1),
-      30000 // max 30 seconds
+      baseDelay + jitter,
+      this.options.maxBackoffDelay
     );
     
-    this.emit('reconnecting', this.reconnectAttempts);
+    console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.options.maxReconnectAttempts} in ${Math.round(delay)}ms`);
+    this.emit('reconnecting', { attempt: this.reconnectAttempts, delay });
     
-    setTimeout(() => {
+    // Schedule reconnection
+    this.reconnectTimer = setTimeout(() => {
+      console.log(`Executing reconnection attempt ${this.reconnectAttempts}`);
+      
+      // Reset the WebSocket service before reconnecting
+      if (this.reconnectAttempts > 2) {
+        // For multiple failures, try a harder reset of the connection
+        console.log('Performing hard reset of WebSocket connection before reconnecting');
+        this.webSocket.reset();
+      }
+      
       this.webSocket.connect();
     }, delay);
   }
@@ -191,13 +266,40 @@ export class ConnectionManager extends EventEmitter {
     }
     
     this.healthCheckTimer = setInterval(() => {
-      if (!this.webSocket.isConnected() && this.state === ConnectionState.CONNECTED) {
+      const isWebSocketConnected = this.webSocket.isConnected();
+      
+      // Log health check status periodically
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          `Health check: WebSocket.isConnected=${isWebSocketConnected}, ` + 
+          `ConnectionManager.state=${this.state}, ` +
+          `failCount=${this.healthCheckFailCount}`
+        );
+      }
+      
+      if (!isWebSocketConnected && this.state === ConnectionState.CONNECTED) {
         // Socket says disconnected but we think we're connected
-        this.setState(ConnectionState.DISCONNECTED);
+        this.healthCheckFailCount++;
+        console.warn(`Health check failed (${this.healthCheckFailCount}/${this.options.healthCheckFailThreshold}): WebSocket reports disconnected`);
         
-        if (this.options.autoReconnect) {
-          this.handleReconnect();
+        // Only take action if we've failed enough checks in a row
+        if (this.healthCheckFailCount >= this.options.healthCheckFailThreshold) {
+          console.error(`Health check threshold reached after ${this.healthCheckFailCount} failures, reconnecting`);
+          this.setState(ConnectionState.DISCONNECTED);
+          this.healthCheckFailCount = 0; // Reset counter
+          
+          if (this.options.autoReconnect) {
+            this.handleReconnect();
+          }
         }
+      } else if (isWebSocketConnected && this.state !== ConnectionState.CONNECTED) {
+        // Socket says connected but we think we're disconnected
+        console.warn('Health check discrepancy: WebSocket reports connected but ConnectionManager shows disconnected');
+        this.setState(ConnectionState.CONNECTED);
+        this.healthCheckFailCount = 0; // Reset counter
+      } else {
+        // State is consistent, reset failure counter
+        this.healthCheckFailCount = 0;
       }
     }, this.options.healthCheckInterval);
   }
@@ -216,12 +318,24 @@ export class ConnectionManager extends EventEmitter {
    * Clean up resources
    */
   public dispose(): void {
+    // Stop all timers
     this.stopHealthCheck();
+    this.clearReconnectTimer();
+    
+    // Disconnect from WebSocket
     this.disconnect();
     
+    // Reset all state
+    this.reconnectAttempts = 0;
+    this.healthCheckFailCount = 0;
+    
+    // Remove all event listeners
     this.webSocket.removeAllListeners(WebSocketEvent.CONNECT);
     this.webSocket.removeAllListeners(WebSocketEvent.DISCONNECT);
     this.webSocket.removeAllListeners(WebSocketEvent.ERROR);
+    
+    // Clear this instance's event listeners too
+    this.removeAllListeners();
   }
 }
 

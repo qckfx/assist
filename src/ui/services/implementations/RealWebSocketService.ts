@@ -92,25 +92,15 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
     // Create a stable socket.io connection that prioritizes WebSocket
     console.log('Creating socket.io connection with WebSocket priority');
     
-    // Configure to prefer WebSocket with polling fallback
-    this.socket = io({
-      // Explicitly prioritize WebSocket first
-      transports: ['websocket', 'polling'],
-      // Ensure upgrade is enabled
-      upgrade: true,
-      // Connection timeout and reconnection settings
-      timeout: 20000,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      // Use the default path
-      path: '/socket.io/'
-    });
-    
-    // Log useful connection info
-    // Use the Socket.io URL from the config or infer from the current page
+    // Get the current URL (or use config)
     const url = SOCKET_URL || window.location.origin;
-    console.log('Socket IO URI:', url);
-    console.log('Socket IO transport:', this.socket.io.engine?.transport?.name || 'not connected');
+    
+    console.log('Socket.IO connecting to:', url);
+    
+    // Simplified Socket.IO configuration with fallback to polling
+    this.socket = io();
+    
+    console.log('Socket.IO instance created with fallback transports');
     
     // Add detailed error logging
     this.socket.on("connect_error", (err: Error) => {

@@ -85,7 +85,14 @@ async function apiRequest<T = any, D = any>(
       console.groupEnd();
     }
     
-    return result as ApiResponse<T>;
+    // Standardize response format for consistency
+    const standardizedResult: ApiResponse<T> = {
+      success: result.success || result.accepted || false,
+      data: result.data || result,
+      error: result.error
+    };
+    
+    return standardizedResult;
   } catch (error: any) {
     clearTimeout(timeoutId);
     
