@@ -66,7 +66,7 @@ describe('SocketConnectionManager', () => {
     // Get the connect handler and call it
     const connectHandler = socket && vi.mocked(socket.on).mock.calls.find(
       call => call[0] === WebSocketEvent.CONNECT
-    )?.[1] as Function;
+    )?.[1] as () => void;
     
     if (connectHandler) {
       connectHandler();
@@ -79,7 +79,7 @@ describe('SocketConnectionManager', () => {
     // Get the disconnect handler and call it
     const disconnectHandler = socket && vi.mocked(socket.on).mock.calls.find(
       call => call[0] === WebSocketEvent.DISCONNECT
-    )?.[1] as Function;
+    )?.[1] as (reason: string) => void;
     
     if (disconnectHandler) {
       disconnectHandler('test reason');
@@ -105,7 +105,7 @@ describe('SocketConnectionManager', () => {
     
     const connectHandler = vi.mocked(socket.on).mock.calls.find(
       call => call[0] === WebSocketEvent.CONNECT
-    )?.[1] as Function;
+    )?.[1] as () => void;
     
     if (connectHandler) {
       connectHandler();
@@ -125,7 +125,7 @@ describe('SocketConnectionManager', () => {
     
     const connectHandler = vi.mocked(socket.on).mock.calls.find(
       call => call[0] === WebSocketEvent.CONNECT
-    )?.[1] as Function;
+    )?.[1] as () => void;
     
     if (connectHandler) {
       connectHandler();

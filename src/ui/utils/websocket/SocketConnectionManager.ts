@@ -192,7 +192,7 @@ export class SocketConnectionManager extends EventEmitter {
       this.setStatus(ConnectionStatus.DISCONNECTED);
     });
     
-    this.socket.on(WebSocketEvent.ERROR, (error: any) => {
+    this.socket.on(WebSocketEvent.ERROR, (error: Error | string | Record<string, unknown>) => {
       console.error('SocketConnectionManager: Connection error:', error);
       this.setStatus(ConnectionStatus.ERROR);
     });
@@ -215,7 +215,7 @@ export class SocketConnectionManager extends EventEmitter {
         console.log(`SocketConnectionManager: Reconnected after ${attempt} attempts`);
       });
       
-      this.socket.io.on('reconnect_error', (error: any) => {
+      this.socket.io.on('reconnect_error', (error: Error | string | Record<string, unknown>) => {
         console.error('SocketConnectionManager: Reconnection error:', error);
       });
       

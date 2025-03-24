@@ -1,5 +1,5 @@
 // Basic API response and request types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: {
@@ -24,7 +24,7 @@ export interface SessionHistoryEntry {
   content: Array<{
     type: 'text';
     text: string;
-    citations?: any[] | null;
+    citations?: Array<Record<string, unknown>> | null;
   }>;
 }
 
@@ -51,6 +51,21 @@ export interface PermissionRequest {
 export interface PermissionResolveRequest {
   id: string;
   granted: boolean;
+}
+
+/**
+ * Tool interface for WebSocket events
+ */
+export interface Tool {
+  id: string;
+  name: string;
+  args?: Record<string, unknown>;
+  paramSummary?: string;
+  timestamp?: string;
+  isActive?: boolean;
+  startTime?: string;
+  endTime?: string;
+  executionTime?: number;
 }
 
 /**
@@ -98,13 +113,13 @@ export interface WebSocketEventMap {
   [WebSocketEvent.JOIN_SESSION]: string;
   [WebSocketEvent.LEAVE_SESSION]: string;
   [WebSocketEvent.PROCESSING_STARTED]: { sessionId: string; };
-  [WebSocketEvent.PROCESSING_COMPLETED]: { sessionId: string; result: any; };
+  [WebSocketEvent.PROCESSING_COMPLETED]: { sessionId: string; result: unknown; };
   [WebSocketEvent.PROCESSING_ERROR]: { sessionId: string; error: { name: string; message: string; stack?: string; }; };
   [WebSocketEvent.PROCESSING_ABORTED]: { sessionId: string; };
-  [WebSocketEvent.TOOL_EXECUTION]: { sessionId: string; tool: any; result: any; };
+  [WebSocketEvent.TOOL_EXECUTION]: { sessionId: string; tool: Tool; result: unknown; };
   [WebSocketEvent.TOOL_EXECUTION_BATCH]: { 
     toolId: string; 
-    results: Array<{ sessionId: string; tool: any; result: any; }>;
+    results: Array<{ sessionId: string; tool: Tool; result: unknown; }>;
     isBatched: boolean;
     batchSize: number;
   };
@@ -126,7 +141,7 @@ export interface WebSocketEventMap {
       id: string;
       name: string;
     };
-    result: any;
+    result: unknown;
     paramSummary: string;
     executionTime: number;
     timestamp: string;
@@ -148,7 +163,15 @@ export interface WebSocketEventMap {
     isActive: false;
     startTime?: string;
   };
-  [WebSocketEvent.PERMISSION_REQUESTED]: { sessionId: string; permission: any; };
+  [WebSocketEvent.PERMISSION_REQUESTED]: { 
+    sessionId: string; 
+    permission: { 
+      id: string; 
+      toolId: string; 
+      args: Record<string, unknown>;
+      timestamp: string;
+    };
+  };
   [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };
   [WebSocketEvent.SESSION_UPDATED]: SessionData;
   [WebSocketEvent.STREAM_CONTENT]: { sessionId: string; content: string; };
