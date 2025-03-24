@@ -193,6 +193,7 @@ interface TerminalContextType {
   
   // Streaming-related properties
   isStreaming: boolean;
+  isProcessing: boolean;
   typingIndicator: boolean;
   progressIndicator: boolean;
   streamBuffer: string[];
@@ -518,6 +519,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     joinSession,
     leaveSession,
     isStreaming: state.isStreaming,
+    isProcessing: state.isProcessing,
     typingIndicator: state.typingIndicator,
     progressIndicator: state.progressIndicator,
     streamBuffer: state.streamBuffer,

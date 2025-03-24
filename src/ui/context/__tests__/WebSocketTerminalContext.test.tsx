@@ -97,6 +97,7 @@ vi.mocked(useTerminal).mockReturnValue({
   addAssistantMessage: vi.fn(),
   addToolMessage: vi.fn(),
   setProcessing: vi.fn(),
+  isProcessing: false,
   state: { 
     isProcessing: false, 
     isStreaming: false,

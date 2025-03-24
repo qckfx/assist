@@ -101,8 +101,8 @@ Session Information:
       // Send the query to the API with sessionId included
       const response = await apiClient.sendQuery(sessionId, command);
       
-      // Check for success or accepted - handle both API response formats
-      if (!response.success && !response.accepted) {
+      // Check for success and handle error if present
+      if (!response.success) {
         throw new Error(response.error?.message || 'Failed to process query');
       }
       

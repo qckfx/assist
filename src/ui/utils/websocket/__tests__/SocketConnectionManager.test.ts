@@ -64,7 +64,7 @@ describe('SocketConnectionManager', () => {
     const socket = manager.getSocket();
     
     // Get the connect handler and call it
-    const connectHandler = vi.mocked(socket?.on).mock.calls.find(
+    const connectHandler = socket && vi.mocked(socket.on).mock.calls.find(
       call => call[0] === WebSocketEvent.CONNECT
     )?.[1] as Function;
     
@@ -77,7 +77,7 @@ describe('SocketConnectionManager', () => {
     }
     
     // Get the disconnect handler and call it
-    const disconnectHandler = vi.mocked(socket?.on).mock.calls.find(
+    const disconnectHandler = socket && vi.mocked(socket.on).mock.calls.find(
       call => call[0] === WebSocketEvent.DISCONNECT
     )?.[1] as Function;
     
@@ -98,7 +98,12 @@ describe('SocketConnectionManager', () => {
     
     // Simulate connect event
     const socket = manager.getSocket();
-    const connectHandler = vi.mocked(socket?.on).mock.calls.find(
+    
+    if (!socket) {
+      throw new Error('Socket should be defined at this point');
+    }
+    
+    const connectHandler = vi.mocked(socket.on).mock.calls.find(
       call => call[0] === WebSocketEvent.CONNECT
     )?.[1] as Function;
     
@@ -113,7 +118,12 @@ describe('SocketConnectionManager', () => {
     
     // Simulate connect event
     const socket = manager.getSocket();
-    const connectHandler = vi.mocked(socket?.on).mock.calls.find(
+    
+    if (!socket) {
+      throw new Error('Socket should be defined at this point');
+    }
+    
+    const connectHandler = vi.mocked(socket.on).mock.calls.find(
       call => call[0] === WebSocketEvent.CONNECT
     )?.[1] as Function;
     
@@ -123,7 +133,9 @@ describe('SocketConnectionManager', () => {
     
     manager.joinSession('test-session');
     
-    expect(socket?.emit).toHaveBeenCalledWith(WebSocketEvent.JOIN_SESSION, 'test-session');
+    if (socket) {
+      expect(socket.emit).toHaveBeenCalledWith(WebSocketEvent.JOIN_SESSION, 'test-session');
+    }
     expect(manager.getCurrentSessionId()).toBe('test-session');
   });
   
