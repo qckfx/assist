@@ -5,15 +5,15 @@ import { useState, useCallback } from 'react';
 import apiClient from '../services/apiClient';
 import type { SessionStartRequest } from '../types/api';
 
-export function useApi<T, P extends any[]>(
-  apiFunction: (...args: P) => Promise<{ success: boolean; data?: T; error?: any }>,
+export default function useApi<T, P extends unknown[]>(
+  apiFunction: (...args: P) => Promise<{ success: boolean; data?: T; error?: Error | string | Record<string, unknown> }>,
   options: {
     onSuccess?: (data: T) => void;
-    onError?: (error: any) => void;
+    onError?: (error: Error | string | Record<string, unknown>) => void;
   } = {}
 ) {
   const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<Error | string | Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   
   const execute = useCallback(
@@ -39,9 +39,10 @@ export function useApi<T, P extends any[]>(
           return null;
         }
       } catch (err) {
-        setError(err);
+        const error = err as Error | string | Record<string, unknown>;
+        setError(error);
         if (options.onError) {
-          options.onError(err);
+          options.onError(error);
         }
         return null;
       } finally {
