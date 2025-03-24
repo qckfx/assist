@@ -15,7 +15,8 @@ import { TypingIndicator } from '@/components/TypingIndicator';
 import ProgressIndicator from '@/components/ProgressIndicator';
 import { ConnectionIndicator } from '@/components/ConnectionIndicator';
 import { useToolStream } from '@/hooks/useToolStream';
-import { ToolVisualizations } from '@/components/ToolVisualization';
+// We'll use this component in the future
+import _ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
 
 export interface TerminalProps {
   className?: string;

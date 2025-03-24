@@ -1,8 +1,7 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { Terminal } from '@/components/Terminal/Terminal';
 import { TerminalProvider } from '@/context/TerminalContext';
-import { TerminalMessage } from '@/types/terminal';
 import { vi } from 'vitest';
 
 describe('Terminal Accessibility and Theming', () => {

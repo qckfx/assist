@@ -1,9 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { vi, beforeEach, afterEach, describe, it, expect } from 'vitest';
+import { vi, beforeEach, describe, it, expect } from 'vitest';
 import { ConnectionStatus } from '@/types/api';
 import { WebSocketTerminalProvider } from '@/context/WebSocketTerminalContext';
-import { WebSocketProvider } from '@/context/WebSocketContext';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { TerminalProvider } from '@/context/TerminalContext';
 import WebSocketTerminal from '@/components/WebSocketTerminal';

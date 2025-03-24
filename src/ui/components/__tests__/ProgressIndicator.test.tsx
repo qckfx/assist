@@ -35,7 +35,7 @@ describe('ProgressIndicator Component', () => {
     // let's extract the formatTime function and test it directly
     
     // Access the component's implementation
-    const component = render(<ProgressIndicator />);
+    const _component = render(<ProgressIndicator />);
     
     // Create a test element to verify formatting
     const testElement = document.createElement('div');

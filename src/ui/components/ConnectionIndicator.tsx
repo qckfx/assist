@@ -3,7 +3,6 @@
  */
 import React from 'react';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
-import { ConnectionStatus } from '../types/api';
 
 /**
  * Props for the ConnectionIndicator component

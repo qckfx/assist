@@ -5,7 +5,7 @@
 /**
  * Format a tool execution result for display in the terminal
  */
-export function formatToolResult(toolName: string, result: any): string {
+export function formatToolResult(toolName: string, result: unknown): string {
   if (result === null || result === undefined) {
     return 'No result';
   }
@@ -52,7 +52,7 @@ export function formatToolResult(toolName: string, result: any): string {
       if (typeof result === 'object') {
         try {
           return JSON.stringify(result, null, 2);
-        } catch (e) {
+        } catch {
           return 'Complex object (cannot display)';
         }
       }
@@ -89,14 +89,16 @@ export function formatAnsiToHtml(text: string): string {
   let formatted = text;
   
   // Replace color codes
-  formatted = formatted.replace(/\u001b\[(\d+)m(.*?)(\u001b\[0m|\u001b\[\d+m)/g, 
-    (_, colorCode, content, end) => {
+  // eslint-disable-next-line no-control-regex
+  formatted = formatted.replace(/\x1b\[(\d+)m(.*?)(\x1b\[0m|\x1b\[\d+m)/g, 
+    (_, colorCode, content, _end) => {
       const cssClass = colorMap[colorCode] || '';
       return `<span class="${cssClass}">${content}</span>`;
     });
   
   // Handle remaining reset codes
-  formatted = formatted.replace(/\u001b\[0m/g, '</span>');
+  // eslint-disable-next-line no-control-regex
+  formatted = formatted.replace(/\x1b\[0m/g, '</span>');
   
   return formatted;
 }

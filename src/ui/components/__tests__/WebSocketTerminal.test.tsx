@@ -71,7 +71,7 @@ vi.mock('../Terminal/Terminal', () => ({
     messages, 
     showConnectionIndicator, 
     showTypingIndicator,
-    connectionStatus 
+    _connectionStatus 
   }: {
     onCommand: (command: string) => void;
     onClear: () => void;

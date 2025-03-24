@@ -23,7 +23,8 @@ function parseAnsi(text: string): React.ReactNode {
   // Replace common ANSI color codes with spans
   // This is a simplified version that handles basic colors
   const parts: React.ReactNode[] = [];
-  const regex = /\u001b\[(\d+)m(.*?)(?=\u001b|\u0000|$)/g;
+  // eslint-disable-next-line no-control-regex
+  const regex = /\x1b\[(\d+)m(.*?)(?=\x1b|\u0000|$)/g;
   let lastIndex = 0;
   let match;
   

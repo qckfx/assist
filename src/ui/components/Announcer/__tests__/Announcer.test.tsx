@@ -1,7 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { Announcer } from '../Announcer';
-import { vi } from 'vitest';
 
 describe('Announcer Component', () => {
   it('renders nothing when messages array is empty', () => {

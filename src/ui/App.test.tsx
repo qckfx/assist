@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import App from './App';
 import { ConnectionStatus } from '@/types/api';
 
@@ -90,7 +90,7 @@ vi.mock('./components/ThemeProvider', () => ({
 
 // Mock WebSocketTerminal component
 vi.mock('./components/WebSocketTerminal', () => ({
-  default: (props: any) => (
+  default: (_props: Record<string, unknown>) => (
     <div data-testid="websocket-terminal">
       <div data-testid="messages">
         <div data-testid="message">Welcome to qckfx Terminal</div>

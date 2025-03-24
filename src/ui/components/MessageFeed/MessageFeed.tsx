@@ -56,8 +56,8 @@ export function MessageFeed({
         tool
       }));
 
-    // Track tool items count for internal use
-    const toolCount = toolItems.length;
+    // Track tool items count for internal use (may be used in the future)
+    const _toolCount = toolItems.length;
 
     return {
       messageItems: messages.filter(msg => msg.type !== 'tool'), // Filter out tool messages

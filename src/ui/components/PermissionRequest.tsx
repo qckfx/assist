@@ -2,7 +2,7 @@
  * Permission request component for tool execution permissions
  */
 import React from 'react';
-import { usePermissionRequests, PermissionRequestData } from '../hooks/usePermissionRequests';
+import { usePermissionRequests } from '../hooks/usePermissionRequests';
 
 /**
  * Props for the PermissionRequest component
@@ -42,7 +42,7 @@ export function PermissionRequest({
     try {
       const date = new Date(timestamp);
       return date.toLocaleTimeString();
-    } catch (e) {
+    } catch {
       return timestamp;
     }
   };
@@ -50,7 +50,7 @@ export function PermissionRequest({
   const formatArgs = (args: Record<string, unknown>) => {
     try {
       return JSON.stringify(args, null, 2);
-    } catch (e) {
+    } catch {
       return Object.keys(args).join(', ');
     }
   };

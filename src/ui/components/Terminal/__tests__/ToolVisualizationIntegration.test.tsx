@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, _screen } from '@testing-library/react';
 import { Terminal } from '../Terminal';
 import { vi } from 'vitest';
 import { useToolStream } from '@/hooks/useToolStream';
@@ -40,7 +40,7 @@ vi.mock('@/components/ThemeProvider', () => ({
 }));
 
 // Create a wrapper for the component with providers
-const renderTerminal = (props: any) => {
+const renderTerminal = (props: Record<string, unknown>) => {
   return render(<Terminal {...props} />);
 };
 
