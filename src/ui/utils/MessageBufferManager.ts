@@ -7,7 +7,7 @@ export interface BufferOptions {
   chunkSize: number;
 }
 
-export class MessageBufferManager<T = any> {
+export class MessageBufferManager<T = unknown> {
   private buffer: T[] = [];
   private options: BufferOptions;
   private flushCallback: (items: T[]) => void;

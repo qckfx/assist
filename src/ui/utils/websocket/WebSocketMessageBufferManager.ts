@@ -4,7 +4,7 @@
  * Buffers WebSocket messages by category and flushes them at regular intervals.
  * This reduces the frequency of React component updates when many messages arrive quickly.
  */
-export class WebSocketMessageBufferManager<T = any> {
+export class WebSocketMessageBufferManager<T = unknown> {
   private buffer: Map<string, Array<{ timestamp: number; data: T }>> = new Map();
   private flushCallbacks: Map<string, (items: Array<{ timestamp: number; data: T }>) => void> = new Map();
   private flushInterval: number;

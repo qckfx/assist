@@ -1,22 +1,23 @@
 import { vi } from 'vitest';
+import { Socket } from 'socket.io-client';
+
+// Define callback types
+type SocketCallback = (...args: unknown[]) => void;
 
 // Create a registry to store callbacks
-export const __mockCallbacks: Record<string, (((...args: any[]) => void)[])> = {};
-export const __mockIoCallbacks: Record<string, (((...args: any[]) => void)[])> = {};
-
-// Socket.IO types
-import { Socket } from 'socket.io-client';
+export const __mockCallbacks: Record<string, SocketCallback[]> = {};
+export const __mockIoCallbacks: Record<string, SocketCallback[]> = {};
 
 // Create a mockSocket object with explicit typing
 export const mockSocket: Partial<Socket> = {
-  on: vi.fn().mockImplementation((event: string | symbol, callback: (...args: any[]) => void): Socket => {
+  on: vi.fn().mockImplementation((event: string | symbol, callback: SocketCallback): Socket => {
     const eventKey = String(event);
     __mockCallbacks[eventKey] = __mockCallbacks[eventKey] || [];
     __mockCallbacks[eventKey].push(callback);
     return mockSocket as Socket;
   }),
   
-  off: vi.fn().mockImplementation((event?: string | symbol, callback?: (...args: any[]) => void): Socket => {
+  off: vi.fn().mockImplementation((event?: string | symbol, callback?: SocketCallback): Socket => {
     if (event) {
       const eventKey = String(event);
       if (__mockCallbacks[eventKey] && callback) {
@@ -33,13 +34,13 @@ export const mockSocket: Partial<Socket> = {
   connect: vi.fn(),
   
   io: {
-    on: vi.fn().mockImplementation((event: string, callback: (...args: any[]) => void) => {
+    on: vi.fn().mockImplementation((event: string, callback: SocketCallback) => {
       __mockIoCallbacks[event] = __mockIoCallbacks[event] || [];
       __mockIoCallbacks[event].push(callback);
       return mockSocket.io;
     }),
     
-    off: vi.fn().mockImplementation((event?: string, callback?: (...args: any[]) => void) => {
+    off: vi.fn().mockImplementation((event?: string, callback?: SocketCallback) => {
       if (event) {
         if (__mockIoCallbacks[event] && callback) {
           __mockIoCallbacks[event] = __mockIoCallbacks[event].filter(cb => cb !== callback);
@@ -69,20 +70,20 @@ export const mockSocket: Partial<Socket> = {
     _reconnectionDelayMax: 5000,
     _randomizationFactor: 0.5,
     _timeout: 20000
-  } as any
+  } as Record<string, unknown>
 };
 
 // Export the io function with proper return type
 export const io = vi.fn((): Socket => mockSocket as Socket);
 
 // Helper functions to trigger events
-export const __triggerEvent = (event: string, ...args: any[]): void => {
+export const __triggerEvent = (event: string, ...args: unknown[]): void => {
   if (__mockCallbacks[event]) {
     __mockCallbacks[event].forEach(callback => callback(...args));
   }
 };
 
-export const __triggerIoEvent = (event: string, ...args: any[]): void => {
+export const __triggerIoEvent = (event: string, ...args: unknown[]): void => {
   if (__mockIoCallbacks[event]) {
     __mockIoCallbacks[event].forEach(callback => callback(...args));
   }

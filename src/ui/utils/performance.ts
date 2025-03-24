@@ -5,14 +5,15 @@
 /**
  * Creates a throttled function that only invokes func at most once per every wait milliseconds
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number = 100
 ): (...args: Parameters<T>) => void {
   let timeout: ReturnType<typeof setTimeout> | null = null;
   let previous = 0;
   
-  return function(this: any, ...args: Parameters<T>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function(this: unknown, ...args: Parameters<T>) {
     const now = Date.now();
     const remaining = wait - (now - previous);
     
@@ -39,13 +40,14 @@ export function throttle<T extends (...args: any[]) => any>(
  * Creates a debounced function that delays invoking func until after wait milliseconds
  * have elapsed since the last time the debounced function was invoked
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number = 100
 ): (...args: Parameters<T>) => void {
   let timeout: ReturnType<typeof setTimeout> | null = null;
   
-  return function(this: any, ...args: Parameters<T>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function(this: unknown, ...args: Parameters<T>) {
     const later = () => {
       timeout = null;
       func.apply(this, args);
@@ -89,13 +91,14 @@ export function batch<T>(
 /**
  * Creates a function that memoizes the result of func
  */
-export function memoize<T extends (...args: any[]) => any>(
+export function memoize<T extends (...args: unknown[]) => unknown>(
   func: T,
-  resolver?: (...args: Parameters<T>) => any
+  resolver?: (...args: Parameters<T>) => unknown
 ): T {
   const cache = new Map();
   
-  return function(this: any, ...args: Parameters<T>): ReturnType<T> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function(this: unknown, ...args: Parameters<T>): ReturnType<T> {
     const key = resolver ? resolver.apply(this, args) : args[0];
     
     if (cache.has(key)) {
