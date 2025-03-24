@@ -2,19 +2,17 @@
  * Tests for WebSocketContext
  */
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, renderHook, act } from '@testing-library/react';
-import { WebSocketProvider, useWebSocketContext, WebSocketContext } from '../WebSocketContext';
-import { ConnectionStatus, WebSocketEvent } from '../../types/api';
-import { Socket } from 'socket.io-client';
+import { describe, it, expect, vi } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { WebSocketProvider, useWebSocketContext } from '../WebSocketContext';
 
 // Mock the websocket utilities
 vi.mock('@/ui/utils/websocket', () => {
   // Create event emitter for testing
   class MockEventEmitter {
-    private listeners: Record<string, Array<(...args: any[]) => void>> = {};
+    private listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
     
-    on(event: string, callback: (...args: any[]) => void) {
+    on(event: string, callback: (...args: unknown[]) => void) {
       if (!this.listeners[event]) {
         this.listeners[event] = [];
       }
@@ -22,7 +20,7 @@ vi.mock('@/ui/utils/websocket', () => {
       return this;
     }
     
-    off(event: string, callback: (...args: any[]) => void) {
+    off(event: string, callback: (...args: unknown[]) => void) {
       if (!this.listeners[event]) return this;
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
       return this;
@@ -33,7 +31,7 @@ vi.mock('@/ui/utils/websocket', () => {
       return this;
     }
     
-    emit(event: string, ...args: any[]) {
+    emit(event: string, ...args: unknown[]) {
       if (!this.listeners[event]) return false;
       this.listeners[event].forEach(callback => callback(...args));
       return true;

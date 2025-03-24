@@ -76,7 +76,7 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
         isProcessing: action.payload,
       };
       
-    case 'ADD_TO_HISTORY':
+    case 'ADD_TO_HISTORY': {
       // Avoid duplicates at the end
       if (state.history.length > 0 && state.history[state.history.length - 1] === action.payload) {
         return state;
@@ -92,6 +92,7 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
         ...state,
         history: newHistory,
       };
+    }
       
     case 'CLEAR_HISTORY':
       return {
@@ -117,7 +118,7 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
         },
       };
       
-    case 'SET_COLOR_SCHEME':
+    case 'SET_COLOR_SCHEME': {
       console.log('TerminalContext reducer: SET_COLOR_SCHEME', action.payload);
       const newState = {
         ...state,
@@ -128,6 +129,7 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
       };
       console.log('New terminal theme state:', newState.theme);
       return newState;
+    }
       
     // Streaming-related actions
     case 'SET_TYPING_INDICATOR':
@@ -266,20 +268,20 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (!websocketContext) return;
     
     // Handler for processing started event
-    const handleProcessingStarted = ({ sessionId }: { sessionId: string }) => {
+    const handleProcessingStarted = ({ _sessionId }: { _sessionId: string }) => {
       dispatch({ type: 'SET_PROCESSING', payload: true });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: true });
     };
     
     // Handler for processing completed event
-    const handleProcessingCompleted = ({ sessionId, result }: { sessionId: string, result: any }) => {
+    const handleProcessingCompleted = ({ _sessionId, _result }: { _sessionId: string, _result: unknown }) => {
       dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
       dispatch({ type: 'CLEAR_STREAM_BUFFER' });
     };
     
     // Handler for processing error event
-    const handleProcessingError = ({ sessionId, error }: { sessionId: string, error: { name: string; message: string; stack?: string } }) => {
+    const handleProcessingError = ({ _sessionId, error }: { _sessionId: string, error: { name: string; message: string; stack?: string } }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -295,7 +297,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
     
     // Handler for processing aborted event
-    const handleProcessingAborted = ({ sessionId }: { sessionId: string }) => {
+    const handleProcessingAborted = ({ _sessionId }: { _sessionId: string }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -312,10 +314,17 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for tool execution event
     const handleToolExecution = ({ 
-      sessionId, 
+      _sessionId, 
       tool, 
-      result 
-    }: { sessionId: string, tool: any, result: any }) => {
+      _result 
+    }: { 
+      _sessionId: string, 
+      tool: { 
+        id?: string; 
+        name?: string;
+      }, 
+      _result: unknown 
+    }) => {
       // Set current tool so UI can show progress
       dispatch({ 
         type: 'SET_CURRENT_TOOL_EXECUTION',
@@ -344,9 +353,15 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for permission requested event
     const handlePermissionRequested = ({ 
-      sessionId, 
+      _sessionId, 
       permission 
-    }: { sessionId: string, permission: any }) => {
+    }: { 
+      _sessionId: string, 
+      permission: { 
+        toolId: string;
+        id: string;
+      }
+    }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -360,10 +375,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for permission resolved event
     const handlePermissionResolved = ({ 
-      sessionId, 
+      _sessionId, 
       permissionId, 
       resolution 
-    }: { sessionId: string, permissionId: string, resolution: boolean }) => {
+    }: { _sessionId: string, permissionId: string, resolution: boolean }) => {
       dispatch({ 
         type: 'ADD_MESSAGE', 
         payload: {
@@ -376,9 +391,19 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
     
     // Handler for session updated event - displays messages from the conversation history
-    const handleSessionUpdated = (sessionData: any) => {
+    const handleSessionUpdated = (sessionData: {
+      state?: {
+        conversationHistory?: Array<{
+          role: string;
+          content: Array<{
+            type: string;
+            text: string;
+          }>;
+        }>;
+      };
+    }) => {
       // Check if session has state with conversation history
-      if (sessionData && sessionData.state && sessionData.state.conversationHistory) {
+      if (sessionData?.state?.conversationHistory) {
         const history = sessionData.state.conversationHistory;
         
         // Only process the last message in the history if it's from the assistant
@@ -386,8 +411,8 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (lastMessage && lastMessage.role === 'assistant') {
           // Get the text content from the assistant's message
           const textContent = lastMessage.content
-            .filter((item: any) => item.type === 'text')
-            .map((item: any) => item.text)
+            .filter(item => item.type === 'text')
+            .map(item => item.text)
             .join('\n');
           
           if (textContent.trim()) {

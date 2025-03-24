@@ -196,11 +196,12 @@ export function WebSocketProvider({
     }
     
     // Set up the listener
-    socket.on(event as string, callback as any);
+    // We need to cast here because Socket.io typings don't match our WebSocketEvent enum perfectly
+    socket.on(event as string, callback as (data: unknown) => void);
     
     // Return unsubscribe function
     return () => {
-      socket.off(event as string, callback as any);
+      socket.off(event as string, callback as (data: unknown) => void);
     };
   }, []);
   
@@ -212,7 +213,7 @@ export function WebSocketProvider({
     const buffer = messageBuffer.current;
     
     // Set up a buffer listener
-    buffer.onFlush(event as string, callback as any);
+    buffer.onFlush(event as string, callback as (items: Array<{ timestamp: number; data: unknown }>) => void);
     
     // Subscribe to raw events to add them to the buffer
     const unsubscribe = on(event, (data) => {

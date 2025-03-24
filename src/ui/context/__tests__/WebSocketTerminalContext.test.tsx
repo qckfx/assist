@@ -108,7 +108,7 @@ const mockConnectToSession = vi.fn().mockReturnValue(true);
 
 // Get references to the module functions to access mock implementations
 import { useTerminalWebSocket } from '@/hooks/useTerminalWebSocket';
-import { useStreamingMessages } from '@/hooks/useStreamingMessages';  
+import { _useStreamingMessages } from '@/hooks/useStreamingMessages';  
 import { useTerminalCommands } from '@/hooks/useTerminalCommands';
 import { usePermissionManager } from '@/hooks/usePermissionManager';
 import { useTerminal } from '@/context/TerminalContext';
@@ -381,4 +381,4 @@ describe('WebSocketTerminalContext', () => {
       expect(mockConnectToSession).toHaveBeenCalledWith('test-session-id');
     });
   });
-});;
+});

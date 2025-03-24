@@ -1,4 +1,4 @@
-import React from 'react';
+// No React import needed for this test file
 import { renderHook } from '@testing-library/react';
 import { useMediaQuery, useIsSmallScreen, useIsMediumScreen, useIsLargeScreen } from '../useMediaQuery';
 import { vi } from 'vitest';
