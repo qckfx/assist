@@ -18,11 +18,19 @@ import { ToolResultEntry } from '../../types';
  * Events emitted by the agent service
  */
 export enum AgentServiceEvent {
+  // Process lifecycle events
   PROCESSING_STARTED = 'processing:started',
   PROCESSING_COMPLETED = 'processing:completed',
   PROCESSING_ERROR = 'processing:error',
   PROCESSING_ABORTED = 'processing:aborted',
+  
+  // Tool events
   TOOL_EXECUTION = 'tool:execution',
+  TOOL_EXECUTION_STARTED = 'tool:execution:started',
+  TOOL_EXECUTION_COMPLETED = 'tool:execution:completed',
+  TOOL_EXECUTION_ERROR = 'tool:execution:error',
+  
+  // Permission events
   PERMISSION_REQUESTED = 'permission:requested',
   PERMISSION_RESOLVED = 'permission:resolved',
 }
@@ -66,6 +74,40 @@ export class AgentService extends EventEmitter {
   private config: AgentServiceConfig;
   private activeProcessingSessionIds: Set<string> = new Set();
   private permissionRequests: Map<string, PermissionRequest> = new Map();
+  
+  /**
+   * Creates a concise summary of tool arguments for display
+   * @private
+   * @param toolId The ID of the tool being executed
+   * @param args The arguments passed to the tool
+   * @returns A string summary of the arguments
+   */
+  private summarizeToolParameters(toolId: string, args: Record<string, unknown>): string {
+    // Special handling for file-related tools
+    if ('file_path' in args || 'filepath' in args || 'path' in args) {
+      const filePath = (args.file_path || args.filepath || args.path) as string;
+      return filePath;
+    }
+    
+    // Special handling for pattern-based tools
+    if ('pattern' in args) {
+      return `pattern: ${args.pattern}${args.include ? `, include: ${args.include}` : ''}`;
+    }
+    
+    // Special handling for command execution
+    if ('command' in args) {
+      const cmd = args.command as string;
+      return cmd.length > 40 ? `${cmd.substring(0, 40)}...` : cmd;
+    }
+    
+    // Default case - basic serialization with length limit
+    try {
+      const str = JSON.stringify(args).replace(/[{}"]/g, '');
+      return str.length > 50 ? `${str.substring(0, 50)}...` : str;
+    } catch (e) {
+      return 'Tool parameters';
+    }
+  }
 
   constructor(config: AgentServiceConfig) {
     super();
@@ -184,7 +226,84 @@ export class AgentService extends EventEmitter {
       // Since the Agent doesn't have an EventEmitter interface, we can't directly attach event listeners
       // Instead, we'll collect tool results while processing
 
-      // Process the query
+      // Hook into the agent to enhance tool execution events
+      // We'll create a tool executor wrapper to emit our enhanced events
+      const originalExecute = agent.getToolRegistry().executeFunction;
+      agent.getToolRegistry().executeFunction = async (toolId, args, toolUseId) => {
+        // Get the tool name
+        const tool = agent.getToolRegistry().getTool(toolId);
+        const toolName = tool?.name || toolId;
+        
+        // Create parameter summary
+        const paramSummary = this.summarizeToolParameters(toolId, args);
+        const startTime = Date.now();
+        
+        // Emit the tool execution started event
+        this.emit(AgentServiceEvent.TOOL_EXECUTION_STARTED, {
+          sessionId,
+          tool: {
+            id: toolId,
+            name: toolName,
+          },
+          args,
+          paramSummary,
+          timestamp: new Date(startTime).toISOString(),
+        });
+        
+        try {
+          // Execute the original function
+          const result = await originalExecute(toolId, args, toolUseId);
+          
+          // Calculate execution time
+          const endTime = Date.now();
+          const executionTime = endTime - startTime;
+          
+          // Emit the standard tool execution event for backward compatibility
+          this.emit(AgentServiceEvent.TOOL_EXECUTION, { 
+            sessionId,
+            tool: {
+              id: toolId,
+              name: toolName,
+            },
+            result,
+          });
+          
+          // Emit the new tool execution completed event
+          this.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, {
+            sessionId,
+            tool: {
+              id: toolId,
+              name: toolName,
+            },
+            result,
+            paramSummary,
+            executionTime,
+            timestamp: new Date(endTime).toISOString(),
+          });
+          
+          return result;
+        } catch (error) {
+          // Emit the tool execution error event
+          this.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, {
+            sessionId,
+            tool: {
+              id: toolId,
+              name: toolName,
+            },
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+            },
+            paramSummary,
+            timestamp: new Date().toISOString(),
+          });
+          
+          // Re-throw the error to be handled by the agent
+          throw error;
+        }
+      };
+      
+      // Process the query with our wrapped tool executor
       const result = await agent.processQuery(query, session.state);
 
       if (result.error) {
@@ -195,6 +314,9 @@ export class AgentService extends EventEmitter {
       if (result.result && result.result.toolResults) {
         toolResults.push(...result.result.toolResults);
       }
+      
+      // Restore the original execute function
+      agent.getToolRegistry().executeFunction = originalExecute;
 
       // Update the session with the new state, ensuring proper structure for conversationHistory
       const sessionState = result.sessionState || {};

@@ -31,7 +31,14 @@ jest.mock('../SessionManager', () => {
 
 // Mock the agent
 jest.mock('../../../index', () => {
-  // Create a mock agent that doesn't have event emitter capabilities
+  // Create a mock tool registry with executeFunction
+  const mockToolRegistry = {
+    executeFunction: jest.fn().mockResolvedValue({ result: 'Tool executed successfully' }),
+    getTool: jest.fn().mockReturnValue({ name: 'MockTool' }),
+    getToolDescriptions: jest.fn().mockReturnValue([]),
+  };
+  
+  // Create a mock agent that includes the tool registry
   const mockAgent = {
     processQuery: jest.fn().mockResolvedValue({
       response: 'Mock response',
@@ -42,6 +49,7 @@ jest.mock('../../../index', () => {
       },
       done: true
     }),
+    getToolRegistry: jest.fn().mockReturnValue(mockToolRegistry),
   };
   
   return {
@@ -308,6 +316,105 @@ describe('AgentService', () => {
       const result = agentService.resolvePermission('non-existent-id', true);
       
       expect(result).toBe(false);
+    });
+  });
+  
+  describe('tool execution', () => {
+    it('should emit tool execution events during processing', async () => {
+      // Setup event listeners
+      const toolExecutionStartedHandler = jest.fn();
+      const toolExecutionCompletedHandler = jest.fn();
+      const toolExecutionHandler = jest.fn();  // Legacy handler
+      
+      agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, toolExecutionStartedHandler);
+      agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, toolExecutionCompletedHandler);
+      agentService.on(AgentServiceEvent.TOOL_EXECUTION, toolExecutionHandler);
+      
+      // Get direct reference to the mock function from the mock system
+      const mockExecuteFunction = require('../../../index').createAgent().getToolRegistry().executeFunction;
+      
+      // Set up the mock to simulate tool execution
+      mockExecuteFunction.mockImplementationOnce(async () => {
+        return { result: 'Mock tool result' };
+      });
+      
+      // Process a query to trigger the tool execution
+      await agentService.processQuery('mock-session-id', 'Test query using tools');
+      
+      // Verify that the tool execution functions were wrapped
+      expect(mockExecuteFunction).toHaveBeenCalled();
+      
+      // Verify events were emitted in the correct order with the right data
+      expect(toolExecutionStartedHandler).toHaveBeenCalledWith(expect.objectContaining({
+        sessionId: 'mock-session-id',
+        tool: expect.objectContaining({
+          id: expect.any(String),
+          name: expect.any(String),
+        }),
+        paramSummary: expect.any(String),
+        timestamp: expect.any(String),
+      }));
+      
+      expect(toolExecutionCompletedHandler).toHaveBeenCalledWith(expect.objectContaining({
+        sessionId: 'mock-session-id',
+        tool: expect.objectContaining({
+          id: expect.any(String),
+          name: expect.any(String),
+        }),
+        result: expect.any(Object),
+        paramSummary: expect.any(String),
+        executionTime: expect.any(Number),
+        timestamp: expect.any(String),
+      }));
+      
+      // Legacy tool execution event should also be fired
+      expect(toolExecutionHandler).toHaveBeenCalledWith(expect.objectContaining({
+        sessionId: 'mock-session-id',
+        tool: expect.objectContaining({
+          id: expect.any(String),
+          name: expect.any(String),
+        }),
+        result: expect.any(Object),
+      }));
+    });
+    
+    it('should emit tool execution error events when tools fail', async () => {
+      // Setup error event listener
+      const toolExecutionErrorHandler = jest.fn();
+      agentService.on(AgentServiceEvent.TOOL_EXECUTION_ERROR, toolExecutionErrorHandler);
+      
+      // Get direct reference to the mock function
+      const mockExecuteFunction = require('../../../index').createAgent().getToolRegistry().executeFunction;
+      
+      // Make the tool execution fail
+      const mockError = new Error('Tool execution failed');
+      mockExecuteFunction.mockRejectedValueOnce(mockError);
+      
+      // Create another mock to avoid unhandled rejection in the test
+      const mockAgent = require('../../../index').createAgent();
+      mockAgent.processQuery.mockResolvedValueOnce({
+        response: 'Error response',
+        sessionState: { conversationHistory: [] },
+        error: 'Tool execution failed',
+        done: true
+      });
+      
+      // Process a query to trigger the tool execution
+      await agentService.processQuery('mock-session-id', 'Test query with failing tool');
+      
+      // Verify error event was emitted
+      expect(toolExecutionErrorHandler).toHaveBeenCalledWith(expect.objectContaining({
+        sessionId: 'mock-session-id',
+        tool: expect.objectContaining({
+          id: expect.any(String),
+          name: expect.any(String),
+        }),
+        error: expect.objectContaining({
+          message: 'Tool execution failed',
+        }),
+        paramSummary: expect.any(String),
+        timestamp: expect.any(String),
+      }));
     });
   });
 });

@@ -18,6 +18,9 @@ export enum WebSocketEvent {
   PROCESSING_ERROR = 'processing_error',
   PROCESSING_ABORTED = 'processing_aborted',
   TOOL_EXECUTION = 'tool_execution',
+  TOOL_EXECUTION_STARTED = 'tool_execution_started',
+  TOOL_EXECUTION_COMPLETED = 'tool_execution_completed',
+  TOOL_EXECUTION_ERROR = 'tool_execution_error',
   PERMISSION_REQUESTED = 'permission_requested',
   PERMISSION_RESOLVED = 'permission_resolved',
   SESSION_UPDATED = 'session_updated',
@@ -312,12 +315,45 @@ export class WebSocketService {
       // No need to send session update on abort as there's no new conversation data
     });
 
-    // Tool execution
+    // Legacy tool execution (for backward compatibility)
     this.agentService.on(AgentServiceEvent.TOOL_EXECUTION, ({ sessionId, tool, result }) => {
       this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, { 
         sessionId,
         tool,
         result, 
+      });
+    });
+    
+    // Tool execution started
+    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, ({ sessionId, tool, paramSummary, timestamp }) => {
+      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, { 
+        sessionId,
+        tool,
+        paramSummary,
+        timestamp,
+      });
+    });
+    
+    // Tool execution completed
+    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, ({ sessionId, tool, result, paramSummary, executionTime, timestamp }) => {
+      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, { 
+        sessionId,
+        tool,
+        result,
+        paramSummary,
+        executionTime,
+        timestamp,
+      });
+    });
+    
+    // Tool execution error
+    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_ERROR, ({ sessionId, tool, error, paramSummary, timestamp }) => {
+      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ERROR, { 
+        sessionId,
+        tool,
+        error,
+        paramSummary,
+        timestamp,
       });
     });
 
