@@ -1,7 +1,7 @@
 /**
  * Session manager tests
  */
-import { SessionManager, Session } from '../SessionManager';
+import { SessionManager } from '../SessionManager';
 import { SessionNotFoundError } from '../../utils/errors';
 
 // Mock serverLogger

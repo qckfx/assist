@@ -4,7 +4,6 @@
 import { AgentService, AgentServiceEvent, createAgentService } from '../AgentService';
 import { sessionManager } from '../SessionManager';
 import { AgentBusyError } from '../../utils/errors';
-import { EventEmitter } from 'events';
 
 // Mock dependencies
 jest.mock('../../logger', () => ({
@@ -375,6 +374,7 @@ describe('AgentService', () => {
       agentService.on(AgentServiceEvent.TOOL_EXECUTION, toolExecutionHandler);
       
       // Get a reference to the module
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const indexModule = require('../../../index');
       
       // Manually trigger the tool execution callbacks to simulate tool execution
@@ -442,6 +442,7 @@ describe('AgentService', () => {
       agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, toolExecutionStartedHandler);
       
       // Get reference to the module
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const indexModule = require('../../../index');
       const { createAgent } = indexModule;
       const mockAgent = createAgent();

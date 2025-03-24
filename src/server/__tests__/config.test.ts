@@ -68,7 +68,7 @@ describe('Server Configuration', () => {
         port: 3000,
         host: 'localhost',
       };
-      // @ts-ignore - the tests need updating to include the development property
+      // @ts-expect-error - The tests need updating to include the development property
       expect(getServerUrl(config)).toBe('http://localhost:3000');
     });
     
@@ -78,7 +78,7 @@ describe('Server Configuration', () => {
         port: 8080,
         host: '127.0.0.1',
       };
-      // @ts-ignore - the tests need updating to include the development property
+      // @ts-expect-error - The tests need updating to include the development property
       expect(getServerUrl(config)).toBe('http://127.0.0.1:8080');
     });
   });

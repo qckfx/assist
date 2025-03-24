@@ -213,9 +213,9 @@ export class WebSocketService {
       if (process.env.NODE_ENV === 'development') {
         // Use standard event listeners for logging instead of modifying private properties
         const originalOn = socket.on;
-        socket.on = function(event: string, listener: (...args: any[]) => void) {
+        socket.on = function(event: string, listener: (...args: unknown[]) => void) {
           // Wrap each event listener with logging
-          const wrappedListener = (...args: any[]) => {
+          const wrappedListener = (...args: unknown[]) => {
             serverLogger.debug(`Socket ${socket.id} received event '${event}' with data:`, args);
             return listener.apply(this, args);
           };
@@ -328,7 +328,7 @@ export class WebSocketService {
       });
       
       // Add special handling for transport errors at the connection level
-      socket.conn.on('packet', (packet: any) => {
+      socket.conn.on('packet', (packet: { type: string; data?: unknown }) => {
         if (packet.type === 'error') {
           serverLogger.error(`Transport packet error for socket ${socket.id}:`, packet.data);
         }

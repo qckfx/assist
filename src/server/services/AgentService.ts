@@ -7,12 +7,12 @@ import {
   createAnthropicProvider,
   createLogger,
   LogLevel,
-  LogCategory,
 } from '../../index';
 import { Session, sessionManager } from './SessionManager';
-import { ServerError, ApiError, AgentBusyError } from '../utils/errors';
+import { ServerError, AgentBusyError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { ToolResultEntry } from '../../types';
+import { Anthropic } from '@anthropic-ai/sdk';
 
 /**
  * Events emitted by the agent service
@@ -104,7 +104,8 @@ export class AgentService extends EventEmitter {
     try {
       const str = JSON.stringify(args).replace(/[{}"]/g, '');
       return str.length > 50 ? `${str.substring(0, 50)}...` : str;
-    } catch (e) {
+    } catch {
+      // Return a fallback string if JSON serialization fails
       return 'Tool parameters';
     }
   }
@@ -122,7 +123,7 @@ export class AgentService extends EventEmitter {
   /**
    * Start a session with optional configuration
    */
-  public startSession(config?: { model?: string }): Session {
+  public startSession(_config?: { model?: string }): Session {
     // Create a new session
     const session = sessionManager.createSession();
     return session;
@@ -224,7 +225,7 @@ export class AgentService extends EventEmitter {
       const toolResults: ToolResultEntry[] = [];
       
       // Register callbacks for tool execution events using the new API
-      const unregisterStart = agent.toolRegistry.onToolExecutionStart((toolId, args, context) => {
+      const unregisterStart = agent.toolRegistry.onToolExecutionStart((toolId, args, _context) => {
         const tool = agent.toolRegistry.getTool(toolId);
         const toolName = tool?.name || toolId;
         const paramSummary = this.summarizeToolParameters(toolId, args);
@@ -456,7 +457,7 @@ export class AgentService extends EventEmitter {
   /**
    * Get the history for a session
    */
-  public getHistory(sessionId: string): any[] {
+  public getHistory(sessionId: string): Anthropic.Messages.MessageParam[] {
     // Get the session
     const session = sessionManager.getSession(sessionId);
     return session.state.conversationHistory || [];
