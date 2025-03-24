@@ -2,6 +2,94 @@ import React from 'react';
 import { cn } from '../../lib/utils';
 import { ToolExecution } from '../../hooks/useToolStream';
 
+// Helper function to truncate strings
+const truncateString = (str: string, maxLength: number): string => {
+  if (str.length <= maxLength) return str;
+  return str.substring(0, maxLength - 3) + '...';
+};
+
+// Helper function to get a meaningful description of what the tool is doing
+const getToolDescription = (tool: ToolExecution): string => {
+  // List of generic descriptions to override
+  const genericDescriptions = [
+    'Tool execution result', 
+    'Tool execution', 
+    'Execution result',
+    'Result',
+    'Complete'
+  ];
+  
+  // If we have a paramSummary that's not generic, use that as the primary source
+  if (tool.paramSummary && !genericDescriptions.includes(tool.paramSummary.trim())) {
+    return truncateString(tool.paramSummary, 100);
+  }
+  
+  // If we have result object with a pattern field (common in search tools)
+  if (tool.result && typeof tool.result === 'object' && tool.result.pattern) {
+    return `Searching for: ${tool.result.pattern}`;
+  }
+  
+  // If we have args, create a meaningful description based on the tool type
+  if (tool.args) {
+    // For common tools, provide specialized descriptions
+    if (tool.toolName.includes('Glob')) {
+      return `Searching for files: ${tool.args.pattern || 'files'}`;
+    }
+    if (tool.toolName.includes('Grep')) {
+      return `Searching for content: ${tool.args.pattern || 'pattern'}`;
+    }
+    if (tool.toolName.includes('Bash')) {
+      return `Running command: ${truncateString(String(tool.args.command || 'command'), 80)}`;
+    }
+    if (tool.toolName.includes('View') || tool.toolName.includes('Read') || tool.toolName.includes('Cat')) {
+      const path = tool.args.file_path || tool.args.path || tool.args.filePath;
+      return path ? `Reading file: ${truncateString(String(path), 80)}` : `Reading file`;
+    }
+    if (tool.toolName.includes('Edit') || tool.toolName.includes('Write')) {
+      const path = tool.args.file_path || tool.args.path || tool.args.filePath;
+      return path ? `Editing file: ${truncateString(String(path), 80)}` : `Editing file`;
+    }
+    if (tool.toolName.includes('LS') || tool.toolName.includes('List')) {
+      const path = tool.args.path || tool.args.directory || '.';
+      return `Listing files in: ${truncateString(String(path), 80)}`;
+    }
+    if (tool.toolName.includes('Agent')) {
+      return `Running agent to: ${truncateString(String(tool.args.prompt || 'perform task'), 80)}`;
+    }
+    if (tool.toolName.includes('Web') || tool.toolName.includes('Fetch')) {
+      return `Fetching content from: ${truncateString(String(tool.args.url || 'website'), 80)}`;
+    }
+    
+    // Try to extract any useful parameter
+    const argKeys = Object.keys(tool.args);
+    if (argKeys.length > 0) {
+      // Find the most meaningful parameter (not 'type', 'id', etc.)
+      const meaningfulParams = argKeys.filter(k => 
+        !['type', 'id', 'name', 'tool', 'timestamp'].includes(k.toLowerCase())
+      );
+      
+      if (meaningfulParams.length > 0) {
+        const param = meaningfulParams[0];
+        const value = tool.args[param];
+        return `${tool.toolName}: ${param} = ${truncateString(String(value), 60)}`;
+      }
+    }
+    
+    // For other tools, show a generic message with the tool name
+    return `Running ${tool.toolName}`;
+  }
+  
+  // Try to construct description from tool name and any available data
+  if (tool.tool && tool.tool.includes('/')) {
+    // If tool has a path-like structure, get the last part
+    const toolName = tool.tool.split('/').pop() || tool.toolName;
+    return `Running ${toolName}`;
+  }
+  
+  // Fallback to a simple message with the tool name
+  return `Running ${tool.toolName}`;
+};
+
 export interface ToolVisualizationProps {
   tool: ToolExecution;
   className?: string;
@@ -19,11 +107,18 @@ export function ToolVisualization({
   showExpandedParams = false,
   onToggleExpand,
 }: ToolVisualizationProps) {
-  // Use the status to determine styling - even more prominent background colors
+  // Use the status to determine styling - subtle background colors with clear status indication
   const statusStyles = {
-    running: 'border-blue-500 bg-blue-100 dark:bg-blue-800 shadow-md shadow-blue-500/50 dark:shadow-blue-800/50',
-    completed: 'border-green-500 bg-green-100 dark:bg-green-800 shadow-md shadow-green-500/50 dark:shadow-green-800/50',
-    error: 'border-red-500 bg-red-100 dark:bg-red-800 shadow-md shadow-red-500/50 dark:shadow-red-800/50',
+    running: 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-sm',
+    completed: 'border-green-500 bg-green-50 dark:bg-green-900/30 shadow-sm',
+    error: 'border-red-500 bg-red-50 dark:bg-red-900/30 shadow-sm',
+  }[tool.status];
+  
+  // Determine the status indicator text and style
+  const statusIndicator = {
+    running: { icon: '●', ariaLabel: 'Running', className: 'text-blue-500 animate-pulse' },
+    completed: { icon: '✓', ariaLabel: 'Completed', className: 'text-green-500' },
+    error: { icon: '✗', ariaLabel: 'Error', className: 'text-red-500' },
   }[tool.status];
   
   // Format execution time if available
@@ -37,55 +132,44 @@ export function ToolVisualization({
   return (
     <div 
       className={cn(
-        'tool-visualization border-l-4 px-3 py-2 my-2 rounded',
-        'transition-all duration-500 ease-in-out',
+        'tool-visualization border-l-4 px-2 py-1 my-1 rounded',
+        'transition-colors duration-300',
         statusStyles,
+        compact ? 'text-sm' : '', // Smaller text for compact view
         className
       )}
       data-testid="tool-visualization"
       data-tool-id={tool.tool}
       data-tool-status={tool.status}
       role="status"
-      aria-label={`Tool ${tool.toolName} ${tool.status}, ${tool.paramSummary}`}
+      aria-live={tool.status === 'running' ? 'polite' : 'off'}
+      aria-label={`Tool ${tool.toolName} ${tool.status}: ${getToolDescription(tool)}`}
     >
-      {/* Header with tool name and status */}
+      {/* Header with tool name - simpler display */}
       <div className="flex items-center justify-between">
         <div className="flex items-center">
-          <span className="font-semibold">{tool.toolName}</span>
-          {!compact && (
-            <span 
-              className={cn(
-                'ml-2 px-2 py-0.5 text-xs rounded-full',
-                tool.status === 'running' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
-                tool.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-              )}
-            >
-              {tool.status === 'running' ? 'Running' : 
-               tool.status === 'completed' ? 'Completed' : 'Error'}
-            </span>
-          )}
+          <span className="font-semibold text-xs">{tool.toolName}</span>
         </div>
         
-        {showExecutionTime && (
+        {showExecutionTime && tool.executionTime && (
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {formattedTime}
           </div>
         )}
       </div>
       
-      {/* Parameters */}
+      {/* Parameters - simplified display that always shows what the tool is doing */}
       <div 
         className={cn(
-          'mt-1 text-sm',
+          'mt-1',
+          'text-xs',
           showExpandedParams ? 'whitespace-pre-wrap' : 'truncate'
         )}
         onClick={onToggleExpand}
         style={{ cursor: onToggleExpand ? 'pointer' : 'default' }}
       >
-        {showExpandedParams && tool.args 
-          ? JSON.stringify(tool.args, null, 2)
-          : tool.paramSummary}
+        {/* Always show a meaningful description of what the tool is doing */}
+        {getToolDescription(tool)}
       </div>
       
       {/* Error message if status is error */}
@@ -102,28 +186,16 @@ export function ToolVisualization({
         </div>
       )}
       
-      {/* Show a spinner for running tools */}
-      {tool.status === 'running' && (
-        <div className="w-full flex justify-center mt-1">
-          <div className="h-1 w-full bg-gray-200 dark:bg-gray-700 rounded overflow-hidden">
-            <div className="h-full bg-blue-500 animate-pulse" style={{ width: '100%' }}></div>
-          </div>
-        </div>
-      )}
-      
-      {/* Show a check mark for completed tools */}
-      {tool.status === 'completed' && (
-        <div className="w-full flex justify-end mt-1">
-          <span className="text-green-500 text-xl">✓</span>
-        </div>
-      )}
-      
-      {/* Show an X for error tools */}
-      {tool.status === 'error' && (
-        <div className="w-full flex justify-end mt-1">
-          <span className="text-red-500 text-xl">✗</span>
-        </div>
-      )}
+      {/* Unified status indicator display */}
+      <div className="flex justify-end mt-1">
+        <span 
+          className={`text-base ${statusIndicator.className}`}
+          aria-label={statusIndicator.ariaLabel}
+          role="status"
+        >
+          {statusIndicator.icon}
+        </span>
+      </div>
     </div>
   );
 }
