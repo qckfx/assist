@@ -223,22 +223,12 @@ export class AgentService extends EventEmitter {
       // Collect tool results
       const toolResults: ToolResultEntry[] = [];
       
-      // Since the Agent doesn't have an EventEmitter interface, we can't directly attach event listeners
-      // Instead, we'll collect tool results while processing
-
-      // Hook into the agent to enhance tool execution events
-      // We'll create a tool executor wrapper to emit our enhanced events
-      const originalExecute = agent.getToolRegistry().executeFunction;
-      agent.getToolRegistry().executeFunction = async (toolId, args, toolUseId) => {
-        // Get the tool name
-        const tool = agent.getToolRegistry().getTool(toolId);
+      // Register callbacks for tool execution events using the new API
+      const unregisterStart = agent.toolRegistry.onToolExecutionStart((toolId, args, context) => {
+        const tool = agent.toolRegistry.getTool(toolId);
         const toolName = tool?.name || toolId;
-        
-        // Create parameter summary
         const paramSummary = this.summarizeToolParameters(toolId, args);
-        const startTime = Date.now();
         
-        // Emit the tool execution started event
         this.emit(AgentServiceEvent.TOOL_EXECUTION_STARTED, {
           sessionId,
           tool: {
@@ -247,101 +237,116 @@ export class AgentService extends EventEmitter {
           },
           args,
           paramSummary,
-          timestamp: new Date(startTime).toISOString(),
+          timestamp: new Date().toISOString(),
+        });
+      });
+      
+      const unregisterComplete = agent.toolRegistry.onToolExecutionComplete((toolId, args, result, executionTime) => {
+        const tool = agent.toolRegistry.getTool(toolId);
+        const toolName = tool?.name || toolId;
+        const paramSummary = this.summarizeToolParameters(toolId, args);
+        
+        // Emit the standard tool execution event for consistency
+        this.emit(AgentServiceEvent.TOOL_EXECUTION, { 
+          sessionId,
+          tool: {
+            id: toolId,
+            name: toolName,
+          },
+          result,
         });
         
-        try {
-          // Execute the original function
-          const result = await originalExecute(toolId, args, toolUseId);
-          
-          // Calculate execution time
-          const endTime = Date.now();
-          const executionTime = endTime - startTime;
-          
-          // Emit the standard tool execution event for backward compatibility
-          this.emit(AgentServiceEvent.TOOL_EXECUTION, { 
-            sessionId,
-            tool: {
-              id: toolId,
-              name: toolName,
-            },
-            result,
-          });
-          
-          // Emit the new tool execution completed event
-          this.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, {
-            sessionId,
-            tool: {
-              id: toolId,
-              name: toolName,
-            },
-            result,
-            paramSummary,
-            executionTime,
-            timestamp: new Date(endTime).toISOString(),
-          });
-          
-          return result;
-        } catch (error) {
-          // Emit the tool execution error event
-          this.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, {
-            sessionId,
-            tool: {
-              id: toolId,
-              name: toolName,
-            },
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-              stack: error instanceof Error ? error.stack : undefined,
-            },
-            paramSummary,
-            timestamp: new Date().toISOString(),
-          });
-          
-          // Re-throw the error to be handled by the agent
-          throw error;
+        // Emit the new tool execution completed event
+        this.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, {
+          sessionId,
+          tool: {
+            id: toolId,
+            name: toolName,
+          },
+          result,
+          paramSummary,
+          executionTime,
+          timestamp: new Date().toISOString(),
+        });
+      });
+      
+      const unregisterError = agent.toolRegistry.onToolExecutionError((toolId, args, error) => {
+        const tool = agent.toolRegistry.getTool(toolId);
+        const toolName = tool?.name || toolId;
+        const paramSummary = this.summarizeToolParameters(toolId, args);
+        
+        this.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, {
+          sessionId,
+          tool: {
+            id: toolId,
+            name: toolName,
+          },
+          error: {
+            message: error.message,
+            stack: error.stack,
+          },
+          paramSummary,
+          timestamp: new Date().toISOString(),
+        });
+      });
+      
+      try {
+        // Process the query with our registered callbacks
+        const result = await agent.processQuery(query, session.state);
+  
+        if (result.error) {
+          throw new ServerError(`Agent error: ${result.error}`);
         }
-      };
-      
-      // Process the query with our wrapped tool executor
-      const result = await agent.processQuery(query, session.state);
+        
+        // Capture any tool results from the response
+        if (result.result && result.result.toolResults) {
+          toolResults.push(...result.result.toolResults);
+        }
+        
+        // Update the session with the new state, ensuring proper structure for conversationHistory
+        const sessionState = result.sessionState || {};
+        const conversationHistory = Array.isArray(sessionState.conversationHistory) 
+          ? sessionState.conversationHistory 
+          : [];
+        
+        sessionManager.updateSession(sessionId, {
+          state: { 
+            conversationHistory,
+            ...sessionState
+          },
+          isProcessing: false,
+        });
 
-      if (result.error) {
-        throw new ServerError(`Agent error: ${result.error}`);
+        // Process completed successfully
+        this.emit(AgentServiceEvent.PROCESSING_COMPLETED, {
+          sessionId,
+          response: result.response,
+        });
+
+        return {
+          response: result.response || '',
+          toolResults,
+        };
+      } catch (error) {
+        // Update the session to mark it as not processing
+        sessionManager.updateSession(sessionId, { isProcessing: false });
+
+        // Emit error event
+        this.emit(AgentServiceEvent.PROCESSING_ERROR, {
+          sessionId,
+          error,
+        });
+
+        throw error;
+      } finally {
+        // Clean up by unregistering callbacks
+        unregisterStart();
+        unregisterComplete();
+        unregisterError();
+        
+        // Remove the session from the active processing set
+        this.activeProcessingSessionIds.delete(sessionId);
       }
-      
-      // Capture any tool results from the response
-      if (result.result && result.result.toolResults) {
-        toolResults.push(...result.result.toolResults);
-      }
-      
-      // Restore the original execute function
-      agent.getToolRegistry().executeFunction = originalExecute;
-
-      // Update the session with the new state, ensuring proper structure for conversationHistory
-      const sessionState = result.sessionState || {};
-      const conversationHistory = Array.isArray(sessionState.conversationHistory) 
-        ? sessionState.conversationHistory 
-        : [];
-      
-      sessionManager.updateSession(sessionId, {
-        state: { 
-          conversationHistory,
-          ...sessionState
-        },
-        isProcessing: false,
-      });
-
-      // Process completed successfully
-      this.emit(AgentServiceEvent.PROCESSING_COMPLETED, {
-        sessionId,
-        response: result.response,
-      });
-
-      return {
-        response: result.response || '',
-        toolResults,
-      };
     } catch (error) {
       // Update the session to mark it as not processing
       sessionManager.updateSession(sessionId, { isProcessing: false });
@@ -352,10 +357,10 @@ export class AgentService extends EventEmitter {
         error,
       });
 
-      throw error;
-    } finally {
       // Remove the session from the active processing set
       this.activeProcessingSessionIds.delete(sessionId);
+
+      throw error;
     }
   }
 
