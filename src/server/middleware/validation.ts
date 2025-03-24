@@ -31,7 +31,7 @@ export function validateQuery<T extends z.ZodType>(schema: T) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
       const result = schema.parse(req.query);
-      req.query = result as any;
+      req.query = result as Record<string, unknown>;
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -50,7 +50,7 @@ export function validateParams<T extends z.ZodType>(schema: T) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
       const result = schema.parse(req.params);
-      req.params = result as any;
+      req.params = result as Record<string, string>;
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {

@@ -1,9 +1,8 @@
 import { createServer, Server as HTTPServer } from 'http';
 import { AddressInfo } from 'net';
-import { io as ioc, Socket as ClientSocket } from 'socket.io-client';
+import { Socket as ClientSocket } from 'socket.io-client';
 import { WebSocketService, WebSocketEvent } from '../WebSocketService';
 import { AgentServiceEvent, getAgentService } from '../AgentService';
-import { sessionManager } from '../SessionManager';
 
 // Mock the imports
 jest.mock('../AgentService', () => {
@@ -57,15 +56,15 @@ describe('WebSocketService', () => {
   let httpServer: HTTPServer;
   let webSocketService: WebSocketService;
   let agentService: any;
-  let clientSocket: ClientSocket;
-  let port: number;
-  let mockIo: any;
+  let _clientSocket: ClientSocket;
+  let _port: number;
+  let mockIo: Record<string, jest.Mock>;
 
   beforeAll(() => {
     // Create HTTP server
     httpServer = createServer();
     httpServer.listen(() => {
-      port = (httpServer.address() as AddressInfo).port;
+      _port = (httpServer.address() as AddressInfo).port;
     });
 
     // Create a mock Socket.IO instance

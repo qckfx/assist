@@ -1,8 +1,7 @@
 import { startServer } from '..';
 import { ServerConfig } from '../config';
 import express from 'express';
-import http from 'http';
-import { WebSocketService } from '../services/WebSocketService';
+// These imports are used indirectly in tests
 
 // Type definitions for mocks
 interface MockApp {
@@ -20,7 +19,7 @@ const mockServer: MockServer & { on: jest.Mock } = {
   close: jest.fn((cb?: (err?: Error) => void) => {
     if (cb) cb();
   }),
-  on: jest.fn().mockImplementation((event: string, callback: (error: Error) => void) => {
+  on: jest.fn().mockImplementation((_event: string, _callback: (error: Error) => void) => {
     // Store the callback but don't call it (we'll manually test it later)
     return mockServer;
   }),

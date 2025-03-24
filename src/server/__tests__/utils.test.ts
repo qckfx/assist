@@ -23,7 +23,7 @@ jest.mock('net', () => {
       }
       return mockServer;
     }),
-    listen: jest.fn().mockImplementation((port: number) => {
+    listen: jest.fn().mockImplementation((_port: number) => {
       // Return the server object to allow chaining
       return mockServer;
     }),
@@ -118,7 +118,7 @@ describe('Server Utilities', () => {
     });
     
     test('should find the next available port', async () => {
-      const mockServer = (net.createServer() as unknown) as MockServer & { 
+      const _mockServer = (net.createServer() as unknown) as MockServer & { 
         triggerListening: () => void;
         triggerError: () => void;
       };
@@ -160,7 +160,7 @@ describe('Server Utilities', () => {
     });
     
     test('should throw an error if no port is available after 10 attempts', async () => {
-      const mockServer = (net.createServer() as unknown) as MockServer & { 
+      const _mockServer = (net.createServer() as unknown) as MockServer & { 
         triggerListening: () => void;
         triggerError: () => void;
       };

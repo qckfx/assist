@@ -4,8 +4,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as apiController from '../api';
 import { sessionManager } from '../../services/SessionManager';
-import { getAgentService } from '../../services/AgentService';
-import { SessionState } from '../../../types/model';
 
 // Mock dependencies
 jest.mock('../../logger', () => ({
