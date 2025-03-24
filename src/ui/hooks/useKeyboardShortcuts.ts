@@ -20,7 +20,7 @@ export interface KeyboardShortcutsOptions {
  * Hook to manage keyboard shortcuts
  */
 export function useKeyboardShortcuts({
-  targetRef,
+  _targetRef,
   shortcuts,
   enabled = true,
 }: KeyboardShortcutsOptions) {

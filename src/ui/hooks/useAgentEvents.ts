@@ -1,9 +1,9 @@
 /**
  * React hook for agent-related WebSocket events
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { WebSocketEvent, WebSocketEventMap, SessionData } from '../types/api';
+import { WebSocketEvent, SessionData } from '../types/api';
 
 /**
  * Hook for subscribing to agent-related events
@@ -40,7 +40,7 @@ export function useAgentEvents(sessionId?: string) {
     // Processing error
     const unsubscribeError = subscribe(
       WebSocketEvent.PROCESSING_ERROR, 
-      (data) => {
+      (data: { error: { name: string; message: string; stack?: string } }) => {
         setIsProcessing(false);
         setLastError(data.error);
       }
@@ -57,7 +57,7 @@ export function useAgentEvents(sessionId?: string) {
     // Session updated
     const unsubscribeSession = subscribe(
       WebSocketEvent.SESSION_UPDATED, 
-      (data) => {
+      (data: SessionData) => {
         setSession(data);
       }
     );
