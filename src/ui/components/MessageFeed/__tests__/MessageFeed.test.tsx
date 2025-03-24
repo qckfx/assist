@@ -28,12 +28,7 @@ const mockMessages: TerminalMessage[] = [
     type: 'error',
     timestamp: new Date(),
   },
-  {
-    id: '5',
-    content: 'Tool message with \u001b[31mcolored text\u001b[0m',
-    type: 'tool',
-    timestamp: new Date(),
-  },
+  // Tool message type has been removed
 ];
 
 describe('MessageFeed Component', () => {
@@ -50,13 +45,11 @@ describe('MessageFeed Component', () => {
     const userMessages = screen.getAllByText('User message');
     const assistantMessages = screen.getAllByText('Assistant message');
     const errorMessages = screen.getAllByText('Error message');
-    const toolMessages = screen.getAllByText(/Tool message with/);
     
     expect(systemMessages.length).toBeGreaterThan(0);
     expect(userMessages.length).toBeGreaterThan(0);
     expect(assistantMessages.length).toBeGreaterThan(0);
     expect(errorMessages.length).toBeGreaterThan(0);
-    expect(toolMessages.length).toBeGreaterThan(0);
   });
   
   it('applies correct positioning classes for different message types', () => {

@@ -10,7 +10,6 @@ const TestComponent = () => {
     addAssistantMessage, 
     addSystemMessage,
     addErrorMessage,
-    addToolMessage,
     clearMessages, 
     setProcessing,
     addToHistory,
@@ -36,9 +35,6 @@ const TestComponent = () => {
       </button>
       <button data-testid="add-error-message" onClick={() => addErrorMessage('Error message')}>
         Add Error Message
-      </button>
-      <button data-testid="add-tool-message" onClick={() => addToolMessage('Tool message')}>
-        Add Tool Message
       </button>
       <button data-testid="clear-messages" onClick={() => clearMessages()}>
         Clear Messages
@@ -73,8 +69,8 @@ describe('TerminalContext', () => {
       </TerminalProvider>
     );
     
-    // Initial state should have welcome messages (3 in this case)
-    expect(screen.getByTestId('message-count').textContent).toBe('3');
+    // Initial state should have welcome messages (2 in this case, after removing tool example)
+    expect(screen.getByTestId('message-count').textContent).toBe('2');
     expect(screen.getByTestId('history-count').textContent).toBe('0');
     expect(screen.getByTestId('processing-state').textContent).toBe('false');
     expect(screen.getByTestId('font-family').textContent).toBe('monospace');
@@ -115,11 +111,7 @@ describe('TerminalContext', () => {
     });
     expect(screen.getByTestId('message-count').textContent).toBe((initialCount + 4).toString());
     
-    // Add tool message
-    act(() => {
-      fireEvent.click(screen.getByTestId('add-tool-message'));
-    });
-    expect(screen.getByTestId('message-count').textContent).toBe((initialCount + 5).toString());
+    // Tool messages have been removed in favor of ToolVisualization
   });
   
   it('clears messages correctly', () => {

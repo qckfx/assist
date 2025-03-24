@@ -1,9 +1,8 @@
-import React, { createContext, useContext, useReducer, ReactNode, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect, useCallback } from 'react';
 import { TerminalState, TerminalAction, TerminalMessage } from '@/types/terminal';
 import { MessageType } from '@/components/Message';
 import { WebSocketEvent } from '@/types/api';
 import { useWebSocketContext } from './WebSocketContext';
-import MessageBufferManager from '../utils/MessageBufferManager';
 
 // Initial state
 const initialState: TerminalState = {
@@ -18,12 +17,6 @@ const initialState: TerminalState = {
       id: 'greeting',
       content: 'How can I help you today?',
       type: 'assistant',
-      timestamp: new Date(),
-    },
-    {
-      id: 'example',
-      content: 'This is an example of a tool output with \u001b[31mcolored text\u001b[0m.',
-      type: 'tool',
       timestamp: new Date(),
     },
   ],
@@ -172,7 +165,6 @@ interface TerminalContextType {
   addUserMessage: (content: string) => void;
   addAssistantMessage: (content: string) => void;
   addErrorMessage: (content: string) => void;
-  addToolMessage: (content: string) => void;
   clearMessages: () => void;
   setProcessing: (isProcessing: boolean) => void;
   addToHistory: (command: string) => void;
@@ -198,55 +190,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
   // Get WebSocket context
   const websocketContext = useWebSocketContext();
   
-  // Create message buffer for tool executions
-  const toolMessageBuffer = useRef(
-    new MessageBufferManager<{ toolId: string; message: string }>(
-      (items) => {
-        if (items.length === 0) return;
-        
-        // Process all items at once as a batch
-        if (items.length === 1) {
-          // Single item, just add normally
-          dispatch({ 
-            type: 'ADD_MESSAGE', 
-            payload: {
-              id: generateUniqueId('tool'),
-              content: items[0].message,
-              type: 'tool',
-              timestamp: new Date()
-            }
-          });
-        } else {
-          // Combine multiple items for the same tool
-          const byTool = items.reduce((acc, item) => {
-            if (!acc[item.toolId]) {
-              acc[item.toolId] = [];
-            }
-            acc[item.toolId].push(item.message);
-            return acc;
-          }, {} as Record<string, string[]>);
-          
-          // Add combined messages
-          Object.entries(byTool).forEach(([toolId, messages]) => {
-            dispatch({ 
-              type: 'ADD_MESSAGE', 
-              payload: {
-                id: generateUniqueId(`tool-${toolId}`),
-                content: messages.join('\n'), 
-                type: 'tool',
-                timestamp: new Date()
-              }
-            });
-          });
-        }
-      },
-      { 
-        maxSize: 100,
-        flushThreshold: 10,
-        chunkSize: 5
-      }
-    )
-  );
+  // Tool execution is now handled by the ToolVisualization component
   
   // Set up WebSocket event handling
   useEffect(() => {
@@ -414,15 +358,8 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
   }, [websocketContext]);
   
-  // Flush buffers when changing pages or unmounting
-  useEffect(() => {
-    return () => {
-      // Make sure to flush any pending tool messages
-      if (toolMessageBuffer.current) {
-        toolMessageBuffer.current.flush();
-      }
-    };
-  }, []);
+  // Tool execution is now handled by the ToolVisualization component
+  // No need to flush tool message buffers
   
   // Helper functions to make common actions easier
   // Use a combination of timestamp and a random string for more unique IDs
@@ -447,7 +384,6 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
   const addUserMessage = (content: string) => addMessage(content, 'user');
   const addAssistantMessage = (content: string) => addMessage(content, 'assistant');
   const addErrorMessage = (content: string) => addMessage(content, 'error');
-  const addToolMessage = (content: string) => addMessage(content, 'tool');
   
   const clearMessages = () => dispatch({ type: 'CLEAR_MESSAGES' });
   
@@ -494,7 +430,6 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     addUserMessage,
     addAssistantMessage,
     addErrorMessage,
-    addToolMessage,
     clearMessages,
     setProcessing,
     addToHistory,

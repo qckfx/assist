@@ -36,13 +36,7 @@ describe('Message Component', () => {
     expect(message).toHaveAttribute('role', 'alert'); // Error messages should have alert role
   });
   
-  it('renders tool message correctly', () => {
-    render(<Message content="Tool output" type="tool" />);
-    
-    const message = screen.getByTestId('message');
-    expect(message).toHaveAttribute('data-message-type', 'tool');
-    expect(message).toHaveTextContent('Tool output');
-  });
+  // Tool message type has been removed and replaced with ToolVisualization component
   
   it('shows timestamp when provided', () => {
     const testDate = new Date('2023-01-01T12:00:00Z');

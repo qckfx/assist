@@ -127,8 +127,6 @@ export function Terminal({
     '--terminal-system-msg-text': '#d8dee9',
     '--terminal-error-msg-bg': '#7f1d1d',
     '--terminal-error-msg-text': '#fecaca',
-    '--terminal-tool-msg-bg': '#1e293b',
-    '--terminal-tool-msg-text': '#d8dee9',
   } : {
     // Light theme direct values
     '--terminal-background': '#f8f9fa',
@@ -143,8 +141,6 @@ export function Terminal({
     '--terminal-system-msg-text': '#374151',
     '--terminal-error-msg-bg': '#fee2e2',
     '--terminal-error-msg-text': '#7f1d1d',
-    '--terminal-tool-msg-bg': '#f1f5f9',
-    '--terminal-tool-msg-text': '#0f172a',
   };
     
   // Theme selection complete

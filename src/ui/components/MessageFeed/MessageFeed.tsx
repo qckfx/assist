@@ -60,7 +60,7 @@ export function MessageFeed({
     const _toolCount = toolItems.length;
 
     return {
-      messageItems: messages.filter(msg => msg.type !== 'tool'), // Filter out tool messages
+      messageItems: messages, // No need to filter for 'tool' type as it's been removed
       toolItems
     };
   };
