@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { splitVendorChunkPlugin } from 'vite';
 import { createHtmlPlugin } from 'vite-plugin-html';
+// Add http-proxy for better socket handling
+import * as http from 'http';
+import * as net from 'net';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -68,14 +71,22 @@ export default defineConfig(({ command, mode }) => {
           rewrite: (path) => path.replace(/^\/api/, '/api'),
         },
         '/socket.io': {
-          target: 'http://localhost:3000',
+          target: 'ws://localhost:3000',
+          rewriteWsOrigin: true,
           ws: true,
-          changeOrigin: true
-        }
+        },
+      },  
+      // Configure Vite's development server
+      hmr: {
+        overlay: false,
       },
-      open: '/index.html',
+      // Basic server configuration
+      host: 'localhost',
       port: 5173,
-      host: '0.0.0.0',
+      // Allow Vite to handle connections
+      watch: {
+        usePolling: false,
+      },
     },
   };
 });
