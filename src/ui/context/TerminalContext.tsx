@@ -37,9 +37,7 @@ const initialState: TerminalState = {
   // Streaming state
   isStreaming: false,
   typingIndicator: false,
-  progressIndicator: false,
   streamBuffer: [],
-  currentToolExecution: null,
 };
 
 // Terminal reducer
@@ -138,11 +136,6 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
         typingIndicator: action.payload,
       };
       
-    case 'SET_PROGRESS_INDICATOR':
-      return {
-        ...state,
-        progressIndicator: action.payload,
-      };
       
     case 'SET_STREAMING':
       return {
@@ -162,11 +155,6 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
         streamBuffer: [],
       };
       
-    case 'SET_CURRENT_TOOL_EXECUTION':
-      return {
-        ...state,
-        currentToolExecution: action.payload,
-      };
       
     default:
       return state;
@@ -197,9 +185,7 @@ interface TerminalContextType {
   isStreaming: boolean;
   isProcessing: boolean;
   typingIndicator: boolean;
-  progressIndicator: boolean;
   streamBuffer: string[];
-  currentToolExecution: TerminalState['currentToolExecution'];
 }
 
 // Create context
@@ -312,44 +298,23 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       dispatch({ type: 'CLEAR_STREAM_BUFFER' });
     };
     
-    // Handler for tool execution event
+    // Handler for tool execution event - now handled by tool visualization
     const handleToolExecution = ({ 
       _sessionId, 
-      tool, 
+      _tool, 
       _result 
     }: { 
       _sessionId: string, 
-      tool: { 
+      _tool: { 
         id?: string; 
         name?: string;
       }, 
       _result: unknown 
     }) => {
-      // Set current tool so UI can show progress
-      dispatch({ 
-        type: 'SET_CURRENT_TOOL_EXECUTION',
-        payload: {
-          toolId: tool.id || 'unknown',
-          name: tool.name || 'Tool',
-          startTime: new Date().toISOString(),
-        }
-      });
-      
-      // We no longer add tool outputs as messages since they'll be shown by the visualization component
-      
-      // High-frequency tools don't need to clear the execution indicator
-      // but still need to show the indicator initially
-      if (!isHighFrequencyTool(tool.id || '')) {
-        dispatch({ type: 'SET_CURRENT_TOOL_EXECUTION', payload: null });
-      }
+      // Tool execution is now handled by the ToolVisualization component
+      // No need to track current tool in TerminalContext anymore
     };
     
-    // Helper to identify high-frequency tools
-    const isHighFrequencyTool = (toolId: string) => {
-      // Tools that tend to emit many events in rapid succession
-      const highFrequencyTools = ['FileReadTool', 'GrepTool', 'GlobTool', 'BashTool'];
-      return highFrequencyTools.some(id => toolId.includes(id));
-    };
     
     // Handler for permission requested event
     const handlePermissionRequested = ({ 
@@ -538,9 +503,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     isStreaming: state.isStreaming,
     isProcessing: state.isProcessing,
     typingIndicator: state.typingIndicator,
-    progressIndicator: state.progressIndicator,
     streamBuffer: state.streamBuffer,
-    currentToolExecution: state.currentToolExecution,
   };
   
   return (

@@ -20,13 +20,7 @@ export interface TerminalState {
   // Streaming-related state
   isStreaming: boolean;
   typingIndicator: boolean;
-  progressIndicator: boolean;
   streamBuffer: string[];
-  currentToolExecution: {
-    toolId: string;
-    name: string;
-    startTime: string;
-  } | null;
 }
 
 export type TerminalAction =
@@ -40,8 +34,6 @@ export type TerminalAction =
   | { type: 'SET_FONT_SIZE'; payload: string }
   | { type: 'SET_COLOR_SCHEME'; payload: 'dark' | 'light' | 'system' }
   | { type: 'SET_TYPING_INDICATOR'; payload: boolean }
-  | { type: 'SET_PROGRESS_INDICATOR'; payload: boolean }
   | { type: 'SET_STREAMING'; payload: boolean }
   | { type: 'ADD_TO_STREAM_BUFFER'; payload: string }
-  | { type: 'CLEAR_STREAM_BUFFER' }
-  | { type: 'SET_CURRENT_TOOL_EXECUTION'; payload: TerminalState['currentToolExecution'] };
+  | { type: 'CLEAR_STREAM_BUFFER' };
