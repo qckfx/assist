@@ -3,17 +3,20 @@ import { AddressInfo } from 'net';
 import { Socket as ClientSocket } from 'socket.io-client';
 import { WebSocketService, WebSocketEvent } from '../WebSocketService';
 import { AgentServiceEvent, getAgentService } from '../AgentService';
+import { EventEmitter } from 'events';
 
 // Mock the imports
 jest.mock('../AgentService', () => {
-  const EventEmitter = require('events');
   // Create a mock agent service class that extends EventEmitter
-  const mockAgentService = new EventEmitter();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mockAgentService: any = new EventEmitter();
   
+  // Add methods
   mockAgentService.getPermissionRequests = jest.fn().mockReturnValue([]);
+  
   // Add a real EventEmitter implementation for our tests
   const originalEmit = EventEmitter.prototype.emit;
-  mockAgentService.emit = function(event: string, ...args: any[]) {
+  mockAgentService.emit = function(event: string, ...args: unknown[]) {
     return originalEmit.call(this, event, ...args);
   };
   
@@ -55,6 +58,7 @@ jest.mock('../SessionManager', () => {
 describe('WebSocketService', () => {
   let httpServer: HTTPServer;
   let webSocketService: WebSocketService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let agentService: any;
   let _clientSocket: ClientSocket;
   let _port: number;
@@ -79,7 +83,9 @@ describe('WebSocketService', () => {
     // Initialize the WebSocketService
     webSocketService = WebSocketService.getInstance(httpServer);
     
-    // Replace the io property with our mock
+    // Use type assertion here to access private members for testing
+    // TypeScript won't allow this normally, but it's a common pattern in testing
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (webSocketService as any).io = mockIo;
     
     agentService = getAgentService();
@@ -115,10 +121,12 @@ describe('WebSocketService', () => {
   describe('active tool tracking', () => {
     beforeEach(() => {
       // Set up the event handlers before each test
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handler = (webSocketService as any).setupAgentEventListeners.bind(webSocketService);
       handler();
       
       // Clear any existing active tools
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (webSocketService as any).activeTools = new Map();
     });
     
@@ -314,6 +322,7 @@ describe('WebSocketService', () => {
       };
       
       // Emit the event from agentService - we need to manually call the event handler
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handler = (webSocketService as any).setupAgentEventListeners.bind(webSocketService);
       handler();
       
@@ -339,6 +348,7 @@ describe('WebSocketService', () => {
     
     it('should forward tool execution completed events', () => {
       // Set up the handler
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handler = (webSocketService as any).setupAgentEventListeners.bind(webSocketService);
       handler();
       
@@ -394,6 +404,7 @@ describe('WebSocketService', () => {
     
     it('should forward tool execution error events', () => {
       // Set up the handler
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handler = (webSocketService as any).setupAgentEventListeners.bind(webSocketService);
       handler();
       

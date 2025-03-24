@@ -31,7 +31,10 @@ export function validateQuery<T extends z.ZodType>(schema: T) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
       const result = schema.parse(req.query);
-      req.query = result as Record<string, unknown>;
+      // We need to cast with a type assertion that matches the Express.Request.query type
+      // which is ParsedQs from 'qs'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      req.query = result as any;
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {

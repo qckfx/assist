@@ -143,16 +143,12 @@ export class WebSocketService {
       
       // Log all incoming events in development
       if (process.env.NODE_ENV === 'development') {
-        // Use standard event listeners for logging instead of modifying private properties
-        const originalOn = socket.on;
-        socket.on = function(event: string, listener: (...args: unknown[]) => void) {
-          // Wrap each event listener with logging
-          const wrappedListener = (...args: unknown[]) => {
-            serverLogger.debug(`Socket ${socket.id} received event '${event}' with data:`, args);
-            return listener.apply(this, args);
-          };
-          return originalOn.call(this, event, wrappedListener);
-        };
+        // Instead of replacing socket.on, we'll add a listener for all events
+        serverLogger.debug(`Added verbose logging for socket ${socket.id}`);
+        // Listen for any event (we can't replace socket.on due to TypeScript type constraints)
+        socket.onAny((event, ...args) => {
+          serverLogger.debug(`Socket ${socket.id} received event '${event}' with data:`, args);
+        });
       }
 
       // Handle join session requests
