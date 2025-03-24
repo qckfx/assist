@@ -4,8 +4,10 @@
 import React, { useState, useEffect } from 'react';
 import Terminal from './Terminal/Terminal';
 import { PermissionRequest } from './PermissionRequest';
-import { ConnectionIndicator } from './ConnectionIndicator';
-import { TypingIndicator } from './TypingIndicator';
+// ConnectionIndicator is included in Terminal
+import { ConnectionIndicator as _ConnectionIndicator } from './ConnectionIndicator';
+// TypingIndicator is included in Terminal
+import { TypingIndicator as _TypingIndicator } from './TypingIndicator';
 import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTerminal } from '@/context/TerminalContext';
 
@@ -42,7 +44,7 @@ export function WebSocketTerminal({
   } = useWebSocketTerminal();
   
   // Get both state and the typing indicator state directly from TerminalContext
-  const { state, clearMessages, typingIndicator } = useTerminal();
+  const { state, clearMessages } = useTerminal();
   const [hasConnected, setHasConnected] = useState(false);
   
   // Check if we've ever connected
