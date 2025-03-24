@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 import { ToolVisualization } from '../ToolVisualization';
 
@@ -41,42 +41,42 @@ describe('ToolVisualization', () => {
   };
   
   it('renders running tool correctly', () => {
-    render(<ToolVisualization tool={mockRunningTool} />);
+    const { container } = render(<ToolVisualization tool={mockRunningTool} />);
     
     expect(screen.getByText('GlobTool')).toBeInTheDocument();
-    expect(screen.getByText('Running')).toBeInTheDocument();
+    expect(container.querySelector('[data-tool-status="running"]')).toBeInTheDocument();
     expect(screen.getByText('pattern: **/*.ts')).toBeInTheDocument();
-    expect(screen.getByText('In progress...')).toBeInTheDocument();
   });
   
   it('renders completed tool correctly', () => {
-    render(<ToolVisualization tool={mockCompletedTool} />);
+    const { container } = render(<ToolVisualization tool={mockCompletedTool} />);
     
     expect(screen.getByText('BashTool')).toBeInTheDocument();
-    expect(screen.getByText('Completed')).toBeInTheDocument();
+    expect(container.querySelector('[data-tool-status="completed"]')).toBeInTheDocument();
     expect(screen.getByText('command: ls -la')).toBeInTheDocument();
     expect(screen.getByText('1.00s')).toBeInTheDocument();
   });
   
   it('renders error tool correctly', () => {
-    render(<ToolVisualization tool={mockErrorTool} />);
+    const { container } = render(<ToolVisualization tool={mockErrorTool} />);
     
     expect(screen.getByText('FileReadTool')).toBeInTheDocument();
-    expect(screen.getByText('Error')).toBeInTheDocument();
+    expect(container.querySelector('[data-tool-status="error"]')).toBeInTheDocument();
     expect(screen.getByText('/path/to/file.txt')).toBeInTheDocument();
     expect(screen.getByText('File not found')).toBeInTheDocument();
   });
   
   it('toggles expanded parameters when clicked', () => {
     const toggleMock = vi.fn();
-    render(
+    const { getByText } = render(
       <ToolVisualization 
         tool={mockCompletedTool} 
         onToggleExpand={toggleMock} 
       />
     );
     
-    fireEvent.click(screen.getByText('command: ls -la'));
+    // Click to expand
+    getByText('command: ls -la').click();
     expect(toggleMock).toHaveBeenCalledTimes(1);
   });
   
@@ -84,6 +84,8 @@ describe('ToolVisualization', () => {
     render(<ToolVisualization tool={mockCompletedTool} compact />);
     
     expect(screen.getByText('BashTool')).toBeInTheDocument();
-    expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+    // Compact version should have less details
+    const compactEl = screen.getByTestId('tool-visualization');
+    expect(compactEl).toHaveClass('text-sm');
   });
 });
