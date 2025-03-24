@@ -131,7 +131,29 @@ export class WebSocketService {
    */
   private setupSocketHandlers(): void {
     this.io.on(WebSocketEvent.CONNECT, (socket: Socket) => {
-      serverLogger.debug(`Client connected: ${socket.id}`);
+      serverLogger.info(`Client connected: ${socket.id} (transport: ${socket.conn.transport.name})`);
+      
+      // Immediately send a welcome message to confirm the connection
+      socket.emit('welcome', { message: 'Connected to QCKFX WebSocket server', socketId: socket.id });
+      
+      // Handle connection errors
+      socket.conn.on('error', (err) => {
+        serverLogger.error(`Socket ${socket.id} connection error:`, err);
+      });
+      
+      // Log all incoming events in development
+      if (process.env.NODE_ENV === 'development') {
+        // Use standard event listeners for logging instead of modifying private properties
+        const originalOn = socket.on;
+        socket.on = function(event: string, listener: (...args: unknown[]) => void) {
+          // Wrap each event listener with logging
+          const wrappedListener = (...args: unknown[]) => {
+            serverLogger.debug(`Socket ${socket.id} received event '${event}' with data:`, args);
+            return listener.apply(this, args);
+          };
+          return originalOn.call(this, event, wrappedListener);
+        };
+      }
 
       // Handle join session requests
       socket.on(WebSocketEvent.JOIN_SESSION, (sessionId: string) => {
@@ -217,8 +239,38 @@ export class WebSocketService {
       });
 
       // Handle disconnects
-      socket.on(WebSocketEvent.DISCONNECT, () => {
-        serverLogger.debug(`Client disconnected: ${socket.id}`);
+      socket.on(WebSocketEvent.DISCONNECT, (reason) => {
+        serverLogger.info(`Client disconnected: ${socket.id}, reason: ${reason}`);
+        
+        // Cleanup logic for transport close - this helps prevent lingering socket connections
+        if (reason === 'transport close' || reason === 'transport error') {
+          serverLogger.warn(`Transport-level disconnection for ${socket.id}, cleaning up resources`);
+          
+          // Ensure socket is removed from all rooms
+          Object.keys(socket.rooms).forEach(room => {
+            if (room !== socket.id) {
+              socket.leave(room);
+              serverLogger.debug(`Forced leave room ${room} for disconnected socket ${socket.id}`);
+            }
+          });
+          
+          // Force socket cleanup (disconnect will have already happened, but this handles edge cases)
+          if (socket.connected) {
+            serverLogger.warn(`Forcing disconnect for socket ${socket.id} that reports connected after transport close`);
+            try {
+              socket.disconnect(true);
+            } catch (err) {
+              serverLogger.error(`Error during forced disconnect: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
+        }
+      });
+      
+      // Add special handling for transport errors at the connection level
+      socket.conn.on('packet', (packet: { type: string; data?: unknown }) => {
+        if (packet.type === 'error') {
+          serverLogger.error(`Transport packet error for socket ${socket.id}:`, packet.data);
+        }
       });
     });
   }

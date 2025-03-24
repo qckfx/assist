@@ -4,7 +4,7 @@
  */
 
 import { program } from 'commander';
-import { createAgent, createAnthropicProvider, createLogger, LogLevel, LogCategory, startServer, createServerConfig, getServerUrl, ServerConfig } from './index';
+import { createAgent, createAnthropicProvider, createLogger, LogLevel, LogCategory, startServer, createServerConfig } from './index';
 import dotenv from 'dotenv';
 import { SessionState, ToolResultEntry } from './types';
 import chalk from 'chalk';

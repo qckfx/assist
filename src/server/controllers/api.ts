@@ -12,7 +12,7 @@ import {
   HistoryRequest,
   StatusRequest,
 } from '../schemas/api';
-import { ValidationError, ServerError } from '../utils/errors';
+// No errors imported as they're handled by middleware
 
 /**
  * Start a new agent session

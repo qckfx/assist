@@ -3,7 +3,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { errorHandler, notFoundHandler } from '../errorHandler';
-import { ApiError, ValidationError, ServerError } from '../../utils/errors';
+import { ApiError } from '../../utils/errors';
 
 // Mock serverLogger
 jest.mock('../../logger', () => ({
