@@ -175,7 +175,12 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             logger.debug(`Executing tool ${tool.name} with args: ${argSummary}`, LogCategory.TOOLS);
             let result;
             try {
-              result = await tool.execute(toolCall.args as Record<string, unknown>, context);
+              // Use the new executeToolWithCallbacks method instead of direct execution
+              result = await toolRegistry.executeToolWithCallbacks(
+                toolCall.toolId, 
+                toolCall.args as Record<string, unknown>, 
+                context
+              );
             } catch (error: unknown) {
               // Handle validation errors specifically
               const errorObj = error as Error;
