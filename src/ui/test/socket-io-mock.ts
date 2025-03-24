@@ -7,26 +7,26 @@ import { vi } from 'vitest';
 import type { Socket } from 'socket.io-client';
 
 // Mock Socket.io registry for managing event callbacks
-export const mockSocketEvents: Record<string, ((...args: any[]) => void)[]> = {};
-export const mockSocketIoEvents: Record<string, ((...args: any[]) => void)[]> = {};
-export const mockEmittedEvents: Array<{ event: string; args: any[] }> = [];
+export const mockSocketEvents: Record<string, ((...args: unknown[]) => void)[]> = {};
+export const mockSocketIoEvents: Record<string, ((...args: unknown[]) => void)[]> = {};
+export const mockEmittedEvents: Array<{ event: string; args: unknown[] }> = [];
 
 // Define the type for our extended socket with trigger methods
 type MockSocketWithTriggers = Partial<Socket> & {
-  _triggerEvent: (event: string, ...args: any[]) => void;
-  _triggerIoEvent: (event: string, ...args: any[]) => void;
+  _triggerEvent: (event: string, ...args: unknown[]) => void;
+  _triggerIoEvent: (event: string, ...args: unknown[]) => void;
 };
 
 // Create the base mock Socket
 const baseMockSocket: Partial<Socket> = {
-  on: vi.fn().mockImplementation((event: string | symbol, callback: (...args: any[]) => void) => {
+  on: vi.fn().mockImplementation((event: string | symbol, callback: (...args: unknown[]) => void) => {
     const eventKey = String(event);
     mockSocketEvents[eventKey] = mockSocketEvents[eventKey] || [];
     mockSocketEvents[eventKey].push(callback);
     return mockSocket as unknown as Socket;
   }),
   
-  off: vi.fn().mockImplementation((event?: string | symbol, callback?: (...args: any[]) => void) => {
+  off: vi.fn().mockImplementation((event?: string | symbol, callback?: (...args: unknown[]) => void) => {
     if (event) {
       const eventKey = String(event);
       if (mockSocketEvents[eventKey] && callback) {
@@ -38,7 +38,7 @@ const baseMockSocket: Partial<Socket> = {
     return mockSocket as unknown as Socket;
   }),
   
-  emit: vi.fn((event: string, ...args: any[]) => {
+  emit: vi.fn().mockImplementation((event: string, ...args: unknown[]) => {
     mockEmittedEvents.push({ event, args });
     return mockSocket as unknown as Socket;
   }),
@@ -47,13 +47,13 @@ const baseMockSocket: Partial<Socket> = {
   connect: vi.fn(),
   
   io: {
-    on: vi.fn().mockImplementation((event: string, callback: (...args: any[]) => void) => {
+    on: vi.fn().mockImplementation((event: string, callback: (...args: unknown[]) => void) => {
       mockSocketIoEvents[event] = mockSocketIoEvents[event] || [];
       mockSocketIoEvents[event].push(callback);
       return mockSocket.io;
     }),
     
-    off: vi.fn().mockImplementation((event?: string, callback?: (...args: any[]) => void) => {
+    off: vi.fn().mockImplementation((event?: string, callback?: (...args: unknown[]) => void) => {
       if (event) {
         if (mockSocketIoEvents[event] && callback) {
           mockSocketIoEvents[event] = mockSocketIoEvents[event].filter(cb => cb !== callback);
@@ -83,20 +83,20 @@ const baseMockSocket: Partial<Socket> = {
     _reconnectionDelayMax: 5000,
     _randomizationFactor: 0.5,
     _timeout: 20000
-  } as any
+  } as Record<string, unknown>
 };
 
 // Create the mock socket with trigger methods
 export const mockSocket = baseMockSocket as MockSocketWithTriggers;
 
 // Add trigger methods
-mockSocket._triggerEvent = (event: string, ...args: any[]): void => {
+mockSocket._triggerEvent = (event: string, ...args: unknown[]): void => {
   if (mockSocketEvents[event]) {
     mockSocketEvents[event].forEach(callback => callback(...args));
   }
 };
 
-mockSocket._triggerIoEvent = (event: string, ...args: any[]): void => {
+mockSocket._triggerIoEvent = (event: string, ...args: unknown[]): void => {
   if (mockSocketIoEvents[event]) {
     mockSocketIoEvents[event].forEach(callback => callback(...args));
   }

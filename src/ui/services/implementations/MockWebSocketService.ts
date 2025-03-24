@@ -11,7 +11,6 @@ import { ConnectionStatus, WebSocketEvent } from '@/types/api';
 export class MockWebSocketService extends EventEmitter implements IWebSocketService {
   private connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED;
   private currentSessionId: string | null = null;
-  private eventHandlers: Map<string, Set<Function>> = new Map();
   private timers: NodeJS.Timeout[] = [];
 
   constructor() {
@@ -138,7 +137,7 @@ export class MockWebSocketService extends EventEmitter implements IWebSocketServ
   /**
    * Simulate a WebSocket event
    */
-  public simulateEvent<T extends WebSocketEvent>(event: T, data: any): void {
+  public simulateEvent<T extends WebSocketEvent>(event: T, data: unknown): void {
     this.emit(event, data);
   }
   
@@ -157,7 +156,7 @@ export class MockWebSocketService extends EventEmitter implements IWebSocketServ
     });
   }
   
-  public simulateToolExecution(sessionId: string, tool: string, result: any): void {
+  public simulateToolExecution(sessionId: string, tool: string, result: unknown): void {
     this.emit(WebSocketEvent.TOOL_EXECUTION, {
       sessionId,
       tool,
@@ -165,7 +164,7 @@ export class MockWebSocketService extends EventEmitter implements IWebSocketServ
     });
   }
   
-  public simulatePermissionRequest(sessionId: string, permission: any): void {
+  public simulatePermissionRequest(sessionId: string, permission: Record<string, unknown>): void {
     this.emit(WebSocketEvent.PERMISSION_REQUESTED, {
       sessionId,
       permission

@@ -7,15 +7,10 @@ import { IWebSocketService } from '../interfaces/IWebSocketService';
 import { 
   WebSocketEvent, 
   WebSocketEventMap,
-  ConnectionStatus,
-  SessionData
+  ConnectionStatus
 } from '@/types/api';
 import { 
-  SOCKET_URL, 
-  SOCKET_RECONNECTION_ATTEMPTS, 
-  SOCKET_RECONNECTION_DELAY,
-  SOCKET_RECONNECTION_DELAY_MAX,
-  SOCKET_TIMEOUT
+  SOCKET_URL
 } from '@/config/api';
 import { throttle } from '@/utils/performance';
 
@@ -24,11 +19,11 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
   private connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED;
   private reconnectAttempts = 0;
   private currentSessionId: string | null = null;
-  private messageBuffer: Map<string, any[]> = new Map();
+  private messageBuffer: Map<string, unknown[]> = new Map();
   private flushIntervalTimer: NodeJS.Timeout | null = null;
   
   // Message buffer for tool execution results
-  private toolResultBuffer: Record<string, any[]> = {};
+  private toolResultBuffer: Record<string, unknown[]> = {};
   // Last time tool results were flushed
   private lastToolFlush: Record<string, number> = {};
   // Max buffer size before forcing a flush
@@ -40,7 +35,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
 
   // Throttled event emitter for high-frequency events
   private throttledEmit = throttle(
-    (event: string, data: any) => {
+    (event: string, data: unknown) => {
       super.emit(event, data);
     },
     this.throttleInterval
@@ -54,7 +49,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
   /**
    * Override the emit method to handle buffering
    */
-  public emit(event: string, ...args: any[]): boolean {
+  public emit(event: string, ...args: unknown[]): boolean {
     // For tool execution events, use buffering
     if (event === WebSocketEvent.TOOL_EXECUTION) {
       const data = args[0];
@@ -120,7 +115,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
       
       // Create a wrapper for emit to log outgoing events
       const origEmit = this.socket.emit.bind(this.socket);
-      this.socket.emit = (event: string, ...args: any[]) => {
+      this.socket.emit = (event: string, ...args: unknown[]) => {
         console.log('Socket.IO SENDING:', [event, ...args]);
         return origEmit(event, ...args);
       };
@@ -169,7 +164,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
     });
 
     // Connection error
-    this.socket.on(WebSocketEvent.ERROR, (error: any) => {
+    this.socket.on(WebSocketEvent.ERROR, (error: Error | Record<string, unknown> | string) => {
       console.error('WebSocket error:', error);
       this.updateConnectionStatus(ConnectionStatus.ERROR);
       this.emit('connection', { 
@@ -310,7 +305,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
   /**
    * Add an event to the buffer for batch processing
    */
-  private bufferEvent(event: string, data: any): void {
+  private bufferEvent(event: string, data: unknown): void {
     if (!this.messageBuffer.has(event)) {
       this.messageBuffer.set(event, []);
     }
@@ -355,7 +350,7 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
   /**
    * Buffer tool results and flush when appropriate
    */
-  private bufferToolResult(toolId: string, data: any): void {
+  private bufferToolResult(toolId: string, data: unknown): void {
     // Initialize buffer if needed
     if (!this.toolResultBuffer[toolId]) {
       this.toolResultBuffer[toolId] = [];

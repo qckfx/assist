@@ -80,7 +80,7 @@ export class ConnectionManager extends EventEmitter {
       };
       
       // Set up one-time error listener
-      const errorHandler = (error: any) => {
+      const errorHandler = (error: Error | Record<string, unknown> | string) => {
         this.setState(ConnectionState.ERROR);
         this.webSocket.off(WebSocketEvent.CONNECT, connectHandler);
         this.webSocket.off(WebSocketEvent.ERROR, errorHandler);

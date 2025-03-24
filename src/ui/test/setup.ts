@@ -27,7 +27,7 @@ class MockIntersectionObserver {
   constructor() {}
 }
 
-global.IntersectionObserver = MockIntersectionObserver as any;
+global.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
 
 // Mock ResizeObserver
 class MockResizeObserver {
@@ -38,4 +38,4 @@ class MockResizeObserver {
   constructor() {}
 }
 
-global.ResizeObserver = MockResizeObserver as any;
+global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;

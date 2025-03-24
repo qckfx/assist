@@ -17,11 +17,12 @@ export function clearMockEvents() {
 }
 
 // Helper to simulate socket events
-export function simulateSocketEvent(event: string, ...args: any[]) {
+export function simulateSocketEvent(event: string, ...args: unknown[]) {
   // Access the _triggerEvent safely with type casting
-  const socket = mockSocket as any;
-  if (socket && typeof socket._triggerEvent === 'function') {
-    socket._triggerEvent(event, ...args);
+  const socket = mockSocket as unknown;
+  type TriggerFn = (event: string, ...args: unknown[]) => void;
+  if (socket && typeof (socket as { _triggerEvent?: TriggerFn })._triggerEvent === 'function') {
+    (socket as { _triggerEvent: TriggerFn })._triggerEvent(event, ...args);
   } else if (mockSocketEvents[event]) {
     mockSocketEvents[event].forEach((callback) => {
       callback(...args);
@@ -30,11 +31,12 @@ export function simulateSocketEvent(event: string, ...args: any[]) {
 }
 
 // Helper to simulate socket.io events
-export function simulateSocketIoEvent(event: string, ...args: any[]) {
+export function simulateSocketIoEvent(event: string, ...args: unknown[]) {
   // Access the _triggerIoEvent safely with type casting
-  const socket = mockSocket as any;
-  if (socket && typeof socket._triggerIoEvent === 'function') {
-    socket._triggerIoEvent(event, ...args);
+  const socket = mockSocket as unknown;
+  type TriggerFn = (event: string, ...args: unknown[]) => void;
+  if (socket && typeof (socket as { _triggerIoEvent?: TriggerFn })._triggerIoEvent === 'function') {
+    (socket as { _triggerIoEvent: TriggerFn })._triggerIoEvent(event, ...args);
   } else if (mockSocketIoEvents[event]) {
     mockSocketIoEvents[event].forEach((callback) => {
       callback(...args);
@@ -67,11 +69,11 @@ export function simulateProcessingCompleted(sessionId = 'test-session', result =
   simulateSocketEvent(WebSocketEvent.PROCESSING_COMPLETED, { sessionId, result });
 }
 
-export function simulateToolExecution(sessionId = 'test-session', tool = 'TestTool', result = 'Test result') {
+export function simulateToolExecution(sessionId = 'test-session', tool = 'TestTool', result: unknown = 'Test result') {
   simulateSocketEvent(WebSocketEvent.TOOL_EXECUTION, { sessionId, tool, result });
 }
 
-export function simulatePermissionRequested(sessionId = 'test-session', permission = {
+export function simulatePermissionRequested(sessionId = 'test-session', permission: Record<string, unknown> = {
   permissionId: 'test-permission',
   toolId: 'TestTool',
   args: { test: 'arg' },

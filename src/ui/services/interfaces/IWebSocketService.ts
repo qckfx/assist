@@ -4,7 +4,7 @@
 import { EventEmitter } from 'events';
 import { ConnectionStatus, WebSocketEvent, WebSocketEventMap } from '@/types/api';
 
-export interface _IWebSocketService extends EventEmitter {
+export interface IWebSocketService extends EventEmitter {
   // Connection methods
   connect(): void;
   disconnect(): void;

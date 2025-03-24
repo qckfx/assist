@@ -7,7 +7,8 @@ import { ConnectionStatus, WebSocketEvent } from '../../types/api';
 import { WebSocketServiceFactory } from '../factories/WebSocketServiceFactory';
 import { MockWebSocketService } from '../implementations/MockWebSocketService';
 // Interface definition imported for completeness but not directly used
-import type { _IWebSocketService } from '../interfaces/IWebSocketService';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import type { IWebSocketService } from '../interfaces/IWebSocketService';
 
 // Mock useWebSocketContext
 vi.mock('../../context/WebSocketContext', () => ({
@@ -49,7 +50,8 @@ describe('WebSocketServiceFactory', () => {
   it('supports different implementation types', () => {
     // Get the current implementation type
     const initialInstance = WebSocketServiceFactory.getInstance();
-    const _initialType = initialInstance.constructor.name; // Unused but kept for clarity
+    // Unused but kept for clarity with proper prefix
+    const _initialType = initialInstance.constructor.name;
     
     // Reset and use a different implementation flag
     WebSocketServiceFactory.reset();

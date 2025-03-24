@@ -4,9 +4,9 @@
  * This file is specifically designed to run in isolation to avoid
  * memory leaks and interference with other tests.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { ConnectionStatus } from '../../types/api';
+import { _ConnectionStatus } from '../../types/api';
 import { WebSocketServiceFactory } from '../../services/factories/WebSocketServiceFactory';
 import { MockWebSocketService } from '../../services/implementations/MockWebSocketService';
 
