@@ -139,11 +139,14 @@ describe('SocketConnectionManager', () => {
     expect(manager.getCurrentSessionId()).toBe('test-session');
   });
   
-  it('should store session ID for later when not connected', () => {
+  it('should store session ID as pending when not connected', () => {
     // When not connected, getSocket() returns null, so we can't check emit
     manager.joinSession('test-session');
     
-    expect(manager.getCurrentSessionId()).toBe('test-session');
+    // The session is stored as pending but not set as current when disconnected
+    const sessionState = manager.getSessionState();
+    expect(sessionState.pendingSession).toBe('test-session');
+    expect(sessionState.currentSessionId).toBe(null);
     expect(manager.getSocket()).toBe(null);
   });
   

@@ -694,7 +694,8 @@ export function useToolStream(sessionId?: string) {
     const tools = state.toolHistory
       .filter(tool => tool.status !== 'running') // Exclude running tools which are already in active
       .reverse();
-    return tools;
+    // If a count limit is provided, respect it
+    return count && count < tools.length ? tools.slice(0, count) : tools;
   }, [state.toolHistory]);
 
   // Utility method to get a specific tool execution by ID

@@ -6,16 +6,32 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import { ConnectionStatus } from '@/types/api';
 import React from 'react';
 
-// Create the mocks before importing any module
-// We need to mock all dependencies to avoid hoisting issues
+// Mock the SocketConnectionManager from the websocket utils
+vi.mock('@/utils/websocket', () => {
+  const mockSocketConnectionManager = {
+    on: vi.fn(),
+    off: vi.fn(),
+    joinSession: vi.fn(),
+    leaveSession: vi.fn(),
+    getSessionState: vi.fn().mockReturnValue({
+      currentSessionId: 'test-session-id',
+      hasJoined: true,
+      pendingSession: null
+    }),
+    emit: vi.fn(),
+    getCurrentSessionId: vi.fn().mockReturnValue('test-session-id')
+  };
+  
+  return {
+    getSocketConnectionManager: vi.fn().mockReturnValue(mockSocketConnectionManager)
+  };
+});
 
 // Create mock for all module dependencies first
 vi.mock('@/hooks/useTerminalWebSocket', () => ({
   useTerminalWebSocket: vi.fn().mockReturnValue({
     isConnected: true,
     connectionStatus: ConnectionStatus.CONNECTED,
-    sendCommand: vi.fn(),
-    isProcessing: false,
     connect: vi.fn(),
     disconnect: vi.fn(),
     hasJoined: true,
@@ -40,6 +56,14 @@ vi.mock('@/hooks/usePermissionManager', () => ({
   usePermissionManager: vi.fn().mockReturnValue({
     hasPendingPermissions: false,
     resolvePermission: vi.fn().mockResolvedValue(true),
+  })
+}));
+
+vi.mock('@/hooks/useWebSocket', () => ({
+  useWebSocket: vi.fn().mockReturnValue({
+    isConnected: true,
+    connectionStatus: ConnectionStatus.CONNECTED,
+    currentSessionId: 'test-session-id'
   })
 }));
 
@@ -80,6 +104,7 @@ const mockStartSession = vi.fn().mockResolvedValue({
   data: { sessionId: 'test-session-id' } 
 });
 const mockAbortOperation = vi.fn().mockResolvedValue({ success: true });
+const mockConnectToSession = vi.fn().mockReturnValue(true);
 
 // Get references to the module functions to access mock implementations
 import { useTerminalWebSocket } from '@/hooks/useTerminalWebSocket';
@@ -88,6 +113,7 @@ import { useTerminalCommands } from '@/hooks/useTerminalCommands';
 import { usePermissionManager } from '@/hooks/usePermissionManager';
 import { useTerminal } from '@/context/TerminalContext';
 import apiClient from '@/services/apiClient';
+import { getSocketConnectionManager } from '@/utils/websocket';
 
 // Update mock references for easier testing
 vi.mocked(useTerminal).mockReturnValue({
@@ -136,6 +162,16 @@ vi.mocked(usePermissionManager).mockReturnValue({
   resolvePermission: mockResolvePermission,
 });
 
+vi.mocked(useTerminalWebSocket).mockReturnValue({
+  isConnected: true,
+  connectionStatus: ConnectionStatus.CONNECTED,
+  connect: mockConnectToSession,
+  disconnect: vi.fn(),
+  hasJoined: true,
+  sessionId: 'test-session-id',
+  contextSessionId: 'test-session-id',
+});
+
 // Mock API client functions
 apiClient.startSession = mockStartSession;
 apiClient.abortOperation = mockAbortOperation;
@@ -161,6 +197,14 @@ describe('WebSocketTerminalContext', () => {
     mockAddSystemMessage.mockClear();
     mockAddErrorMessage.mockClear();
     mockHandleCommand.mockClear();
+    
+    // Reset the connection manager mock
+    const connectionManager = getSocketConnectionManager();
+    vi.mocked(connectionManager.getSessionState).mockReturnValue({
+      currentSessionId: 'test-session-id',
+      hasJoined: true,
+      pendingSession: null
+    });
   });
   
   it('should provide session-related properties and methods', async () => {
@@ -315,5 +359,26 @@ describe('WebSocketTerminalContext', () => {
     expect(mockAddErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('Failed to abort: Failed to abort')
     );
+  });
+  
+  it('should connect to session when created successfully', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <WebSocketTerminalProvider>
+        {children}
+      </WebSocketTerminalProvider>
+    );
+    
+    renderHook(() => useWebSocketTerminal(), { wrapper });
+    
+    // Wait for async operations
+    await vi.waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalled();
+    });
+    
+    // Verify that connectToSession was called with the new session ID
+    await vi.waitFor(() => {
+      expect(mockAddSystemMessage).toHaveBeenCalledWith('Session created: test-session-id');
+      expect(mockConnectToSession).toHaveBeenCalledWith('test-session-id');
+    });
   });
 });;
