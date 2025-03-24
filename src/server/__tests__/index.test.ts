@@ -1,7 +1,8 @@
 import { startServer } from '..';
 import { ServerConfig } from '../config';
 import express from 'express';
-// These imports are used indirectly in tests
+// Import modules used in tests
+import fs from 'fs';
 
 // Type definitions for mocks
 interface MockApp {
@@ -59,8 +60,9 @@ jest.mock('express', () => {
     return mockServer;
   });
   
-  // Create a mock express factory function
-  const mockExpress: any = jest.fn(() => mockApp);
+  // Create a mock express factory function with the right properties
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mockExpress = jest.fn(() => mockApp) as any;
   
   // Add static methods to express
   mockExpress.static = jest.fn();
@@ -76,7 +78,17 @@ jest.mock('body-parser', () => ({
   urlencoded: jest.fn(() => 'urlencodedMiddleware'),
 }));
 jest.mock('connect-history-api-fallback', () => jest.fn(() => 'historyMiddleware'));
-jest.mock('../routes/api', () => require('../routes/__tests__/api.mock').default);
+
+// We need to directly use the inline mock instead of using a variable
+jest.mock('../routes/api', () => {
+  // Return a mock middleware function
+  return function mockRouter() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (req: any, res: any, next: any) => {
+      next();
+    };
+  };
+});
 
 jest.mock('../utils', () => ({
   findAvailablePort: jest.fn().mockImplementation(async (port) => port),
@@ -163,8 +175,11 @@ describe('Server', () => {
       // Check API routes
       expect(express().use).toHaveBeenCalledWith('/api', expect.any(Function));
       
-      // Check that http server was created and started
-      expect(require('http').createServer).toHaveBeenCalled();
+      // Check that http server was created and started by importing http dynamically
+      // We use dynamic import to avoid the need for require()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const httpModule = await import('http');
+      expect(httpModule.createServer).toHaveBeenCalled();
       
       // We can't directly check WebSocketService initialization in this test
 // since we need to mock the http server differently
@@ -188,17 +203,19 @@ describe('Server', () => {
     }, 10000);
     
     test('should handle server errors correctly', async () => {
-      // Access the mock http module
-      const http = require('http');
-      
-      // Store the original implementation
-      const originalCreateServer = http.createServer;
+      // We need to use a different approach since we can't modify the imported module
+      // Let's directly mock the http module using jest.mock
+      // First, get a reference to the original implementation
+      const createServerMock = jest.spyOn(jest.requireMock('http'), 'createServer');
       
       // Create a server error
       const serverError = new Error('Cannot create server');
       
-      // Override the createServer implementation just for this test
-      http.createServer.mockImplementationOnce(() => {
+      // Save the original implementation
+      const originalImplementation = createServerMock.getMockImplementation();
+      
+      // Override the mock for this test 
+      createServerMock.mockImplementationOnce(() => {
         throw serverError;
       });
       
@@ -213,12 +230,11 @@ describe('Server', () => {
       await expect(startServer(config)).rejects.toThrow('Failed to start server');
       
       // Restore the original implementation
-      http.createServer = originalCreateServer;
+      createServerMock.mockImplementation(originalImplementation as () => unknown);
     });
     
     test('should handle missing UI build files', async () => {
       // Mock fs.existsSync to simulate missing UI build
-      const fs = require('fs');
       (fs.existsSync as jest.Mock).mockReturnValue(false);
       
       const config: ServerConfig = {
@@ -234,8 +250,10 @@ describe('Server', () => {
         url: 'http://localhost:3000',
       });
       
-      // Check that the logger warning was called
-      const { serverLogger } = require('../logger');
+      // Import logger module dynamically
+      // We use dynamic import to avoid the need for require()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { serverLogger } = await import('../logger');
       expect(serverLogger.warn).toHaveBeenCalledWith(
         expect.stringContaining('UI build not found')
       );
