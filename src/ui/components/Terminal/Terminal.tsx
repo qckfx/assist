@@ -13,7 +13,7 @@ import { generateAriaId, prefersReducedMotion } from '@/utils/accessibility';
 import { useIsSmallScreen } from '@/hooks/useMediaQuery';
 import { TypingIndicator } from '@/components/TypingIndicator';
 import ProgressIndicator from '@/components/ProgressIndicator';
-import ConnectionIndicator from '@/components/ConnectionIndicator';
+import { ConnectionIndicator } from '@/components/ConnectionIndicator';
 
 export interface TerminalProps {
   className?: string;
@@ -33,6 +33,7 @@ export interface TerminalProps {
   showConnectionIndicator?: boolean;
   showTypingIndicator?: boolean;
   showProgressIndicator?: boolean;
+  connectionStatus?: string;
 }
 
 export function Terminal({
@@ -49,6 +50,7 @@ export function Terminal({
   showConnectionIndicator = true,
   showTypingIndicator = true,
   showProgressIndicator = true,
+  connectionStatus,
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -197,7 +199,9 @@ export function Terminal({
       className={cn(
         'terminal flex flex-col rounded-md overflow-hidden',
         colorSchemeClass,
-        fullScreen ? 'h-full w-full' : 'h-[500px] w-full max-w-4xl',
+        fullScreen ? 'h-full w-full' : 'h-[500px] w-full min-w-[95%] max-w-[95%]',
+        !fullScreen && 'max-h-[90vh]', // Add maximum height to prevent expansion off-screen
+        'min-h-[500px]', // Add minimum height to prevent layout shifts
         {
           'terminal-text-xs': themeToUse.fontSize === 'xs',
           'terminal-text-sm': themeToUse.fontSize === 'sm',
@@ -247,17 +251,28 @@ export function Terminal({
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
         </div>
         <div 
-          className="flex-1 text-center text-sm"
+          className="flex-1 flex items-center justify-center gap-2 text-sm"
           id={`${ids.terminal}-title`}
         >
           qckfx Terminal
+          {showConnectionIndicator && sessionId && (
+            <span 
+              className="ml-2 flex items-center group relative" 
+              data-testid="connection-indicator-container"
+            >
+              <ConnectionIndicator showText={false} className="scale-75" />
+              <span className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                {connectionStatus === 'connected' ? 'Connected' :
+                 connectionStatus === 'connecting' ? 'Connecting...' :
+                 connectionStatus === 'reconnecting' ? 'Reconnecting...' :
+                 connectionStatus === 'disconnected' ? 'Disconnected' : 'Error'}
+              </span>
+            </span>
+          )}
         </div>
         <div className="flex items-center space-x-2">
-          {showConnectionIndicator && sessionId && (
-            <ConnectionIndicator className="mr-2" showText={false} />
-          )}
           <button
-            className="hover:text-white text-sm"
+            className="hover:text-white text-sm group relative"
             onClick={() => setShowSettings(true)}
             aria-label="Terminal settings"
             data-testid="show-settings"
@@ -265,9 +280,12 @@ export function Terminal({
             aria-expanded={showSettings}
           >
             ⚙️
+            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              Terminal settings
+            </span>
           </button>
           <button
-            className="hover:text-white text-sm"
+            className="hover:text-white text-sm group relative"
             onClick={() => setShowShortcuts(true)}
             aria-label="Show shortcuts"
             data-testid="show-shortcuts"
@@ -275,44 +293,52 @@ export function Terminal({
             aria-expanded={showShortcuts}
           >
             ?
+            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              Keyboard shortcuts
+            </span>
           </button>
         </div>
       </div>
       <div 
-        className="flex flex-col flex-1 overflow-hidden terminal-scrollbar"
+        className="flex flex-col flex-grow overflow-auto terminal-scrollbar"
+        style={{ height: "calc(100% - 80px)" }} /* Leaving space for input and padding */
         role="log"
         aria-live="polite"
         id={ids.output}
       >
-        <MessageFeed 
-          messages={messages} 
-          className="terminal-message-animation"
-          ariaLabelledBy={ids.output}
-        />
-        
-        {/* Add typing indicator */}
-        {showTypingIndicator && terminalContext.typingIndicator && (
-          <TypingIndicator className="mx-4 my-2" />
-        )}
-        
-        {/* Add tool execution progress */}
-        {showProgressIndicator && terminalContext.currentToolExecution && (
-          <ProgressIndicator
-            className="mx-4 my-2"
-            operation={`Running ${terminalContext.currentToolExecution.name}...`}
-            startTime={terminalContext.currentToolExecution.startTime}
+        <div className="flex-grow overflow-y-auto">
+          <MessageFeed 
+            messages={messages} 
+            className="terminal-message-animation"
+            ariaLabelledBy={ids.output}
           />
-        )}
+          
+          {/* Add typing indicator */}
+          {showTypingIndicator && terminalContext.typingIndicator && (
+            <TypingIndicator className="mx-4 my-2" />
+          )}
+          
+          {/* Add tool execution progress */}
+          {showProgressIndicator && terminalContext.currentToolExecution && (
+            <ProgressIndicator
+              className="mx-4 my-2"
+              operation={`Running ${terminalContext.currentToolExecution.name}...`}
+              startTime={terminalContext.currentToolExecution.startTime}
+            />
+          )}
+        </div>
         
-        <InputField 
-          ref={inputRef}
-          onSubmit={handleCommand} 
-          disabled={inputDisabled || terminalContext.state.isProcessing} 
-          className="terminal-input"
-          ariaLabel="Terminal input"
-          ariaLabelledBy={`${ids.input}-label`}
-          id={ids.input}
-        />
+        <div className="flex-shrink-0" style={{ height: '40px', maxHeight: '40px', minHeight: '40px' }}>
+          <InputField 
+            ref={inputRef}
+            onSubmit={handleCommand} 
+            disabled={inputDisabled || terminalContext.state.isProcessing} 
+            className="terminal-input"
+            ariaLabel="Terminal input"
+            ariaLabelledBy={`${ids.input}-label`}
+            id={ids.input}
+          />
+        </div>
         <div id={`${ids.input}-label`} className="sr-only">Type a command and press Enter to submit</div>
       </div>
       <ShortcutsPanel

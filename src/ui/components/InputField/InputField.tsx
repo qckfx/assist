@@ -113,11 +113,15 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function
     <div
       className={cn(
         'flex items-center border-t px-3 py-2 terminal-input',
+        'h-[40px] min-h-[40px] max-h-[40px] flex-shrink-0', // Fixed height
         className
       )}
       style={{
         borderColor: 'var(--terminal-border)',
         backgroundColor: 'var(--terminal-input-bg)',
+        height: '40px',
+        minHeight: '40px',
+        maxHeight: '40px',
       }}
       data-testid="input-field-container"
       role="form"
@@ -133,7 +137,16 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function
       <input
         ref={handleRef}
         className="flex-1 bg-transparent outline-none placeholder-gray-500"
-        style={{ color: 'var(--terminal-text)' }}
+        style={{ 
+          color: 'var(--terminal-text)',
+          height: '24px',
+          minHeight: '24px',
+          maxHeight: '24px',
+          lineHeight: '24px',
+          paddingTop: '0',
+          paddingBottom: '0',
+          display: 'block'
+        }}
         type="text"
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}

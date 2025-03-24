@@ -34,6 +34,9 @@ export function MessageFeed({
     <div 
       className={cn(
         'flex flex-col flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-2',
+        'min-h-[300px]', // Add minimum height to prevent layout shifts
+        'max-h-[70vh]', // Add maximum height to constrain growth
+        'h-full flex-grow', // Fill available space
         className
       )}
       data-testid="message-feed"
@@ -42,7 +45,7 @@ export function MessageFeed({
     >
       {messages.length === 0 ? (
         <div 
-          className="flex-1 flex items-center justify-center text-gray-500"
+          className="flex-1 flex items-center justify-center text-gray-500 min-h-[200px]"
           role="status"
           aria-live="polite"
         >
