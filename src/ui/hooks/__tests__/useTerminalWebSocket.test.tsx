@@ -3,8 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { ConnectionStatus, WebSocketEvent } from '../../types/api';
-import React from 'react';
+import { ConnectionStatus, _WebSocketEvent } from '../../types/api';
 import { EventEmitter } from 'events';
 
 // Create hoisted mocks for terminal functions
@@ -64,7 +63,7 @@ vi.mock('../useWebSocket', () => ({
 
 // Import the hook after mocks are set up
 import { useTerminalWebSocket } from '../useTerminalWebSocket';
-import { getSocketConnectionManager } from '@/utils/websocket';
+import { _getSocketConnectionManager } from '@/utils/websocket';
 
 describe('useTerminalWebSocket using React Context', () => {
   beforeEach(() => {

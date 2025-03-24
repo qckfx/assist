@@ -29,6 +29,15 @@ class MockIntersectionObserver {
   readonly thresholds: ReadonlyArray<number> = [];
   
   constructor() {}
+}
+
+global.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
+
+// Mock ResizeObserver
+class MockResizeObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
   
   disconnect() {
     return null;
@@ -47,4 +56,4 @@ class MockIntersectionObserver {
   }
 }
 
-window.IntersectionObserver = MockIntersectionObserver as any;
+global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
