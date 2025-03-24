@@ -8,7 +8,6 @@ import apiRoutes from '../api';
 import { errorHandler } from '../../middleware/errorHandler';
 import { getAgentService } from '../../services/AgentService';
 import { sessionManager } from '../../services/SessionManager';
-import { WebSocketService } from '../../services/WebSocketService';
 
 // Mock the agent service and session manager
 jest.mock('../../services/AgentService', () => ({

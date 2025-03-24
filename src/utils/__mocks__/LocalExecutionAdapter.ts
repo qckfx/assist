@@ -2,7 +2,7 @@
  * Mock implementation of LocalExecutionAdapter
  */
 import { ExecutionAdapter } from '../../types/tool';
-import { FileEntry, LSToolErrorResult, LSToolSuccessResult } from '../../tools/LSTool';
+import { LSToolErrorResult, LSToolSuccessResult } from '../../tools/LSTool';
 import { FileReadToolErrorResult, FileReadToolSuccessResult } from '../../tools/FileReadTool';
 import { FileEditToolErrorResult, FileEditToolSuccessResult } from '../../tools/FileEditTool';
 
