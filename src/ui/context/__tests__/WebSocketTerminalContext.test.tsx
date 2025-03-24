@@ -16,6 +16,11 @@ vi.mock('@/hooks/useTerminalWebSocket', () => ({
     connectionStatus: ConnectionStatus.CONNECTED,
     sendCommand: vi.fn(),
     isProcessing: false,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    hasJoined: true,
+    sessionId: 'test-session-id',
+    contextSessionId: 'test-session-id',
   })
 }));
 
