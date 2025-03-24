@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
-export type MessageType = 'user' | 'assistant' | 'system' | 'error' | 'tool';
+export type MessageType = 'user' | 'assistant' | 'system' | 'error';
 
 export interface MessageProps {
   content: string;
@@ -131,13 +131,6 @@ export function Message({
           ...baseStyles,
           backgroundColor: 'var(--terminal-error-msg-bg)',
           color: 'var(--terminal-error-msg-text)',
-        };
-      case 'tool':
-        return {
-          ...baseStyles,
-          backgroundColor: 'var(--terminal-tool-msg-bg)',
-          color: 'var(--terminal-tool-msg-text)',
-          // Removed hardcoded fontSize to inherit from parent
         };
       default:
         return baseStyles;
