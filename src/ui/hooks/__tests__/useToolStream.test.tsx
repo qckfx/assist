@@ -202,5 +202,187 @@ describe('useToolStream', () => {
     expect(result.current.state.activeTools).toEqual({});
     expect(result.current.state.latestExecution).toBeNull();
     expect(result.current.getToolHistory('TestTool-4').length).toBe(0);
+    expect(result.current.state.toolExecutions).toEqual({});
+    expect(result.current.state.toolHistory).toEqual([]);
+    expect(result.current.state.activeToolCount).toBe(0);
+  });
+
+  // New tests for enhanced visualization functionality
+  it('should handle tool execution started events', () => {
+    // Render the hook
+    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    
+    // Simulate a tool execution started event
+    act(() => {
+      subscribedEvents[WebSocketEvent.TOOL_EXECUTION_STARTED]({
+        sessionId: 'test-session',
+        tool: { id: 'VisualizationTool-1', name: 'VisualizationTool' },
+        args: { param1: 'value1' },
+        paramSummary: 'param1: value1',
+        timestamp: new Date().toISOString(),
+      });
+    });
+    
+    // Verify state
+    expect(result.current.state.activeToolCount).toBe(1);
+    expect(result.current.hasActiveTools).toBe(true);
+    expect(result.current.getActiveTools().length).toBe(1);
+    expect(result.current.getActiveTools()[0].tool).toBe('VisualizationTool-1');
+    expect(result.current.getActiveTools()[0].status).toBe('running');
+  });
+  
+  it('should handle tool execution completed events', () => {
+    // Render the hook
+    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    
+    // First, simulate a tool started event
+    const startTimestamp = new Date().toISOString();
+    act(() => {
+      subscribedEvents[WebSocketEvent.TOOL_EXECUTION_STARTED]({
+        sessionId: 'test-session',
+        tool: { id: 'VisualizationTool-2', name: 'VisualizationTool' },
+        args: { param1: 'value1' },
+        paramSummary: 'param1: value1',
+        timestamp: startTimestamp,
+      });
+    });
+    
+    // Then, simulate its completion
+    act(() => {
+      subscribedEvents[WebSocketEvent.TOOL_EXECUTION_COMPLETED]({
+        sessionId: 'test-session',
+        tool: { id: 'VisualizationTool-2', name: 'VisualizationTool' },
+        result: 'Visualization result',
+        paramSummary: 'param1: value1',
+        executionTime: 123,
+        timestamp: new Date().toISOString(),
+        startTime: startTimestamp,
+      });
+    });
+    
+    // Verify state
+    expect(result.current.state.activeToolCount).toBe(0);
+    expect(result.current.hasActiveTools).toBe(false);
+    expect(result.current.getActiveTools().length).toBe(0);
+    expect(result.current.state.toolHistory.length).toBe(1);
+    expect(result.current.state.toolHistory[0].status).toBe('completed');
+    expect(result.current.state.toolHistory[0].result).toBe('Visualization result');
+    expect(result.current.state.toolHistory[0].executionTime).toBe(123);
+  });
+  
+  it('should handle tool execution error events', () => {
+    // Render the hook
+    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    
+    // First, simulate a tool started event
+    act(() => {
+      subscribedEvents[WebSocketEvent.TOOL_EXECUTION_STARTED]({
+        sessionId: 'test-session',
+        tool: { id: 'VisualizationTool-3', name: 'VisualizationTool' },
+        args: { param1: 'value1' },
+        paramSummary: 'param1: value1',
+        timestamp: new Date().toISOString(),
+      });
+    });
+    
+    // Then, simulate an error
+    act(() => {
+      subscribedEvents[WebSocketEvent.TOOL_EXECUTION_ERROR]({
+        sessionId: 'test-session',
+        tool: { id: 'VisualizationTool-3', name: 'VisualizationTool' },
+        error: { message: 'Tool execution failed' },
+        paramSummary: 'param1: value1',
+        timestamp: new Date().toISOString(),
+      });
+    });
+    
+    // Verify state
+    expect(result.current.state.activeToolCount).toBe(0);
+    expect(result.current.hasActiveTools).toBe(false);
+    expect(result.current.getActiveTools().length).toBe(0);
+    expect(result.current.state.toolHistory.length).toBe(1);
+    expect(result.current.state.toolHistory[0].status).toBe('error');
+    expect(result.current.state.toolHistory[0].error?.message).toBe('Tool execution failed');
+  });
+  
+  it('should properly update tools on processing completed', () => {
+    // Render the hook
+    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    
+    // Simulate multiple tool started events
+    act(() => {
+      for (let i = 1; i <= 3; i++) {
+        subscribedEvents[WebSocketEvent.TOOL_EXECUTION_STARTED]({
+          sessionId: 'test-session',
+          tool: { id: `Tool-${i}`, name: `Tool ${i}` },
+          args: { index: i },
+          paramSummary: `Tool ${i} params`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+    
+    // Verify multiple active tools
+    expect(result.current.state.activeToolCount).toBe(3);
+    expect(result.current.getActiveTools().length).toBe(3);
+    
+    // Simulate processing completed
+    act(() => {
+      subscribedEvents[WebSocketEvent.PROCESSING_COMPLETED]({
+        sessionId: 'test-session',
+      });
+    });
+    
+    // Verify all tools are now completed
+    expect(result.current.state.activeToolCount).toBe(0);
+    expect(result.current.getActiveTools().length).toBe(0);
+    
+    // Verify each tool in toolExecutions has status completed
+    const toolExecutions = result.current.state.toolExecutions;
+    for (const toolId in toolExecutions) {
+      expect(toolExecutions[toolId].status).toBe('completed');
+      expect(toolExecutions[toolId].endTime).toBeDefined();
+    }
+  });
+  
+  it('should provide recent tools through getRecentTools', () => {
+    // Render the hook
+    const { result } = renderHook(() => useToolStream('test-session'), { wrapper });
+    
+    // Simulate multiple tool execution cycles
+    act(() => {
+      for (let i = 1; i <= 10; i++) {
+        // Start tool
+        subscribedEvents[WebSocketEvent.TOOL_EXECUTION_STARTED]({
+          sessionId: 'test-session',
+          tool: { id: `RecentTool-${i}`, name: `Recent Tool ${i}` },
+          args: { index: i },
+          paramSummary: `Tool ${i} params`,
+          timestamp: new Date().toISOString(),
+        });
+        
+        // Complete tool
+        subscribedEvents[WebSocketEvent.TOOL_EXECUTION_COMPLETED]({
+          sessionId: 'test-session',
+          tool: { id: `RecentTool-${i}`, name: `Recent Tool ${i}` },
+          result: `Result ${i}`,
+          paramSummary: `Tool ${i} params`,
+          executionTime: i * 10,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+    
+    // Verify we have 10 tools in history
+    expect(result.current.state.toolHistory.length).toBe(10);
+    
+    // Get recent 5 tools
+    const recentTools = result.current.getRecentTools(5);
+    
+    // Verify we get 5 most recent tools in reverse chronological order
+    expect(recentTools.length).toBe(5);
+    expect(recentTools[0].tool).toBe('RecentTool-10');
+    expect(recentTools[1].tool).toBe('RecentTool-9');
+    expect(recentTools[4].tool).toBe('RecentTool-6');
   });
 });

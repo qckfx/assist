@@ -83,3 +83,51 @@
 .light {
   color-scheme: light;
 }
+
+/* Tool visualization styles */
+.tool-visualization {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease-in-out;
+}
+
+.tool-visualization[data-tool-status='running'] {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Expandable parameter styling */
+.tool-visualization .truncate {
+  cursor: pointer;
+}
+
+.tool-visualization .truncate:hover {
+  opacity: 0.8;
+}
+
+/* Add animation for tool visualization appearance */
+.tool-visualization {
+  animation: tool-appear 0.3s ease-out;
+}
+
+@keyframes tool-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
