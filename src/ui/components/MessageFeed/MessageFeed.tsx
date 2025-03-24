@@ -5,6 +5,23 @@ import { TerminalMessage } from '@/types/terminal';
 import { ToolExecution } from '@/hooks/useToolStream';
 import ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
 
+// Define types for timeline items
+type MessageTimelineItem = {
+  id: string;
+  timestamp: Date;
+  type: 'message';
+  message: TerminalMessage;
+};
+
+type ToolTimelineItem = {
+  id: string;
+  timestamp: Date;
+  type: 'tool';
+  tool: ToolExecution;
+};
+
+type TimelineItem = MessageTimelineItem | ToolTimelineItem;
+
 export interface MessageFeedProps {
   messages: TerminalMessage[];
   toolExecutions?: Record<string, ToolExecution>;
@@ -47,7 +64,7 @@ export function MessageFeed({
     }
 
     // Convert tool executions to a format we can combine with messages
-    const toolItems = Object.values(toolExecutions)
+    const toolItems: Array<{id: string; timestamp: Date; tool: ToolExecution}> = Object.values(toolExecutions)
       // Sort by timestamp to ensure correct ordering
       .sort((a, b) => a.startTime - b.startTime)
       .map(tool => ({
@@ -82,17 +99,17 @@ export function MessageFeed({
     }
 
     // Create a merged timeline of messages and tools
-    const allItems = [
+    const allItems: TimelineItem[] = [
       ...messageItems.map(msg => ({ 
         id: msg.id, 
         timestamp: msg.timestamp, 
-        type: 'message', 
+        type: 'message' as const, 
         message: msg 
       })),
       ...toolItems.map(tool => ({ 
         id: tool.id, 
         timestamp: tool.timestamp, 
-        type: 'tool', 
+        type: 'tool' as const, 
         tool: tool.tool 
       }))
     ];
