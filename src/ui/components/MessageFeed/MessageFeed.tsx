@@ -26,15 +26,16 @@ export function MessageFeed({
 }: MessageFeedProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Auto-scroll to the bottom when messages change
+  // Combined auto-scroll effect for messages and tools
   useEffect(() => {
     if (autoScroll && messagesEndRef.current) {
       // Check if scrollIntoView is available (for JSDOM in tests)
       if (typeof messagesEndRef.current.scrollIntoView === 'function') {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        // Use 'auto' instead of 'smooth' for a snappier response
+        messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
       }
     }
-  }, [messages, autoScroll]);
+  }, [messages, toolExecutions, autoScroll]);
 
   // Process tools and messages together in a timeline
   const getTimelinedItems = () => {
@@ -55,8 +56,8 @@ export function MessageFeed({
         tool
       }));
 
-    // Debug output
-    console.log('Tool executions in MessageFeed:', toolItems.length, toolExecutions);
+    // Track tool items count for internal use
+    const toolCount = toolItems.length;
 
     return {
       messageItems: messages.filter(msg => msg.type !== 'tool'), // Filter out tool messages
@@ -125,12 +126,12 @@ export function MessageFeed({
           </div>
         );
       } else {
-        // Tool visualization
+        // Tool visualization - left-aligned and compact
         const tool = item.tool;
         return (
           <div
             key={tool.id}
-            className="w-full max-w-full self-center mt-3 mb-3 transform transition-all duration-500 hover:scale-[1.01]"
+            className="w-4/5 self-start mt-2 mb-2 ml-2" // Left-aligned, not centered
             data-testid={`tool-${tool.id}`}
             role="listitem"
             aria-label={`Tool execution: ${tool.toolName}`}
@@ -138,7 +139,8 @@ export function MessageFeed({
             <ToolVisualization
               tool={tool}
               showExecutionTime={true}
-              className="mx-2"
+              compact={true} // Always use compact view
+              className="mx-0" // Remove horizontal margin
             />
           </div>
         );

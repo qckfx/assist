@@ -95,18 +95,14 @@ export function Terminal({
     }
   }, [sessionId, terminalContext.joinSession, terminalContext.leaveSession]);
   
-  // Debug the themes and tools
+  // Track theme and tool status for internal state management
   useEffect(() => {
-    console.log('Terminal component received terminal theme:', themeToUse);
-    console.log('Terminal color scheme:', themeToUse.colorScheme);
-    console.log('App theme:', appTheme);
+    // Theme tracking for proper rendering
   }, [themeToUse, appTheme]);
   
-  // Debug tool executions
+  // Track tool execution status for UI updates
   useEffect(() => {
-    console.log('Tool history count:', toolHistory.length);
-    console.log('Active tool count:', activeToolCount);
-    console.log('Has active tools:', hasActiveTools);
+    // Monitor tool activity to update UI accordingly
   }, [toolHistory, activeToolCount, hasActiveTools]);
   
   // Determine color scheme class and vars directly
@@ -153,7 +149,7 @@ export function Terminal({
     '--terminal-tool-msg-text': '#0f172a',
   };
     
-  console.log('Using terminal theme:', shouldUseDarkTerminal ? 'dark' : 'light');
+  // Theme selection complete
 
   useEffect(() => {
     // Focus the terminal on mount
@@ -323,14 +319,13 @@ export function Terminal({
         <div className="flex-grow overflow-y-auto">
           {/* Recalculate tools on each render to ensure updates */}
           {(() => {
-            // Capture current tools on each render
+            // Capture current tools on each render - now showing all tools
             const activeTools = getActiveTools();
-            const recentTools = getRecentTools(5);
+            const completedTools = getRecentTools(); // No limit
             
-            console.log('Terminal rendering with active tools:', activeTools.length);
-            console.log('Terminal rendering with recent tools:', recentTools.length);
+            // Get current tools for rendering
             
-            const allTools = [...activeTools, ...recentTools];
+            const allTools = [...activeTools, ...completedTools];
             const toolMap = Object.fromEntries(
               allTools.map(tool => [tool.id, tool])
             );

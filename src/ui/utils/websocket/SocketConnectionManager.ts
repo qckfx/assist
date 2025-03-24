@@ -34,7 +34,22 @@ export class SocketConnectionManager extends EventEmitter {
   // Connection state
   private connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED;
   private reconnectAttempts: number = 0;
-  private currentSessionId: string | null = null;
+  
+  /**
+   * Session management state
+   * 
+   * This state is maintained independently from React's render cycle to ensure
+   * stability and prevent unnecessary joins/leaves during React re-renders.
+   * 
+   * - currentSessionId: The current session this connection is joined to
+   * - hasJoined: Whether we've successfully joined the session
+   * - pendingSession: Session waiting to be joined once connection is established
+   */
+  private sessionState = {
+    currentSessionId: null as string | null,
+    hasJoined: false,
+    pendingSession: null as string | null
+  };
   
   private constructor() {
     super();
@@ -66,9 +81,24 @@ export class SocketConnectionManager extends EventEmitter {
   
   /**
    * Get the current session ID
+   * 
+   * @returns The ID of the session that is currently joined, or null if no session is joined
    */
   public getCurrentSessionId(): string | null {
-    return this.currentSessionId;
+    return this.sessionState.currentSessionId;
+  }
+  
+  /**
+   * Get detailed session state information
+   * 
+   * @returns An object containing the current session state
+   */
+  public getSessionState(): {
+    currentSessionId: string | null;
+    hasJoined: boolean;
+    pendingSession: string | null;
+  } {
+    return { ...this.sessionState };
   }
   
   /**
@@ -146,9 +176,14 @@ export class SocketConnectionManager extends EventEmitter {
       this.reconnectAttempts = 0;
       this.emit('reconnect_attempt', 0);
       
-      // Rejoin session if needed
-      if (this.currentSessionId) {
-        this.joinSession(this.currentSessionId);
+      // Check if we have a pending session to join
+      if (this.sessionState.pendingSession) {
+        console.log(`SocketConnectionManager: Connecting to pending session ${this.sessionState.pendingSession}`);
+        this.joinSession(this.sessionState.pendingSession);
+      } else if (this.sessionState.currentSessionId && !this.sessionState.hasJoined) {
+        // Re-join current session if we have one but haven't joined yet
+        console.log(`SocketConnectionManager: Reconnecting to session ${this.sessionState.currentSessionId}`);
+        this.joinSession(this.sessionState.currentSessionId);
       }
     });
     
@@ -230,44 +265,130 @@ export class SocketConnectionManager extends EventEmitter {
   
   /**
    * Join a session
+   * 
+   * This method is idempotent - calling it multiple times with the same sessionId
+   * will only join the session once. This prevents unnecessary WebSocket traffic
+   * when React components re-render.
+   * 
+   * If not currently connected, the session ID is stored and joined automatically
+   * once the connection is established.
+   * 
+   * @param sessionId The ID of the session to join
+   * @emits 'session_change' when the session changes successfully
+   * @emits 'session_join_attempt' when attempting to join a session
+   * @emits 'session_join_success' when successfully joining a session
+   * @emits 'session_join_failure' when failing to join a session
    */
   public joinSession(sessionId: string): void {
+    // Emit attempt event for tracking/debugging
+    this.emit('session_join_attempt', sessionId);
+    
+    // If we're already in this session, do nothing to prevent unnecessary traffic
+    if (this.sessionState.currentSessionId === sessionId && this.sessionState.hasJoined) {
+      console.log(`SocketConnectionManager: Already joined session ${sessionId}, ignoring duplicate join request`);
+      return;
+    }
+    
     if (!this.socket || !this.isConnected()) {
-      console.log(`SocketConnectionManager: Cannot join session ${sessionId}: not connected`);
+      console.log(`SocketConnectionManager: Cannot join session ${sessionId} immediately: not connected`);
       // Store for later when we connect
-      this.currentSessionId = sessionId;
+      this.sessionState.pendingSession = sessionId;
       return;
     }
     
     // Leave current session if different
-    if (this.currentSessionId && this.currentSessionId !== sessionId) {
-      this.socket.emit(WebSocketEvent.LEAVE_SESSION, this.currentSessionId);
+    if (this.sessionState.currentSessionId && 
+        this.sessionState.currentSessionId !== sessionId && 
+        this.sessionState.hasJoined) {
+      // Emit leave event for current session
+      this.socket.emit(WebSocketEvent.LEAVE_SESSION, this.sessionState.currentSessionId);
+      console.log(`SocketConnectionManager: Left previous session ${this.sessionState.currentSessionId}`);
     }
     
-    // Join new session
-    this.socket.emit(WebSocketEvent.JOIN_SESSION, sessionId);
-    this.currentSessionId = sessionId;
-    this.emit('session_change', sessionId);
-    console.log(`SocketConnectionManager: Joined session ${sessionId}`);
+    // Set session ID before emitting to ensure state consistency
+    const previousSession = this.sessionState.currentSessionId;
+    this.sessionState.currentSessionId = sessionId;
+    
+    // Join new session via WebSocket
+    try {
+      this.socket.emit(WebSocketEvent.JOIN_SESSION, sessionId);
+      this.sessionState.hasJoined = true;
+      
+      // Clear pending session since we've joined successfully
+      this.sessionState.pendingSession = null;
+      
+      // Emit events
+      this.emit('session_join_success', sessionId);
+      
+      // Only emit session_change if the session actually changed
+      if (previousSession !== sessionId) {
+        this.emit('session_change', sessionId);
+      }
+      
+      console.log(`SocketConnectionManager: Joined session ${sessionId}`);
+    } catch (error) {
+      console.error(`SocketConnectionManager: Failed to join session ${sessionId}:`, error);
+      this.emit('session_join_failure', { sessionId, error });
+      
+      // Reset session state on failure
+      this.sessionState.hasJoined = false;
+      this.sessionState.currentSessionId = previousSession;
+    }
   }
   
   /**
    * Leave a session
+   * 
+   * This method is idempotent - calling it multiple times with the same sessionId
+   * or when not in a session will not cause errors. This prevents issues during
+   * React component lifecycle changes.
+   * 
+   * @param sessionId The ID of the session to leave
+   * @emits 'session_change' when the session changes successfully
+   * @emits 'session_leave_attempt' when attempting to leave a session
+   * @emits 'session_leave_success' when successfully leaving a session
    */
   public leaveSession(sessionId: string): void {
-    if (!this.socket || !this.isConnected()) {
-      console.log(`SocketConnectionManager: Cannot leave session ${sessionId}: not connected`);
+    // Emit attempt event for tracking/debugging
+    this.emit('session_leave_attempt', sessionId);
+    
+    // If we're not in this session, do nothing
+    if (this.sessionState.currentSessionId !== sessionId || !this.sessionState.hasJoined) {
+      console.log(`SocketConnectionManager: Not in session ${sessionId}, ignoring leave request`);
       return;
     }
     
-    this.socket.emit(WebSocketEvent.LEAVE_SESSION, sessionId);
-    
-    if (this.currentSessionId === sessionId) {
-      this.currentSessionId = null;
+    if (!this.socket || !this.isConnected()) {
+      console.log(`SocketConnectionManager: Cannot leave session ${sessionId} via WebSocket: not connected`);
+      // Still update the internal state
+      this.sessionState.currentSessionId = null;
+      this.sessionState.hasJoined = false;
       this.emit('session_change', null);
+      this.emit('session_leave_success', sessionId);
+      return;
     }
     
-    console.log(`SocketConnectionManager: Left session ${sessionId}`);
+    // Emit leave event for current session
+    try {
+      this.socket.emit(WebSocketEvent.LEAVE_SESSION, sessionId);
+      
+      // Update session state
+      this.sessionState.currentSessionId = null;
+      this.sessionState.hasJoined = false;
+      
+      // Emit events
+      this.emit('session_change', null);
+      this.emit('session_leave_success', sessionId);
+      
+      console.log(`SocketConnectionManager: Left session ${sessionId}`);
+    } catch (error) {
+      console.error(`SocketConnectionManager: Error leaving session ${sessionId}:`, error);
+      
+      // Force state update even on error
+      this.sessionState.currentSessionId = null;
+      this.sessionState.hasJoined = false;
+      this.emit('session_change', null);
+    }
   }
   
   /**
@@ -283,14 +404,25 @@ export class SocketConnectionManager extends EventEmitter {
   }
   
   /**
-   * Reset the connection manager (for testing)
+   * Reset the connection manager (for testing or recovery)
+   * 
+   * Completely resets all state and connection information.
    */
   public reset(): void {
     this.disconnect();
     this.removeAllListeners();
     this.connectionStatus = ConnectionStatus.DISCONNECTED;
     this.reconnectAttempts = 0;
-    this.currentSessionId = null;
+    
+    // Reset session state
+    this.sessionState = {
+      currentSessionId: null,
+      hasJoined: false,
+      pendingSession: null
+    };
+    
+    // Emit session change event
+    this.emit('session_change', null);
   }
 }
 

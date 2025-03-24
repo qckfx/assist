@@ -38,6 +38,75 @@ export interface ToolExecutionBatch {
 /**
  * Hook for subscribing to tool execution events
  */
+// Helper function to generate better tool descriptions
+const getImprovedToolDescription = (
+  toolId: string, 
+  toolName: string, 
+  data: any
+): string => {
+  // Check if data has args to use for description
+  const args = data.tool?.args || data.args || {};
+  
+  // Specialized descriptions based on common tool types
+  if (toolName.includes('Glob')) {
+    return `Searching for files: ${args.pattern || 'files'}`;
+  }
+  if (toolName.includes('Grep')) {
+    return `Searching for content: ${args.pattern || 'pattern'}`;
+  }
+  if (toolName.includes('Bash')) {
+    return `Running command: ${String(args.command || '').slice(0, 50)}${String(args.command || '').length > 50 ? '...' : ''}`;
+  }
+  if (toolName.includes('View') || toolName.includes('Read')) {
+    const filePath = args.file_path || args.path || '';
+    return `Reading file: ${filePath || 'file'}`;
+  }
+  if (toolName.includes('Edit') || toolName.includes('Write')) {
+    const filePath = args.file_path || args.path || '';
+    return `Editing file: ${filePath || 'file'}`;
+  }
+  if (toolName.includes('LS')) {
+    const path = args.path || '.';
+    return `Listing files in: ${path}`;
+  }
+  if (toolName.includes('Agent')) {
+    const promptStart = String(args.prompt || '').slice(0, 50);
+    return `Running agent to: ${promptStart}${String(args.prompt || '').length > 50 ? '...' : ''}`;
+  }
+  
+  // For other tools, try to extract useful parameter information
+  if (Object.keys(args).length > 0) {
+    // Find non-generic parameters to show
+    const meaningfulParams = Object.keys(args).filter(key => 
+      !['type', 'id', 'name', 'tool', 'timestamp'].includes(key.toLowerCase())
+    );
+    
+    if (meaningfulParams.length > 0) {
+      const paramKey = meaningfulParams[0];
+      const paramValue = String(args[paramKey]).slice(0, 50);
+      return `${toolName}: ${paramKey}=${paramValue}${String(args[paramKey]).length > 50 ? '...' : ''}`;
+    }
+  }
+  
+  // For result-based tool descriptions
+  if (data.result) {
+    if (typeof data.result === 'object') {
+      // For search results, often includes counts
+      if ('count' in data.result || 'matches' in data.result) {
+        return `${toolName} found ${data.result.count || data.result.matches?.length || 'results'}`;
+      }
+      
+      // For file operations
+      if ('fileName' in data.result || 'file' in data.result) {
+        return `${toolName} processed ${data.result.fileName || data.result.file}`;
+      }
+    }
+  }
+  
+  // Fallback to generic but slightly better description
+  return `${toolName} completed`;
+};
+
 export function useToolStream(sessionId?: string) {
   const { subscribe, subscribeToBatch } = useWebSocket(sessionId);
   
@@ -69,14 +138,14 @@ export function useToolStream(sessionId?: string) {
   const updateState = useCallback(
     throttle((toolId: string, result: any, toolName: string = toolId) => {
       setState(prev => {
-        // Create a ToolExecution object for high-frequency tool updates
+        // Create a ToolExecution object for high-frequency tool updates with better description
         const execution: ToolExecution = {
           id: `${toolId}-${Date.now()}`,
           tool: toolId,
           toolName,
           status: 'completed', // High-frequency tools update so quickly we treat them as immediately completed
           result,
-          paramSummary: `High-frequency tool execution`,
+          paramSummary: getImprovedToolDescription(toolId, toolName, { tool: { args: {} }, result }),
           startTime: Date.now() - 50, // Approximate startTime
           endTime: Date.now(),
           executionTime: 50, // Approximate execution time
@@ -172,14 +241,15 @@ export function useToolStream(sessionId?: string) {
     const toolId = data.tool.id;
     const toolName = data.tool.name || toolId;
     
-    // Create a ToolExecution object for the legacy event
+    // Create a ToolExecution object for the legacy event with a better description
     const execution: ToolExecution = {
       id: `${toolId}-${Date.now()}`,
       tool: toolId,
       toolName,
       status: 'completed', // Legacy events are considered completed immediately
       result: data.result,
-      paramSummary: `Tool execution result`,
+      // Generate a more informative description based on the tool type
+      paramSummary: getImprovedToolDescription(toolId, toolName, data),
       startTime: Date.now() - 100, // Approximate startTime for legacy events
       endTime: Date.now(),
       executionTime: 100, // Approximate execution time for legacy events
@@ -386,7 +456,7 @@ export function useToolStream(sessionId?: string) {
     });
   }, []);
   
-  // Handler for tool execution completed
+  // Handler for tool execution completed with improved synchronization
   const handleToolExecutionCompleted = useCallback((data: any) => {
     const { tool, result, paramSummary, executionTime, timestamp, startTime } = data;
     const toolId = tool.id;
@@ -410,12 +480,15 @@ export function useToolStream(sessionId?: string) {
       
       // If no match by start time, look for a running tool with matching tool ID
       if (!matchingExecution) {
-        Object.entries(prev.toolExecutions).forEach(([id, execution]) => {
-          if (execution.tool === toolId && execution.status === 'running') {
-            matchingExecution = execution;
-            matchingExecutionId = id;
-          }
-        });
+        // Create a sorted array of tools by start time (newest first)
+        const runningTools = Object.entries(prev.toolExecutions)
+          .filter(([, execution]) => execution.tool === toolId && execution.status === 'running')
+          .sort(([, a], [, b]) => b.startTime - a.startTime);
+        
+        if (runningTools.length > 0) {
+          // Take the most recent running tool
+          [matchingExecutionId, matchingExecution] = runningTools[0];
+        }
       }
       
       // If still no match, create a fallback ID
@@ -434,24 +507,28 @@ export function useToolStream(sessionId?: string) {
         startTime: expectedStartTime || Date.now() - (executionTime || 0),
       };
       
-      // Update with completion data
+      // Update with completion data but keep the original description
       const execution: ToolExecution = {
         ...prevExecution,
         status: 'completed',
         result,
-        paramSummary: paramSummary || prevExecution.paramSummary,
+        // Keep the original paramSummary to maintain consistency
+        paramSummary: prevExecution.paramSummary,
         endTime: new Date(timestamp).getTime(),
         executionTime: executionTime || 
           (new Date(timestamp).getTime() - prevExecution.startTime),
       };
       
-      // Add to history
+      // Add to history - without limiting size (let's show all tools)
       const toolHistory = [...prev.toolHistory, execution];
       
-      // Keep history at a reasonable size
-      if (toolHistory.length > 100) {
-        toolHistory.shift();
-      }
+      // Simply update the toolExecutions map without limits
+      const updatedToolExecutions = {
+        ...prev.toolExecutions
+      };
+      
+      // Add the current execution
+      updatedToolExecutions[matchingExecutionId] = execution;
       
       return {
         ...prev,
@@ -459,10 +536,7 @@ export function useToolStream(sessionId?: string) {
           ...prev.results,
           [toolId]: result,
         },
-        toolExecutions: {
-          ...prev.toolExecutions,
-          [matchingExecutionId]: execution,
-        },
+        toolExecutions: updatedToolExecutions,
         activeTools: {
           ...prev.activeTools,
           [matchingExecutionId]: false,
@@ -522,23 +596,19 @@ export function useToolStream(sessionId?: string) {
         startTime: expectedStartTime || Date.now() - 100, // Assume error happened shortly after start if no start time
       };
       
-      // Update with error data
+      // Update with error data but keep the original description
       const execution: ToolExecution = {
         ...prevExecution,
         status: 'error',
         error,
-        paramSummary: paramSummary || prevExecution.paramSummary,
+        // Keep the original paramSummary to maintain consistency
+        paramSummary: prevExecution.paramSummary,
         endTime: new Date(timestamp).getTime(),
         executionTime: new Date(timestamp).getTime() - prevExecution.startTime,
       };
       
-      // Add to history
+      // Add to history - without limiting size
       const toolHistory = [...prev.toolHistory, execution];
-      
-      // Keep history at a reasonable size
-      if (toolHistory.length > 100) {
-        toolHistory.shift();
-      }
       
       return {
         ...prev,
@@ -559,10 +629,7 @@ export function useToolStream(sessionId?: string) {
 
   // Set up event handlers
   useEffect(() => {
-    // Subscribe to individual tool executions
-    const unsubscribeExecution = subscribe(WebSocketEvent.TOOL_EXECUTION, handleToolExecution);
-    
-    // Subscribe to batched tool executions
+    // Subscribe to batched tool executions (still needed for performance)
     const unsubscribeBatch = subscribe(WebSocketEvent.TOOL_EXECUTION_BATCH, handleToolExecutionBatch);
     
     // Subscribe to processing events
@@ -570,14 +637,13 @@ export function useToolStream(sessionId?: string) {
     const unsubscribeAborted = subscribe(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted);
     const unsubscribeError = subscribe(WebSocketEvent.PROCESSING_ERROR, handleProcessingError);
     
-    // Subscribe to new tool visualization events
+    // Subscribe to tool visualization events - these are the primary events we use now
     const unsubscribeStarted = subscribe(WebSocketEvent.TOOL_EXECUTION_STARTED, handleToolExecutionStarted);
     const unsubscribeCompletedViz = subscribe(WebSocketEvent.TOOL_EXECUTION_COMPLETED, handleToolExecutionCompleted);
     const unsubscribeErrorViz = subscribe(WebSocketEvent.TOOL_EXECUTION_ERROR, handleToolExecutionError);
     
     // Clean up subscriptions
     return () => {
-      unsubscribeExecution();
       unsubscribeBatch();
       unsubscribeCompleted();
       unsubscribeAborted();
@@ -588,7 +654,6 @@ export function useToolStream(sessionId?: string) {
     };
   }, [
     subscribe, 
-    handleToolExecution, 
     handleToolExecutionBatch,
     handleProcessingCompleted,
     handleProcessingAborted,
@@ -619,19 +684,16 @@ export function useToolStream(sessionId?: string) {
   // Utility method to get active tools
   const getActiveTools = useCallback(() => {
     const tools = Object.entries(state.toolExecutions)
-      .filter(([_, tool]) => tool.status === 'running')
-      .map(([_, tool]) => tool);
-    console.log('Active tools:', tools.length, tools);
+      .filter(([, tool]) => tool.status === 'running')
+      .map(([, tool]) => tool);
     return tools;
   }, [state.toolExecutions]);
 
-  // Utility method to get recent tools from the history
-  const getRecentTools = useCallback((count = 5) => {
+  // Utility method to get all completed tools from the history
+  const getRecentTools = useCallback((count = 1000) => {
     const tools = state.toolHistory
       .filter(tool => tool.status !== 'running') // Exclude running tools which are already in active
-      .slice(-count)
       .reverse();
-    console.log('Recent tools:', tools.length, tools);
     return tools;
   }, [state.toolHistory]);
 
