@@ -1,6 +1,5 @@
 import { useEffect, useCallback } from 'react';
 import { usePermissionManager } from './usePermissionManager';
-import { useTerminal } from '@/context/TerminalContext';
 
 /**
  * Hook for handling keyboard events for permission requests

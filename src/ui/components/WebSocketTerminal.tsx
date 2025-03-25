@@ -3,7 +3,6 @@
  */
 import React, { useState, useEffect } from 'react';
 import Terminal from './Terminal/Terminal';
-import { PermissionRequest } from './PermissionRequest';
 // ConnectionIndicator is included in Terminal
 import { ConnectionIndicator as _ConnectionIndicator } from './ConnectionIndicator';
 // TypingIndicator is included in Terminal
@@ -18,7 +17,6 @@ interface WebSocketTerminalProps {
   autoConnect?: boolean;
   showConnectionStatus?: boolean;
   showTypingIndicator?: boolean;
-  showPermissionRequests?: boolean;
 }
 
 /**
@@ -30,7 +28,6 @@ export function WebSocketTerminal({
   autoConnect = true,
   showConnectionStatus = true,
   showTypingIndicator = true,
-  showPermissionRequests = true,
 }: WebSocketTerminalProps) {
   const {
     handleCommand,
@@ -38,8 +35,6 @@ export function WebSocketTerminal({
     isConnected,
     isProcessing,
     isStreaming,
-    hasPendingPermissions,
-    resolvePermission,
     abortProcessing,
     sessionId
   } = useWebSocketTerminal();
@@ -51,12 +46,18 @@ export function WebSocketTerminal({
   // Add keyboard handler for permission requests
   usePermissionKeyboardHandler({ sessionId });
   
-  // Check if we've ever connected
+  // Check if we've ever connected and store the sessionId
   useEffect(() => {
     if (isConnected && !hasConnected) {
       setHasConnected(true);
+      
+      // Store the sessionId in sessionStorage for use by other components
+      if (sessionId) {
+        sessionStorage.setItem('currentSessionId', sessionId);
+        console.log('Session ID stored in sessionStorage:', sessionId);
+      }
     }
-  }, [isConnected, hasConnected]);
+  }, [isConnected, hasConnected, sessionId]);
   
   // Auto-connect if enabled
   useEffect(() => {

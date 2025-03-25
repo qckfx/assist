@@ -3,7 +3,6 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { useTerminal } from '@/context/TerminalContext';
 import { WebSocketEvent } from '@/types/api';
 import apiClient from '@/services/apiClient';
 

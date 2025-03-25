@@ -24,7 +24,7 @@ let mockSessionId = 'test-session-id';
 
 // Mock usePermissionKeyboardHandler
 vi.mock('@/hooks/usePermissionKeyboardHandler', () => ({
-  usePermissionKeyboardHandler: (props) => mockUsePermissionKeyboardHandler(props)
+  usePermissionKeyboardHandler: (props: { sessionId?: string }) => mockUsePermissionKeyboardHandler(props)
 }));
 
 // Mock WebSocketTerminalContext
@@ -40,7 +40,7 @@ vi.mock('@/context/WebSocketTerminalContext', () => ({
     abortProcessing: mockAbortProcessing,
     sessionId: mockSessionId,
   }),
-  WebSocketTerminalProvider: ({ children }) => <>{children}</>
+  WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }));
 
 // Mock TerminalContext
@@ -55,7 +55,7 @@ vi.mock('@/context/TerminalContext', () => ({
     },
     clearMessages: mockClearMessages,
   }),
-  TerminalProvider: ({ children }) => <>{children}</>
+  TerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }));
 
 // Mock Terminal component
@@ -69,7 +69,7 @@ vi.mock('../Terminal/Terminal', () => ({
   }) => (
     <div data-testid="mock-terminal">
       <div data-testid="terminal-messages">
-        {messages?.map((msg, i) => (
+        {messages?.map((msg: { type: string, content: string }, i: number) => (
           <div key={i} data-testid={`message-${msg.type}`}>{msg.content}</div>
         ))}
       </div>
@@ -182,7 +182,7 @@ describe('WebSocketTerminal Component', () => {
     // Set pending permissions
     mockHasPendingPermissions = true;
     
-    render(<WebSocketTerminal showPermissionRequests={true} />);
+    render(<WebSocketTerminal />);
     
     // Verify the hook was called with the session ID
     expect(mockUsePermissionKeyboardHandler).toHaveBeenCalledWith({ sessionId: mockSessionId });

@@ -694,8 +694,9 @@ export function useToolStream() {
     const permission = data.permission as Record<string, unknown>;
     const toolId = permission.toolId as string;
     const permissionId = permission.id as string;
-    const args = permission.args as Record<string, unknown>;
-    const timestamp = permission.timestamp as string;
+    // Unused variables below are needed for TypeScript type checking
+    const _args = permission.args as Record<string, unknown>;
+    const _timestamp = permission.timestamp as string;
     
     console.log('Permission requested:', { permission, toolId, permissionId });
     
