@@ -45,7 +45,7 @@ export const createFileWriteTool = (): Tool => {
   return createTool({
     id: 'file_write',
     name: 'FileWriteTool',
-    description: 'Creates a new file with the specified content.',
+    description: '- Creates new files with specified content\n- Optionally overwrites existing files\n- Supports various text encodings\n- Can automatically create parent directories\n- Use this tool to create new files or completely replace existing ones\n- For targeted edits to existing files, use FileEditTool instead\n\nUsage notes:\n- Specify whether to overwrite existing files with the overwrite parameter\n- Parent directories can be created automatically with createDir=true\n- IMPORTANT: Double-check the file path before writing\n- WARNING: Setting overwrite=true will completely replace any existing file\n- Files are written with the specified encoding',
     requiresPermission: true,
     
     // Enhanced parameter descriptions

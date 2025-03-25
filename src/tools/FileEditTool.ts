@@ -37,7 +37,7 @@ export const createFileEditTool = (): Tool => {
   return createTool({
     id: 'file_edit',
     name: 'FileEditTool',
-    description: 'Modifies an existing file by replacing specific code with new content.',
+    description: '- Modifies existing files by replacing specific content\n- Ensures precise targeting of text to be replaced\n- Preserves file structure and formatting\n- Maintains file encodings during edits\n- Use this tool for targeted edits to existing files\n- For creating new files, use FileWriteTool instead\n\nUsage notes:\n- First use FileReadTool to understand the file\'s contents\n- The searchCode MUST match exactly once in the file\n- IMPORTANT: Include sufficient context in searchCode to ensure uniqueness\n- Make sure replaceCode maintains correct syntax and indentation\n- WARNING: The edit will fail if searchCode is found multiple times\n- WARNING: The edit will fail if searchCode isn\'t found exactly as provided',
     requiresPermission: true,
     
     // Enhanced parameter descriptions
@@ -48,11 +48,11 @@ export const createFileEditTool = (): Tool => {
       },
       searchCode: {
         type: "string",
-        description: "The code snippet to search for in the file (must match exactly once)"
+        description: "The code snippet to search for in the file (must match exactly once). Include sufficient surrounding context to ensure a unique match."
       },
       replaceCode: {
         type: "string",
-        description: "The new code to replace the matched code with"
+        description: "The new code to replace the matched code with. Maintain proper indentation and formatting."
       },
       encoding: {
         type: "string",
