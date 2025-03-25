@@ -31,32 +31,50 @@ const getToolDescription = (tool: ToolExecution): string => {
   
   // If we have args, create a meaningful description based on the tool type
   if (tool.args) {
-    // For common tools, provide specialized descriptions
-    if (tool.toolName.includes('Glob')) {
+    // For common tools, provide specialized descriptions - check both toolName and tool ID
+    const toolInfo = (tool.toolName || '') + '|' + (tool.tool || '');
+    
+    // Search tools
+    if (toolInfo.includes('Glob') || toolInfo.includes('glob')) {
       return `Searching for files: ${tool.args.pattern || 'files'}`;
     }
-    if (tool.toolName.includes('Grep')) {
+    if (toolInfo.includes('Grep') || toolInfo.includes('grep')) {
       return `Searching for content: ${tool.args.pattern || 'pattern'}`;
     }
-    if (tool.toolName.includes('Bash')) {
+    
+    // Command tools
+    if (toolInfo.includes('Bash') || toolInfo.includes('bash')) {
       return `Running command: ${truncateString(String(tool.args.command || 'command'), 80)}`;
     }
-    if (tool.toolName.includes('View') || tool.toolName.includes('Read') || tool.toolName.includes('Cat')) {
+    
+    // File reading tools
+    if (toolInfo.includes('View') || toolInfo.includes('Read') || 
+        toolInfo.includes('Cat') || toolInfo.includes('file_read')) {
       const path = tool.args.file_path || tool.args.path || tool.args.filePath;
       return path ? `Reading file: ${truncateString(String(path), 80)}` : `Reading file`;
     }
-    if (tool.toolName.includes('Edit') || tool.toolName.includes('Write')) {
+    
+    // File editing tools
+    if (toolInfo.includes('Edit') || toolInfo.includes('Write') || 
+        toolInfo.includes('file_edit') || toolInfo.includes('file_write')) {
       const path = tool.args.file_path || tool.args.path || tool.args.filePath;
       return path ? `Editing file: ${truncateString(String(path), 80)}` : `Editing file`;
     }
-    if (tool.toolName.includes('LS') || tool.toolName.includes('List')) {
+    
+    // Directory listing tools
+    if (toolInfo.includes('LS') || toolInfo.includes('List') || toolInfo.includes('ls')) {
       const path = tool.args.path || tool.args.directory || '.';
       return `Listing files in: ${truncateString(String(path), 80)}`;
     }
-    if (tool.toolName.includes('Agent')) {
+    
+    // Agent tools
+    if (toolInfo.includes('Agent') || toolInfo.includes('agent')) {
       return `Running agent to: ${truncateString(String(tool.args.prompt || 'perform task'), 80)}`;
     }
-    if (tool.toolName.includes('Web') || tool.toolName.includes('Fetch')) {
+    
+    // Web tools
+    if (toolInfo.includes('Web') || toolInfo.includes('Fetch') || 
+        toolInfo.includes('web') || toolInfo.includes('fetch')) {
       return `Fetching content from: ${truncateString(String(tool.args.url || 'website'), 80)}`;
     }
     

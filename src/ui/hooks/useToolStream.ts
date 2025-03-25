@@ -49,29 +49,44 @@ const getImprovedToolDescription = (
     (data.tool.args as Record<string, unknown>) : 
     ('args' in data ? (data.args as Record<string, unknown>) : {});
   
-  // Specialized descriptions based on common tool types
-  if (toolName.includes('Glob')) {
+  // Specialized descriptions based on common tool types - check both toolId and toolName
+  const toolInfo = (toolName || '') + '|' + (toolId || '');
+  
+  // Search tools
+  if (toolInfo.includes('Glob') || toolInfo.includes('glob')) {
     return `Searching for files: ${args.pattern || 'files'}`;
   }
-  if (toolName.includes('Grep')) {
+  if (toolInfo.includes('Grep') || toolInfo.includes('grep')) {
     return `Searching for content: ${args.pattern || 'pattern'}`;
   }
-  if (toolName.includes('Bash')) {
+  
+  // Command execution
+  if (toolInfo.includes('Bash') || toolInfo.includes('bash')) {
     return `Running command: ${String(args.command || '').slice(0, 50)}${String(args.command || '').length > 50 ? '...' : ''}`;
   }
-  if (toolName.includes('View') || toolName.includes('Read')) {
+  
+  // File reading
+  if (toolInfo.includes('View') || toolInfo.includes('Read') || 
+      toolInfo.includes('file_read')) {
     const filePath = args.file_path || args.path || '';
     return `Reading file: ${filePath || 'file'}`;
   }
-  if (toolName.includes('Edit') || toolName.includes('Write')) {
+  
+  // File editing
+  if (toolInfo.includes('Edit') || toolInfo.includes('Write') || 
+      toolInfo.includes('file_edit') || toolInfo.includes('file_write')) {
     const filePath = args.file_path || args.path || '';
     return `Editing file: ${filePath || 'file'}`;
   }
-  if (toolName.includes('LS')) {
+  
+  // Directory listing
+  if (toolInfo.includes('LS') || toolInfo.includes('ls')) {
     const path = args.path || '.';
     return `Listing files in: ${path}`;
   }
-  if (toolName.includes('Agent')) {
+  
+  // Agent execution
+  if (toolInfo.includes('Agent') || toolInfo.includes('agent')) {
     const promptStart = String(args.prompt || '').slice(0, 50);
     return `Running agent to: ${promptStart}${String(args.prompt || '').length > 50 ? '...' : ''}`;
   }
@@ -314,7 +329,12 @@ export function useToolStream() {
   // Helper to identify high-frequency tools
   const isHighFrequencyTool = (toolId: string) => {
     // Tools that tend to emit many events in rapid succession
-    const highFrequencyTools = ['FileReadTool', 'GrepTool', 'GlobTool', 'BashTool'];
+    const highFrequencyTools = [
+      'FileReadTool', 'file_read',
+      'GrepTool', 'grep',
+      'GlobTool', 'glob',
+      'BashTool', 'bash'
+    ];
     return highFrequencyTools.some(id => toolId.includes(id));
   };
   
