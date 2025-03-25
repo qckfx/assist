@@ -303,20 +303,81 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for session updated event - displays messages from the conversation history
     const handleSessionUpdated = (sessionData: SessionData) => {
-      // Check if session has history with conversation entries
-      if (sessionData?.history) {
-        const history = sessionData.history;
+      console.log('SESSION_UPDATED event received:', JSON.stringify(sessionData, null, 2));
+      
+      // Add debugging to identify session structure
+      if (sessionData?.state) {
+        console.log('Session state exists, conversationHistory available:', 
+          Boolean(sessionData.state.conversationHistory));
+      } else if (sessionData?.history) {
+        console.log('Legacy history format detected:', sessionData.history.length, 'messages');
+      } else {
+        console.log('No recognized history format in session data');
+      }
+      
+      // Try both types of session data structures (state.conversationHistory or history)
+      let historyToProcess = null;
+      
+      // First try the new structure with state.conversationHistory
+      if (sessionData?.state?.conversationHistory && Array.isArray(sessionData.state.conversationHistory)) {
+        historyToProcess = sessionData.state.conversationHistory;
+        console.log('Using state.conversationHistory with', historyToProcess.length, 'messages');
+      } 
+      // Then try the legacy structure with history
+      else if (sessionData?.history && Array.isArray(sessionData.history)) {
+        historyToProcess = sessionData.history;
+        console.log('Using legacy history with', historyToProcess.length, 'messages');
+      }
+      
+      // If we found a history array, process it
+      if (historyToProcess && historyToProcess.length > 0) {
+        // Get the last message from history
+        const lastMessage = historyToProcess[historyToProcess.length - 1];
+        console.log('Last message:', JSON.stringify(lastMessage, null, 2));
         
-        // Only process the last message in the history if it's from the assistant
-        const lastMessage = history[history.length - 1];
+        // Only process if it's an assistant message
         if (lastMessage && lastMessage.role === 'assistant') {
-          // Get the text content from the assistant's message
-          const textContent = lastMessage.content
-            .filter(item => item.type === 'text')
-            .map(item => item.text)
-            .join('\n');
+          let textContent = '';
+          
+          // Debug content structure
+          console.log('Assistant message content type:', 
+            Array.isArray(lastMessage.content) ? 'array' : typeof lastMessage.content);
+          
+          // Handle different formats of message content
+          if (Array.isArray(lastMessage.content)) {
+            // For array content, extract all text blocks
+            console.log('Content array length:', lastMessage.content.length);
+            
+            // Extract text content based on content structure
+            textContent = lastMessage.content
+              .filter(item => {
+                // Log item type for debugging
+                console.log('Content item type:', 
+                  typeof item, 
+                  typeof item === 'object' ? Object.keys(item) : '');
+                
+                // Check for { type: 'text', text: string } format
+                if (typeof item === 'object' && item !== null && 'type' in item && item.type === 'text' && 'text' in item) {
+                  return true;
+                }
+                // Check for simple string content
+                return typeof item === 'string';
+              })
+              .map(item => {
+                if (typeof item === 'string') return item;
+                if (typeof item === 'object' && 'text' in item) return item.text;
+                return '';
+              })
+              .join('\n');
+          } else if (typeof lastMessage.content === 'string') {
+            // Handle simple string content
+            textContent = lastMessage.content;
+          }
+          
+          console.log('Extracted text content:', textContent.substring(0, 100) + (textContent.length > 100 ? '...' : ''));
           
           if (textContent.trim()) {
+            console.log('Adding assistant message to terminal');
             dispatch({ 
               type: 'ADD_MESSAGE', 
               payload: {
@@ -326,8 +387,14 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
                 timestamp: new Date()
               }
             });
+          } else {
+            console.log('No text content found in assistant message');
           }
+        } else {
+          console.log('Last message is not from assistant or is invalid');
         }
+      } else {
+        console.log('No history or empty history in session data');
       }
     };
     
