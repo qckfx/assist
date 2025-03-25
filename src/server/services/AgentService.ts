@@ -33,7 +33,6 @@ export enum AgentServiceEvent {
   // Permission events
   PERMISSION_REQUESTED = 'permission:requested',
   PERMISSION_RESOLVED = 'permission:resolved',
-  PERMISSION_TIMEOUT = 'permission:timeout',
 }
 
 /**
@@ -215,38 +214,7 @@ export class AgentService extends EventEmitter {
                 timestamp: permissionRequest.timestamp.toISOString(),
               });
               
-              // Set a timeout to auto-reject after 2 minutes to prevent hanging
-              setTimeout(() => {
-                if (this.permissionRequests.has(permissionId)) {
-                  serverLogger.info(`Permission request ${permissionId} timed out`);
-                  
-                  // Emit permission timeout event with tool ID included
-                  this.emit(AgentServiceEvent.PERMISSION_TIMEOUT, {
-                    permissionId,
-                    sessionId,
-                    toolId,
-                    timestamp: new Date().toISOString(),
-                  });
-                  
-                  // Resolve the permission request as denied
-                  this.resolvePermission(permissionId, false);
-                  
-                  // Also emit a tool execution error event to ensure the LLM gets a response
-                  this.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, {
-                    sessionId,
-                    tool: {
-                      id: toolId,
-                      name: tool?.name || toolId,
-                    },
-                    error: {
-                      message: 'Permission request timed out',
-                      stack: '',
-                    },
-                    paramSummary: this.summarizeToolParameters(toolId, args),
-                    timestamp: new Date().toISOString(),
-                  });
-                }
-              }, 2 * 60 * 1000);
+              // No timeout - permission requests wait indefinitely for user action
             });
           },
         },

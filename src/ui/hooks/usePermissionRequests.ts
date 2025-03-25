@@ -63,20 +63,7 @@ export function usePermissionRequests() {
     return unsubscribe;
   }, [subscribe]);
   
-  // Handle permission timeout events
-  useEffect(() => {
-    const unsubscribe = subscribe(WebSocketEvent.PERMISSION_TIMEOUT, (data) => {
-      // Remove the timed-out permission request from our state
-      setPermissionRequests((prev) => 
-        prev.filter((req) => req.permissionId !== data.permissionId)
-      );
-      
-      // No system message - the tool visualization will show the timeout state
-      console.log(`Permission request for ${data.toolId} timed out`);
-    });
-    
-    return unsubscribe;
-  }, [subscribe]);
+  // No timeout handling - permission requests wait indefinitely for user action
   
   // Resolve a permission request
   const resolvePermission = useCallback(async (permissionId: string, granted: boolean) => {

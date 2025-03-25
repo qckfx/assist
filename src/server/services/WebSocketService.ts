@@ -487,16 +487,6 @@ export class WebSocketService {
       });
     });
     
-    // Permission timeout
-    this.agentService.on(AgentServiceEvent.PERMISSION_TIMEOUT, ({ sessionId, permissionId, toolId, timestamp }) => {
-      this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_TIMEOUT, {
-        sessionId,
-        permissionId,
-        toolId,
-        timestamp,
-      });
-      
-      serverLogger.debug(`Permission timeout sent to clients: ${permissionId} for tool ${toolId}`);
-    });
+    // No permission timeout handler - permission requests wait indefinitely
   }
 }
