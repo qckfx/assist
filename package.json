@@ -1,6 +1,6 @@
 {
   "name": "qckfx",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "description": "A cli-based AI software engineering agent",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -28,13 +28,16 @@
     "build:watch": "tsc --project tsconfig.core.json --watch",
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
-    "build:complete": "npm run build && npm run build:ui",
+    "build:complete": "npm run clean && npm run build && npm run build:ui",
     "typecheck": "tsc --project tsconfig.core.json --noEmit",
     "typecheck:ui": "tsc -p tsconfig.ui.json --noEmit",
     "typecheck:all": "npm run typecheck && npm run typecheck:ui",
     "ui:generate": "npx shadcn-ui@latest add",
     "start:dist": "node dist/cli.js",
-    "prepublishOnly": "npm run build:complete"
+    "start:dev": "npm run build:complete && npm run start:dist -- --dev --port 3000",
+    "prepublishOnly": "npm run build:complete",
+    "postinstall": "chmod +x ./dist/cli.js",
+    "prepack": "chmod +x ./dist/cli.js"
   },
   "keywords": [
     "ai",

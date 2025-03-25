@@ -44,6 +44,9 @@ export default defineConfig(({ command, mode }) => {
             if (id.includes('src/ui/components/ui/')) {
               return 'ui-vendor';
             }
+            if (id.includes('node_modules/lucide-react')) {
+              return 'icons-vendor';
+            }
           }
         },
       },
@@ -53,7 +56,8 @@ export default defineConfig(({ command, mode }) => {
         '@': resolve(__dirname, 'src/ui'),
         // Handle Node.js 'events' module with a browser polyfill
         'events': 'events'
-      }
+      },
+      dedupe: ['react', 'react-dom'] // Ensure we only have one copy of React
     },
     optimizeDeps: {
       esbuildOptions: {
@@ -61,7 +65,8 @@ export default defineConfig(({ command, mode }) => {
         define: {
           global: 'globalThis'
         }
-      }
+      },
+      include: ['react', 'react-dom', 'lucide-react'] // Pre-bundle these dependencies
     },
     server: {
       proxy: {
