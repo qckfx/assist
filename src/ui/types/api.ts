@@ -56,7 +56,8 @@ export interface PermissionRequest {
 }
 
 export interface PermissionResolveRequest {
-  id: string;
+  sessionId: string;
+  permissionId: string;
   granted: boolean;
 }
 

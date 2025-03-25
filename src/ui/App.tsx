@@ -18,7 +18,6 @@ function App() {
                   autoConnect={true}
                   showConnectionStatus={true}
                   showTypingIndicator={true}
-                  showPermissionRequests={true}
                 />
               </div>
             </Layout>

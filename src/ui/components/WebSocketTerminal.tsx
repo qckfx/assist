@@ -3,13 +3,13 @@
  */
 import React, { useState, useEffect } from 'react';
 import Terminal from './Terminal/Terminal';
-import { PermissionRequest } from './PermissionRequest';
 // ConnectionIndicator is included in Terminal
 import { ConnectionIndicator as _ConnectionIndicator } from './ConnectionIndicator';
 // TypingIndicator is included in Terminal
 import { TypingIndicator as _TypingIndicator } from './TypingIndicator';
 import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTerminal } from '@/context/TerminalContext';
+import { usePermissionKeyboardHandler } from '@/hooks/usePermissionKeyboardHandler';
 
 interface WebSocketTerminalProps {
   className?: string;
@@ -17,7 +17,6 @@ interface WebSocketTerminalProps {
   autoConnect?: boolean;
   showConnectionStatus?: boolean;
   showTypingIndicator?: boolean;
-  showPermissionRequests?: boolean;
 }
 
 /**
@@ -29,7 +28,6 @@ export function WebSocketTerminal({
   autoConnect = true,
   showConnectionStatus = true,
   showTypingIndicator = true,
-  showPermissionRequests = true,
 }: WebSocketTerminalProps) {
   const {
     handleCommand,
@@ -37,8 +35,6 @@ export function WebSocketTerminal({
     isConnected,
     isProcessing,
     isStreaming,
-    hasPendingPermissions,
-    resolvePermission,
     abortProcessing,
     sessionId
   } = useWebSocketTerminal();
@@ -47,12 +43,21 @@ export function WebSocketTerminal({
   const { state, clearMessages } = useTerminal();
   const [hasConnected, setHasConnected] = useState(false);
   
-  // Check if we've ever connected
+  // Add keyboard handler for permission requests
+  usePermissionKeyboardHandler({ sessionId });
+  
+  // Check if we've ever connected and store the sessionId
   useEffect(() => {
     if (isConnected && !hasConnected) {
       setHasConnected(true);
+      
+      // Store the sessionId in sessionStorage for use by other components
+      if (sessionId) {
+        sessionStorage.setItem('currentSessionId', sessionId);
+        console.log('Session ID stored in sessionStorage:', sessionId);
+      }
     }
-  }, [isConnected, hasConnected]);
+  }, [isConnected, hasConnected, sessionId]);
   
   // Auto-connect if enabled
   useEffect(() => {
@@ -81,19 +86,7 @@ export function WebSocketTerminal({
       
       {/* Typing indicator is now handled inside the Terminal component */}
       
-      {showPermissionRequests && hasPendingPermissions && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-lg w-full max-h-[80vh] overflow-auto">
-            <h2 className="text-xl font-bold mb-4">Permission Request</h2>
-            <PermissionRequest
-              onResolved={(permissionId, granted) => {
-                resolvePermission(permissionId, granted);
-                return true;
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {/* Permissions are now handled through the ToolVisualization component */}
       
       {(isProcessing || isStreaming) && (
         <div className="absolute bottom-14 right-4">

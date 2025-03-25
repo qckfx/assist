@@ -184,7 +184,53 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             } catch (error: unknown) {
               // Handle validation errors specifically
               const errorObj = error as Error;
-              if (errorObj.message && errorObj.message.includes('Invalid args')) {
+              
+              // Check if this is a permission denied error
+              if (errorObj.message && errorObj.message.includes('Permission denied')) {
+                logger.warn(`Permission denied for tool ${tool.name}`, LogCategory.PERMISSIONS);
+                
+                // Store the error in state for the model to learn from
+                sessionState.lastToolError = {
+                  toolId: toolCall.toolId,
+                  args: toolCall.args as Record<string, unknown>,
+                  error: errorObj.message
+                };
+                
+                // Create a proper tool result message for the LLM to understand what happened
+                const permissionDeniedResult = {
+                  error: "Permission denied",
+                  message: `The user denied permission to use the ${tool.name} tool. Please suggest an alternative approach or tool.`
+                };
+                
+                // Add this result to the conversation history as a proper tool result
+                if (sessionState.conversationHistory && toolCall.toolUseId) {
+                  sessionState.conversationHistory.push({
+                    role: "user",
+                    content: [
+                      {
+                        type: "tool_result",
+                        tool_use_id: toolCall.toolUseId,
+                        content: JSON.stringify(permissionDeniedResult)
+                      } 
+                    ]
+                  });
+                }
+                
+                // Add to the list of tool results so the agent can continue
+                toolResults.push({
+                  toolId: toolCall.toolId,
+                  args: toolCall.args as Record<string, unknown>,
+                  result: permissionDeniedResult,
+                  toolUseId: toolCall.toolUseId
+                });
+                
+                // Ask the model to decide what to do next with this information
+                currentQuery = `The user denied permission to use the ${tool.name} tool. Please use a different approach or tool to answer the query: ${query}`;
+                
+                // Skip the rest of this iteration
+                continue;
+              }
+              else if (errorObj.message && errorObj.message.includes('Invalid args')) {
                 logger.warn(`Tool argument error: ${errorObj.message}`, LogCategory.TOOLS);
                 
                 // Store the error in state for the model to learn from

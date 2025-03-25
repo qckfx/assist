@@ -28,16 +28,23 @@ export function usePermissionRequests() {
     const unsubscribe = subscribe(WebSocketEvent.PERMISSION_REQUESTED, (data) => {
       if (!data.permission) return;
       
+      console.log('[usePermissionRequests] Permission request received:', data.permission);
+      
       // Add the permission request to our state
-      setPermissionRequests((prev) => [
-        ...prev,
-        {
-          permissionId: data.permission.id, // Use 'id' instead of 'permissionId'
-          toolId: data.permission.toolId,
-          args: data.permission.args,
-          timestamp: data.permission.timestamp,
-        },
-      ]);
+      setPermissionRequests((prev) => {
+        const newPermissions = [
+          ...prev,
+          {
+            permissionId: data.permission.id, // Use 'id' instead of 'permissionId'
+            toolId: data.permission.toolId,
+            args: data.permission.args,
+            timestamp: data.permission.timestamp,
+          },
+        ];
+        
+        console.log('[usePermissionRequests] Updated permission requests:', newPermissions);
+        return newPermissions;
+      });
     });
     
     return unsubscribe;

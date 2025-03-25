@@ -200,11 +200,16 @@ export class AgentService extends EventEmitter {
               // Store the permission request
               this.permissionRequests.set(permissionId, permissionRequest);
               
+              // Get the tool name if available
+              const tool = agent.toolRegistry.getTool(toolId);
+              const toolName = tool?.name || toolId;
+              
               // Emit permission requested event
               this.emit(AgentServiceEvent.PERMISSION_REQUESTED, {
                 permissionId,
                 sessionId,
                 toolId,
+                toolName,
                 args,
                 timestamp: permissionRequest.timestamp.toISOString(),
               });

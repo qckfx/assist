@@ -130,6 +130,7 @@ export function ToolVisualization({
     running: 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-sm',
     completed: 'border-green-500 bg-green-50 dark:bg-green-900/30 shadow-sm',
     error: 'border-red-500 bg-red-50 dark:bg-red-900/30 shadow-sm',
+    'awaiting-permission': 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 shadow-sm',
   }[tool.status];
   
   // Determine the status indicator text and style
@@ -137,6 +138,7 @@ export function ToolVisualization({
     running: { icon: '●', ariaLabel: 'Running', className: 'text-blue-500 animate-pulse' },
     completed: { icon: '✓', ariaLabel: 'Completed', className: 'text-green-500' },
     error: { icon: '✗', ariaLabel: 'Error', className: 'text-red-500' },
+    'awaiting-permission': { icon: '?', ariaLabel: 'Waiting for permission', className: 'text-amber-500 animate-pulse' },
   }[tool.status];
   
   // Format execution time if available
@@ -214,6 +216,27 @@ export function ToolVisualization({
           {statusIndicator.icon}
         </span>
       </div>
+      
+      {/* Permission request banner - added for permission-required tools */}
+      {tool.status === 'awaiting-permission' && tool.requiresPermission && (
+        <div 
+          className="mt-2 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100 px-3 py-2 rounded-md text-sm border border-amber-300 dark:border-amber-700"
+          data-testid="permission-banner"
+        >
+          <div className="font-semibold">Permission Required</div>
+          <div className="text-xs mt-1">Type 'y' to allow, anything else to deny</div>
+        </div>
+      )}
+      
+      {/* Debug output - only visible in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-2 bg-gray-100 dark:bg-gray-800 p-2 text-xs border border-gray-300 dark:border-gray-600 rounded font-mono">
+          <div>status: {tool.status}</div>
+          <div>requiresPermission: {tool.requiresPermission ? 'true' : 'false'}</div>
+          <div>permissionId: {tool.permissionId || 'none'}</div>
+          <div>tool: {tool.tool}</div>
+        </div>
+      )}
     </div>
   );
 }
