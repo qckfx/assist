@@ -2,7 +2,6 @@ import { startServer } from '..';
 import { ServerConfig } from '../config';
 import express from 'express';
 import http from 'http';
-import { WebSocketService } from '../services/WebSocketService';
 
 // Type definitions for mocks
 interface MockApp {
@@ -25,22 +24,6 @@ const mockServer: MockServer & { on: jest.Mock } = {
     return mockServer;
   }),
 };
-
-// Mock http.createServer
-jest.mock('http', () => {
-  return {
-    ...jest.requireActual('http'),
-    createServer: jest.fn().mockReturnValue({
-      listen: jest.fn((port, host, callback) => {
-        // Call the callback asynchronously to better simulate real behavior
-        if (callback && typeof callback === 'function') {
-          setTimeout(callback, 0);
-        }
-        return mockServer;
-      }),
-    }),
-  };
-});
 
 // Mock dependencies
 jest.mock('express', () => {
@@ -77,23 +60,11 @@ jest.mock('body-parser', () => ({
   urlencoded: jest.fn(() => 'urlencodedMiddleware'),
 }));
 jest.mock('connect-history-api-fallback', () => jest.fn(() => 'historyMiddleware'));
-jest.mock('../routes/api', () => require('../routes/__tests__/api.mock').default);
 
 jest.mock('../utils', () => ({
   findAvailablePort: jest.fn().mockImplementation(async (port) => port),
   isPortAvailable: jest.fn().mockImplementation(async () => true),
 }));
-
-// Mock WebSocketService
-jest.mock('../services/WebSocketService', () => {
-  return {
-    WebSocketService: {
-      getInstance: jest.fn().mockImplementation(() => ({
-        close: jest.fn().mockResolvedValue(undefined)
-      }))
-    }
-  };
-});
 
 jest.mock('../logger', () => ({
   serverLogger: {
@@ -162,11 +133,8 @@ describe('Server', () => {
       // Check API routes
       expect(express().use).toHaveBeenCalledWith('/api', expect.any(Function));
       
-      // Check that http server was created and started
-      expect(require('http').createServer).toHaveBeenCalled();
-      
-      // We can't directly check WebSocketService initialization in this test
-// since we need to mock the http server differently
+      // Check server start
+      expect(express().listen).toHaveBeenCalled();
     }, 10000);
     
     test('should close the server', async () => {
@@ -186,17 +154,17 @@ describe('Server', () => {
     }, 10000);
     
     test('should handle server errors correctly', async () => {
-      // Access the mock http module
-      const http = require('http');
+      // Get a reference to the mock express app
+      const mockApp = express();
       
       // Store the original implementation
-      const originalCreateServer = http.createServer;
+      const originalListen = mockApp.listen;
       
       // Create a server error
-      const serverError = new Error('Cannot create server');
+      const serverError = new Error('Port already in use');
       
-      // Override the createServer implementation just for this test
-      http.createServer.mockImplementationOnce(() => {
+      // Override the listen implementation just for this test
+      (mockApp.listen as jest.Mock).mockImplementationOnce(() => {
         throw serverError;
       });
       
@@ -208,9 +176,6 @@ describe('Server', () => {
       
       // Now when we call startServer, it should catch the error and throw a ServerError
       await expect(startServer(config)).rejects.toThrow('Failed to start server');
-      
-      // Restore the original implementation
-      http.createServer = originalCreateServer;
     });
     
     test('should handle missing UI build files', async () => {
