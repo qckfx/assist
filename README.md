@@ -34,9 +34,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/media/demo.mp4">
-    <img src="docs/media/screenshot.png" alt="qckfx web interface" width="800" />
-  </a>
+  <img src="docs/media/demo.gif" alt="qckfx web interface" width="800" />
 </p>
 
 ---
