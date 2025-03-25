@@ -156,12 +156,27 @@ export const apiClient = {
   /**
    * Resolve a permission request
    */
-  resolvePermission: (id: string, granted: boolean) => 
-    apiRequest<{ resolved: boolean }>(
+  resolvePermission: (permissionId: string, granted: boolean) => {
+    // Need to get the current session from sessionStorage
+    const sessionId = sessionStorage.getItem('currentSessionId');
+    
+    // Log the request for debugging
+    console.log('Resolving permission request:', { 
+      sessionId, 
+      permissionId, 
+      granted
+    });
+    
+    return apiRequest<{ resolved: boolean }>(
       API_ENDPOINTS.PERMISSIONS_RESOLVE, 
       'POST', 
-      { id, granted } as PermissionResolveRequest
-    ),
+      { 
+        sessionId,  // Send the current session ID
+        permissionId, // Send the permission ID
+        granted 
+      } as PermissionResolveRequest
+    );
+  },
   
   /**
    * Get API documentation
