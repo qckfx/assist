@@ -33,6 +33,12 @@
   </a>
 </p>
 
+<p align="center">
+  <a href="docs/media/demo.mp4">
+    <img src="docs/media/screenshot.png" alt="qckfx web interface" width="800" />
+  </a>
+</p>
+
 ---
 
 ## Quick Start
@@ -49,6 +55,7 @@ ANTHROPIC_API_KEY=your_key_here npx qckfx
 4. **Interactive Chat**: Have multi-turn conversations with context preservation
 5. **Claude Integration**: Powered by Anthropic's Claude models with tool calling
 6. **Web UI**: Browser-based interface for interacting with the agent
+7. **Real-time Tool Visualization**: See tools executing in real-time with status indicators
 
 ## Architecture
 
@@ -67,6 +74,7 @@ qckfx agent
 ├── Server
 │   ├── Express Server (for Web UI)
 │   ├── API Endpoints
+│   ├── WebSocket Support (real-time updates)
 │   └── Static File Serving
 ├── Tools
 │   ├── BashTool
@@ -189,8 +197,6 @@ The project follows a modular, composition-based approach with these main compon
 - **Utils**: Includes Logger, Error Handling, and Token Management.
 
 ## Usage:
-
-You can use it by running:
 ```bash
 ANTHROPIC_API_KEY=your_key_here npx qckfx
 ```
@@ -243,6 +249,36 @@ The terminal UI provides a rich, interactive experience with various features:
 - [Message Types](docs/ui/message-types.md)
 - [Theme Customization](docs/ui/theme-customization.md)
 - [Accessibility Features](docs/ui/accessibility.md)
+- [Tool Visualization](docs/ui/tool-visualization.md)
+
+## What's New in v0.1.5
+
+### Web Interface and Server
+- Complete browser-based terminal interface for interacting with the agent
+- Modern, responsive UI with support for keyboard shortcuts
+- Light and dark themes with customization options
+- Full WebSocket integration for real-time updates
+- RESTful API endpoints for programmatic integration
+- Session management for individual conversation threads
+
+### Tool Visualization
+- Real-time visualization of tool executions in the terminal UI
+- Visual status indicators for running, completed, and error states
+- Parameter summaries and execution timing information
+- Expandable parameter details for deeper inspection
+- Accessible design with proper ARIA attributes
+
+### WebSocket Improvements
+- Enhanced real-time message streaming
+- Optimized connection management for better reliability
+- Message buffering for improved performance
+
+### API Endpoints
+- `/api/sessions` - Create and manage agent sessions
+- `/api/agent/query` - Send messages to the agent
+- `/api/permissions` - Manage tool permissions
+- WebSocket events for real-time updates
+- Comprehensive error handling and validation
 
 ### Development
 
