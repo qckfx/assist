@@ -145,7 +145,7 @@ export async function startServer(config: ServerConfig): Promise<{
           // Initialize WebSocketService after server is listening
           WebSocketService.getInstance(httpServer);
           serverLogger.info('WebSocket service initialized');
-          
+    
           resolve({ server, url });
         });
         
