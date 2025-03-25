@@ -352,7 +352,7 @@ export function useToolStream() {
       
       for (const toolId in updatedToolExecutions) {
         const tool = updatedToolExecutions[toolId];
-        if (tool.status === 'running') {
+        if (tool.status === 'running' || tool.status === 'awaiting-permission') {
           updatedToolExecutions[toolId] = {
             ...tool,
             status: 'completed',
@@ -386,7 +386,7 @@ export function useToolStream() {
       
       for (const toolId in updatedToolExecutions) {
         const tool = updatedToolExecutions[toolId];
-        if (tool.status === 'running') {
+        if (tool.status === 'running' || tool.status === 'awaiting-permission') {
           updatedToolExecutions[toolId] = {
             ...tool,
             status: 'error',
@@ -421,7 +421,7 @@ export function useToolStream() {
       
       for (const toolId in updatedToolExecutions) {
         const tool = updatedToolExecutions[toolId];
-        if (tool.status === 'running') {
+        if (tool.status === 'running' || tool.status === 'awaiting-permission') {
           updatedToolExecutions[toolId] = {
             ...tool,
             status: 'error',
@@ -481,11 +481,16 @@ export function useToolStream() {
         [executionId]: true
       };
       
+      // Count active tools (running or awaiting permission)
+      const activeToolCount = Object.values(toolExecutions).filter(
+        t => t.status === 'running' || t.status === 'awaiting-permission'
+      ).length;
+      
       return {
         ...prev,
         toolExecutions,
         activeTools,
-        activeToolCount: prev.activeToolCount + 1,
+        activeToolCount,
         latestExecution: execution
       };
     });
@@ -570,6 +575,11 @@ export function useToolStream() {
       // Add the current execution
       updatedToolExecutions[matchingExecutionId] = execution;
       
+      // Count active tools after completion (running or awaiting permission)
+      const activeTools = Object.values(updatedToolExecutions).filter(
+        t => t.status === 'running' || t.status === 'awaiting-permission'
+      );
+      
       return {
         ...prev,
         results: {
@@ -581,7 +591,7 @@ export function useToolStream() {
           ...prev.activeTools,
           [matchingExecutionId]: false,
         },
-        activeToolCount: Math.max(prev.activeToolCount - 1, 0),
+        activeToolCount: activeTools.length,
         toolHistory,
         latestExecution: execution,
       };
@@ -654,17 +664,25 @@ export function useToolStream() {
       // Add to history - without limiting size
       const toolHistory = [...prev.toolHistory, execution];
       
+      // Update our map of tool executions
+      const updatedToolExecutions = {
+        ...prev.toolExecutions,
+        [matchingExecutionId]: execution,
+      };
+      
+      // Count active tools (running or awaiting permission) after error
+      const activeTools = Object.values(updatedToolExecutions).filter(
+        t => t.status === 'running' || t.status === 'awaiting-permission'
+      );
+      
       return {
         ...prev,
-        toolExecutions: {
-          ...prev.toolExecutions,
-          [matchingExecutionId]: execution,
-        },
+        toolExecutions: updatedToolExecutions,
         activeTools: {
           ...prev.activeTools,
           [matchingExecutionId]: false,
         },
-        activeToolCount: Math.max(prev.activeToolCount - 1, 0),
+        activeToolCount: activeTools.length,
         toolHistory,
         latestExecution: execution,
       };
@@ -679,15 +697,50 @@ export function useToolStream() {
     const args = permission.args as Record<string, unknown>;
     const timestamp = permission.timestamp as string;
     
+    console.log('Permission requested:', { permission, toolId, permissionId });
+    
     // Find the related tool execution
     setState(prev => {
-      // Try to find matching tool execution
+      // Try to find matching tool execution with more flexible matching
+      // We can match by tool, toolName, or a partial match for bash/Bash
       const runningTools = Object.entries(prev.toolExecutions)
-        .filter(([, execution]) => execution.tool === toolId && execution.status === 'running')
+        .filter(([, execution]) => {
+          // Match exact toolId
+          const exactMatch = execution.tool === toolId || execution.toolName === toolId;
+          
+          // Match by lowercase (bash / Bash)
+          const lowercaseMatch = 
+            execution.tool.toLowerCase() === toolId.toLowerCase() || 
+            (execution.toolName && execution.toolName.toLowerCase() === toolId.toLowerCase());
+          
+          // Match by substring (for partial matches like 'bash' in 'BashTool')
+          const substringMatch = 
+            execution.tool.toLowerCase().includes(toolId.toLowerCase()) || 
+            (execution.toolName && execution.toolName.toLowerCase().includes(toolId.toLowerCase()));
+          
+          // Check status - only running tools can await permission
+          const statusOk = execution.status === 'running';
+          
+          // Log matching attempt for debugging
+          console.log('Tool match check:', { 
+            toolExecution: execution.tool, 
+            toolName: execution.toolName,
+            targetTool: toolId,
+            exactMatch, 
+            lowercaseMatch, 
+            substringMatch,
+            statusOk
+          });
+          
+          return (exactMatch || lowercaseMatch || substringMatch) && statusOk;
+        })
         .sort(([, a], [, b]) => b.startTime - a.startTime);
+      
+      console.log('Found running tools:', runningTools.length);
       
       if (runningTools.length > 0) {
         const [matchingExecutionId, matchingExecution] = runningTools[0];
+        console.log('Updating tool execution:', matchingExecutionId);
         
         // Update the tool execution with permission information
         const updatedExecution: ToolExecution = {
@@ -697,13 +750,24 @@ export function useToolStream() {
           status: 'awaiting-permission' as const,
         };
         
+        // Recalculate active tool count
+        const updatedToolExecutions = {
+          ...prev.toolExecutions,
+          [matchingExecutionId]: updatedExecution,
+        };
+        
+        // Count tools that are running or awaiting permission
+        const activeTools = Object.values(updatedToolExecutions).filter(
+          t => t.status === 'running' || t.status === 'awaiting-permission'
+        );
+        
         return {
           ...prev,
-          toolExecutions: {
-            ...prev.toolExecutions,
-            [matchingExecutionId]: updatedExecution,
-          }
+          toolExecutions: updatedToolExecutions,
+          activeToolCount: activeTools.length,
         };
+      } else {
+        console.warn('No matching running tool found for permission request:', toolId);
       }
       
       return prev;
@@ -715,14 +779,20 @@ export function useToolStream() {
     const permissionId = data.permissionId as string;
     const granted = data.granted as boolean;
     
+    console.log('Permission resolved:', { permissionId, granted, data });
+    
     // Update any tool execution waiting for this permission
     setState(prev => {
       const updatedToolExecutions = { ...prev.toolExecutions };
+      let updated = false;
       
       // Find any tool execution with this permissionId
       for (const toolId in updatedToolExecutions) {
         const tool = updatedToolExecutions[toolId];
         if (tool.permissionId === permissionId) {
+          console.log('Found tool waiting for permission:', toolId);
+          updated = true;
+          
           // If denied, mark as error
           if (!granted) {
             updatedToolExecutions[toolId] = {
@@ -732,6 +802,10 @@ export function useToolStream() {
               requiresPermission: false,
               permissionId: undefined,
             };
+            console.log('Permission denied, updated tool status to error');
+            // Note: We're only updating the visualization here.
+            // The error message to the user is not shown because we've suppressed
+            // permission errors in TerminalContext.handleProcessingError
           } else {
             // If granted, return to running state
             updatedToolExecutions[toolId] = {
@@ -740,13 +814,24 @@ export function useToolStream() {
               requiresPermission: false,
               permissionId: undefined,
             };
+            console.log('Permission granted, updated tool status to running');
           }
         }
       }
       
+      if (!updated) {
+        console.warn('No tools found with matching permissionId:', permissionId);
+      }
+      
+      // Recalculate active tool count
+      const activeTools = Object.values(updatedToolExecutions).filter(
+        t => t.status === 'running' || t.status === 'awaiting-permission'
+      );
+      
       return {
         ...prev,
         toolExecutions: updatedToolExecutions,
+        activeToolCount: activeTools.length,
       };
     });
   }, []);
@@ -816,7 +901,10 @@ export function useToolStream() {
   // Utility method to get active tools
   const getActiveTools = useCallback(() => {
     const tools = Object.entries(state.toolExecutions)
-      .filter(([, tool]) => tool.status === 'running')
+      .filter(([, tool]) => 
+        // Include both running tools and tools awaiting permission
+        tool.status === 'running' || tool.status === 'awaiting-permission'
+      )
       .map(([, tool]) => tool);
     return tools;
   }, [state.toolExecutions]);
@@ -824,7 +912,10 @@ export function useToolStream() {
   // Utility method to get all completed tools from the history
   const getRecentTools = useCallback((count = 1000) => {
     const tools = state.toolHistory
-      .filter(tool => tool.status !== 'running') // Exclude running tools which are already in active
+      .filter(tool => 
+        // Exclude running and awaiting-permission tools which are already in active
+        tool.status !== 'running' && tool.status !== 'awaiting-permission'
+      )
       .reverse();
     // If a count limit is provided, respect it
     return count && count < tools.length ? tools.slice(0, count) : tools;

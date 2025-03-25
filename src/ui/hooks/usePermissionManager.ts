@@ -29,39 +29,44 @@ export function usePermissionManager({
 }: UsePermissionManagerOptions = {}) {
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const { subscribe } = useWebSocket();
-  const { addSystemMessage, addErrorMessage } = useTerminal();
   
   // Subscribe to permission request events
   useEffect(() => {
     const handlePermissionRequested = (data: { sessionId: string; permission: Record<string, unknown> }) => {
       const { permission } = data;
       
+      console.log('[usePermissionManager] Permission request received:', data);
+      
       // Check if this tool should be auto-approved
       if (autoApproveTools.includes(permission.toolId as string)) {
-        // Auto-approve the permission
+        console.log('[usePermissionManager] Auto-approving tool:', permission.toolId);
+        // Auto-approve the permission without showing system messages
         resolvePermission(permission.id as string, true)
           .then(() => {
-            addSystemMessage(`Auto-approved permission for ${permission.toolId as string}`);
+            console.log(`Auto-approved permission for ${permission.toolId as string}`);
           })
           .catch(error => {
-            addErrorMessage(`Failed to auto-approve permission: ${
-              error instanceof Error ? error.message : String(error)
-            }`);
+            console.error(`Failed to auto-approve permission:`, error);
           });
         return;
       }
       
       // Add to pending permissions
-      setPendingPermissions(prev => [
-        ...prev,
-        {
-          id: permission.id as string,
-          toolId: permission.toolId as string,
-          toolName: (permission.toolName as string) || (permission.toolId as string),
-          args: (permission.args as Record<string, unknown>) || {},
-          timestamp: (permission.timestamp as string) || new Date().toISOString(),
-        },
-      ]);
+      setPendingPermissions(prev => {
+        const newPermissions = [
+          ...prev,
+          {
+            id: permission.id as string,
+            toolId: permission.toolId as string,
+            toolName: (permission.toolName as string) || (permission.toolId as string),
+            args: (permission.args as Record<string, unknown>) || {},
+            timestamp: (permission.timestamp as string) || new Date().toISOString(),
+          },
+        ];
+        
+        console.log('[usePermissionManager] Updated pending permissions:', newPermissions);
+        return newPermissions;
+      });
     };
     
     const handlePermissionResolved = (data: { 
@@ -69,10 +74,14 @@ export function usePermissionManager({
       permissionId: string; 
       resolution: boolean;
     }) => {
+      console.log('[usePermissionManager] Permission resolved:', data);
+      
       // Remove from pending permissions
-      setPendingPermissions(prev => 
-        prev.filter(p => p.id !== data.permissionId)
-      );
+      setPendingPermissions(prev => {
+        const filteredPermissions = prev.filter(p => p.id !== data.permissionId);
+        console.log('[usePermissionManager] Removed permission from pending list, remaining:', filteredPermissions);
+        return filteredPermissions;
+      });
     };
     
     // Register event listeners
@@ -91,22 +100,31 @@ export function usePermissionManager({
       unsubscribeRequest();
       unsubscribeResolved();
     };
-  }, [subscribe, addSystemMessage, addErrorMessage, autoApproveTools]);
+  }, [subscribe, autoApproveTools]);
   
   // Resolve a permission request
   const resolvePermission = useCallback(async (
     permissionId: string,
     granted: boolean
   ): Promise<boolean> => {
+    // If sessionId is not provided as a prop, try to get it from sessionStorage
     if (!sessionId) {
-      throw new Error('No active session');
+      // Try to get from sessionStorage
+      const storedSessionId = sessionStorage.getItem('currentSessionId');
+      if (!storedSessionId) {
+        console.error('No active session ID provided or found in storage');
+        // Don't show error message to user to minimize system messages
+        return false;
+      }
     }
     
     try {
       const response = await apiClient.resolvePermission(permissionId, granted);
       
       if (!response.success) {
-        throw new Error(response.error?.message || 'Failed to resolve permission');
+        // Just log to console, don't show error message to user
+        console.error('Failed to resolve permission:', response.error);
+        return false;
       }
       
       // Remove from pending permissions
@@ -116,12 +134,11 @@ export function usePermissionManager({
       
       return true;
     } catch (error) {
-      addErrorMessage(`Error resolving permission: ${
-        error instanceof Error ? error.message : String(error)
-      }`);
+      // Log to console but don't show error message to user to minimize system messages
+      console.error('Error resolving permission:', error);
       return false;
     }
-  }, [sessionId, addErrorMessage]);
+  }, [sessionId]);
   
   return {
     pendingPermissions,

@@ -212,15 +212,24 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for processing error event
     const handleProcessingError = ({ _sessionId, error }: { _sessionId: string, error: { name: string; message: string; stack?: string } }) => {
-      dispatch({ 
-        type: 'ADD_MESSAGE', 
-        payload: {
-          id: generateUniqueId('error'),
-          content: `Error: ${error.message}`,
-          type: 'error',
-          timestamp: new Date()
-        }
-      });
+      // Don't show error messages for permission denials, as they're handled by the tool visualization
+      const isPermissionError = error.message.includes('Permission denied');
+      
+      if (!isPermissionError) {
+        dispatch({ 
+          type: 'ADD_MESSAGE', 
+          payload: {
+            id: generateUniqueId('error'),
+            content: `Error: ${error.message}`,
+            type: 'error',
+            timestamp: new Date()
+          }
+        });
+      } else {
+        // Just log permission errors to console but don't show in UI
+        console.log('Permission denied error suppressed:', error.message);
+      }
+      
       dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
       dispatch({ type: 'CLEAR_STREAM_BUFFER' });
@@ -273,15 +282,9 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
         timestamp: string;
       }
     }) => {
-      dispatch({ 
-        type: 'ADD_MESSAGE', 
-        payload: {
-          id: generateUniqueId('system'),
-          content: `Permission requested for ${permission.toolId}`,
-          type: 'system',
-          timestamp: new Date()
-        }
-      });
+      // We no longer add a system message for permission requests
+      // The UI will show permission requests in the tool visualization
+      console.log('Permission request received in TerminalContext, handled by ToolVisualization:', permission);
     };
     
     // Handler for permission resolved event
@@ -290,15 +293,8 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       permissionId, 
       resolution 
     }: { _sessionId: string, permissionId: string, resolution: boolean }) => {
-      dispatch({ 
-        type: 'ADD_MESSAGE', 
-        payload: {
-          id: generateUniqueId('system'),
-          content: `Permission ${resolution ? 'granted' : 'denied'} for request ${permissionId}`,
-          type: 'system',
-          timestamp: new Date()
-        }
-      });
+      // Just log to console, don't add a system message
+      console.log(`Permission ${resolution ? 'granted' : 'denied'} for request ${permissionId}`);
     };
     
     // Handler for session updated event - displays messages from the conversation history

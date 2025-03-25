@@ -227,6 +227,16 @@ export function ToolVisualization({
           <div className="text-xs mt-1">Type 'y' to allow, anything else to deny</div>
         </div>
       )}
+      
+      {/* Debug output - only visible in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-2 bg-gray-100 dark:bg-gray-800 p-2 text-xs border border-gray-300 dark:border-gray-600 rounded font-mono">
+          <div>status: {tool.status}</div>
+          <div>requiresPermission: {tool.requiresPermission ? 'true' : 'false'}</div>
+          <div>permissionId: {tool.permissionId || 'none'}</div>
+          <div>tool: {tool.tool}</div>
+        </div>
+      )}
     </div>
   );
 }
