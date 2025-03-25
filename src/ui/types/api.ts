@@ -28,11 +28,18 @@ export interface SessionHistoryEntry {
   }>;
 }
 
+// Import the SessionState type from model.ts
+import { SessionState } from '../../types/model';
+
 export interface SessionData {
   id: string;
-  startTime: string;
-  status: 'idle' | 'thinking' | 'error';
-  history: SessionHistoryEntry[];
+  startTime?: string;
+  createdAt?: string;
+  lastActiveAt?: string;
+  status?: 'idle' | 'thinking' | 'error';
+  state?: SessionState;
+  isProcessing?: boolean;
+  history?: SessionHistoryEntry[];
 }
 
 export interface AgentStatus {
