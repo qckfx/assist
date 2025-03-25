@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { WebSocketEvent } from '../types/api';
 import apiClient from '../services/apiClient';
+import { useTerminal } from '@/context/TerminalContext';
 
 /**
  * Interface for permission request data
@@ -57,6 +58,21 @@ export function usePermissionRequests() {
       setPermissionRequests((prev) => 
         prev.filter((req) => req.permissionId !== data.permissionId)
       );
+    });
+    
+    return unsubscribe;
+  }, [subscribe]);
+  
+  // Handle permission timeout events
+  useEffect(() => {
+    const unsubscribe = subscribe(WebSocketEvent.PERMISSION_TIMEOUT, (data) => {
+      // Remove the timed-out permission request from our state
+      setPermissionRequests((prev) => 
+        prev.filter((req) => req.permissionId !== data.permissionId)
+      );
+      
+      // No system message - the tool visualization will show the timeout state
+      console.log(`Permission request for ${data.toolId} timed out`);
     });
     
     return unsubscribe;

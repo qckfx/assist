@@ -24,6 +24,7 @@ export enum WebSocketEvent {
   TOOL_EXECUTION_ERROR = 'tool_execution_error',
   PERMISSION_REQUESTED = 'permission_requested',
   PERMISSION_RESOLVED = 'permission_resolved',
+  PERMISSION_TIMEOUT = 'permission_timeout',
   SESSION_UPDATED = 'session_updated',
   STREAM_CONTENT = 'stream_content',
 }
@@ -484,6 +485,18 @@ export class WebSocketService {
         permissionId,
         resolution: granted, // Map "granted" to "resolution" to match the WebSocketEvent type
       });
+    });
+    
+    // Permission timeout
+    this.agentService.on(AgentServiceEvent.PERMISSION_TIMEOUT, ({ sessionId, permissionId, toolId, timestamp }) => {
+      this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_TIMEOUT, {
+        sessionId,
+        permissionId,
+        toolId,
+        timestamp,
+      });
+      
+      serverLogger.debug(`Permission timeout sent to clients: ${permissionId} for tool ${toolId}`);
     });
   }
 }

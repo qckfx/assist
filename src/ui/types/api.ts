@@ -96,6 +96,7 @@ export enum WebSocketEvent {
   TOOL_EXECUTION_ERROR = 'tool_execution_error',
   PERMISSION_REQUESTED = 'permission_requested',
   PERMISSION_RESOLVED = 'permission_resolved',
+  PERMISSION_TIMEOUT = 'permission_timeout',
   SESSION_UPDATED = 'session_updated',
   STREAM_CONTENT = 'stream_content',
 }
@@ -181,6 +182,7 @@ export interface WebSocketEventMap {
     };
   };
   [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };
+  [WebSocketEvent.PERMISSION_TIMEOUT]: { sessionId: string; permissionId: string; toolId: string; timestamp: string; };
   [WebSocketEvent.SESSION_UPDATED]: SessionData;
   [WebSocketEvent.STREAM_CONTENT]: { sessionId: string; content: string; };
 }
