@@ -1,20 +1,16 @@
 import { render, RenderOptions } from '@testing-library/react';
 import { ReactElement, ReactNode } from 'react';
 import { ThemeProvider } from '@/components/ThemeProvider';
-import { WebSocketProvider } from '@/context/WebSocketContext';
 
 // Provider wrapper for testing
 interface ProvidersProps {
   children: ReactNode;
-  useTestMode?: boolean;
 }
 
-export function Providers({ children, useTestMode = true }: ProvidersProps) {
+export function Providers({ children }: ProvidersProps) {
   return (
     <ThemeProvider defaultTheme="dark">
-      <WebSocketProvider testMode={useTestMode}>
-        {children}
-      </WebSocketProvider>
+      {children}
     </ThemeProvider>
   );
 }

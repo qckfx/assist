@@ -37,7 +37,6 @@ module.exports = {
           DEFAULT: 'var(--card)',
           foreground: 'var(--card-foreground)',
         },
-        'gray-850': 'hsl(222.2, 84%, 10%)', // For tool messages
       },
       borderRadius: {
         lg: 'var(--radius)',

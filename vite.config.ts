@@ -3,19 +3,12 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { splitVendorChunkPlugin } from 'vite';
 import { createHtmlPlugin } from 'vite-plugin-html';
-// Add http-proxy for better socket handling
-import * as http from 'http';
-import * as net from 'net';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
   const isProduction = mode === 'production';
   
   return {
-    // Explicitly set the root directory and entry point
-    root: './',
-    // Disable the public directory to prevent it from overriding the root index.html
-    publicDir: false,
     plugins: [
       react(),
       splitVendorChunkPlugin(),
@@ -26,7 +19,6 @@ export default defineConfig(({ command, mode }) => {
             title: 'QCKFX Agent',
           },
         },
-        template: 'index.html',
       }),
     ],
     build: {
@@ -50,43 +42,19 @@ export default defineConfig(({ command, mode }) => {
     },
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src/ui'),
-        // Handle Node.js 'events' module with a browser polyfill
-        'events': 'events'
-      }
-    },
-    optimizeDeps: {
-      esbuildOptions: {
-        // Enable Node.js built-in modules for browser compatibility
-        define: {
-          global: 'globalThis'
-        }
+        '@': resolve(__dirname, 'src/ui')
       }
     },
     server: {
       proxy: {
-        '/api': {
-          target: 'http://localhost:3000',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, '/api'),
-        },
+        '/api': 'http://localhost:3000',
         '/socket.io': {
-          target: 'ws://localhost:3000',
-          rewriteWsOrigin: true,
-          ws: true,
-        },
-      },  
-      // Configure Vite's development server
-      hmr: {
-        overlay: false,
+          target: 'http://localhost:3000',
+          ws: true
+        }
       },
-      // Basic server configuration
-      host: 'localhost',
+      open: '/index.html',
       port: 5173,
-      // Allow Vite to handle connections
-      watch: {
-        usePolling: false,
-      },
     },
   };
 });

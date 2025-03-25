@@ -93,7 +93,6 @@ export const permissionRequestQuerySchema = z.object({
  * Schema for permission resolution
  */
 export const permissionResolutionSchema = z.object({
-  sessionId: z.string().uuid(),
   permissionId: z.string(),
   granted: z.boolean(),
 });
@@ -117,7 +116,6 @@ export const permissionRequestsResponseSchema = z.object({
  * Schema for permission resolution response
  */
 export const permissionResolutionResponseSchema = z.object({
-  sessionId: z.string().uuid(),
   permissionId: z.string(),
   granted: z.boolean(),
   resolved: z.boolean(),

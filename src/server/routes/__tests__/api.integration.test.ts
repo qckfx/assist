@@ -266,7 +266,6 @@ describe('API Routes Integration', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
-        sessionId: testSessionId,
         permissionId,
         granted: true,
         resolved: true,
