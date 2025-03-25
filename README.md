@@ -210,15 +210,12 @@ The agent excels at complex software development tasks:
 - **Exploration**: "Explain how the routing works in this codebase"
 - **Testing**: "Generate unit tests for this API endpoint"
 
-## Web Interface
+## Web UI
 
-qckfx includes a web interface for interacting with agents through a browser. To use it:
+The agent now includes a web UI that provides a browser-based interface for interacting with the agent. To use the web UI:
 
-```
-npm run start:dist
-```
-
-Then open your browser to http://localhost:3000
+1. Start the agent with the `--web` flag (enabled by default)
+2. Open your browser to the URL displayed in the console (usually http://localhost:3000)
 
 ### Configuration
 
@@ -233,18 +230,6 @@ Alternatively, you can use environment variables:
 - `QCKFX_DISABLE_WEB=true` - Disable the web UI
 - `QCKFX_PORT=<port>` - Specify the port for the web UI
 - `QCKFX_HOST=<host>` - Specify the host to bind to (default: localhost)
-
-### Development
-
-For frontend development, you can run the Vite dev server:
-
-```
-npm run dev:ui
-```
-
-This will start a development server with hot module replacement at http://localhost:5173.
-
-See [frontend development guide](docs/web-server/frontend-development.md) for more information.
 
 ## Hosted Solution
 
