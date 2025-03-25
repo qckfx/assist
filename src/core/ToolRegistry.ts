@@ -2,7 +2,7 @@
  * ToolRegistry - Manages the collection of available tools for the agent
  */
 
-import { Tool, ToolContext } from '../types/tool';
+import { Tool, ToolContext, ToolCategory } from '../types/tool';
 import { ToolDescription, ToolRegistry } from '../types/registry';
 
 /**
@@ -12,6 +12,9 @@ import { ToolDescription, ToolRegistry } from '../types/registry';
 export const createToolRegistry = (): ToolRegistry => {
   // Private storage for registered tools
   const tools = new Map<string, Tool>();
+  // Index to look up tools by category
+  const toolsByCategory = new Map<ToolCategory, Set<string>>();
+  
   const startCallbacks: Array<(toolId: string, args: Record<string, unknown>, context: ToolContext) => void> = [];
   const completeCallbacks: Array<(toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => void> = [];
   const errorCallbacks: Array<(toolId: string, args: Record<string, unknown>, error: Error) => void> = [];
@@ -27,6 +30,20 @@ export const createToolRegistry = (): ToolRegistry => {
       }
       
       tools.set(tool.id, tool);
+      
+      // If the tool has category information, add it to the category index
+      if (tool.category) {
+        // Handle both single category and arrays of categories
+        const categories = Array.isArray(tool.category) ? tool.category : [tool.category];
+        
+        for (const category of categories) {
+          if (!toolsByCategory.has(category)) {
+            toolsByCategory.set(category, new Set());
+          }
+          
+          toolsByCategory.get(category)?.add(tool.id);
+        }
+      }
     },
     
     /**
@@ -57,7 +74,9 @@ export const createToolRegistry = (): ToolRegistry => {
         description: tool.description,
         parameters: tool.parameters,
         requiredParameters: tool.requiredParameters,
-        requiresPermission: tool.requiresPermission
+        requiresPermission: tool.requiresPermission,
+        category: tool.category,
+        alwaysRequirePermission: tool.alwaysRequirePermission
       }));
     },
     
@@ -110,6 +129,33 @@ export const createToolRegistry = (): ToolRegistry => {
           errorCallbacks.splice(index, 1);
         }
       };
+    },
+    
+    /**
+     * Get all tools in a specific category
+     * @param category - The category to query
+     * @returns Array of tools in the specified category
+     */
+    getToolsByCategory(category: ToolCategory): Tool[] {
+      const toolIds = toolsByCategory.get(category) || new Set();
+      return Array.from(toolIds)
+        .map(id => tools.get(id))
+        .filter(Boolean) as Tool[];
+    },
+    
+    /**
+     * Check if a tool belongs to a specific category
+     * @param toolId - The ID of the tool to check
+     * @param category - The category to check against
+     * @returns Whether the tool belongs to the specified category
+     */
+    isToolInCategory(toolId: string, category: ToolCategory): boolean {
+      const tool = tools.get(toolId);
+      if (!tool || !tool.category) return false;
+      
+      // Check if the tool belongs to the specified category
+      const categories = Array.isArray(tool.category) ? tool.category : [tool.category];
+      return categories.includes(category);
     },
     
     /**

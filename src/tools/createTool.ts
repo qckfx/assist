@@ -105,6 +105,12 @@ export const createTool = (config: ToolConfig): Tool => {
     // Add schema information for Claude
     parameters: config.parameters || {},
     requiredParameters: config.requiredParameters || [],
+    // Add category information if provided
+    ...(config.category && { category: config.category }),
+    // Add always require permission flag if provided
+    ...(config.alwaysRequirePermission !== undefined && { 
+      alwaysRequirePermission: config.alwaysRequirePermission 
+    }),
     
     /**
      * Execute the tool

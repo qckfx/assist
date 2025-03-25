@@ -2,7 +2,7 @@
  * Types and interfaces for the tool registry
  */
 
-import { Tool, ParameterSchema, ToolContext } from './tool';
+import { Tool, ParameterSchema, ToolContext, ToolCategory } from './tool';
 
 export interface ToolDescription {
   id: string;
@@ -11,6 +11,8 @@ export interface ToolDescription {
   parameters: Record<string, ParameterSchema>;
   requiredParameters: string[];
   requiresPermission: boolean;
+  category?: ToolCategory | ToolCategory[];
+  alwaysRequirePermission?: boolean;
 }
 
 export interface ToolRegistry {
@@ -19,7 +21,11 @@ export interface ToolRegistry {
   getAllTools(): Tool[];
   getToolDescriptions(): ToolDescription[];
   
-  // New methods for tool execution event handling
+  // New methods for category-based tool management
+  getToolsByCategory(category: ToolCategory): Tool[];
+  isToolInCategory(toolId: string, category: ToolCategory): boolean;
+  
+  // Methods for tool execution event handling
   onToolExecutionStart(callback: (toolId: string, args: Record<string, unknown>, context: ToolContext) => void): () => void;
   onToolExecutionComplete(callback: (toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => void): () => void;
   onToolExecutionError(callback: (toolId: string, args: Record<string, unknown>, error: Error) => void): () => void;
