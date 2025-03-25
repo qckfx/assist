@@ -39,7 +39,7 @@ export async function getPermissionRequests(req: Request, res: Response, next: N
  */
 export async function resolvePermission(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { sessionId, permissionId, granted } = permissionResolutionSchema.parse(req.body);
+    const { permissionId, granted } = permissionResolutionSchema.parse(req.body);
     
     // Get the agent service
     const agentService = getAgentService();
@@ -52,7 +52,6 @@ export async function resolvePermission(req: Request, res: Response, next: NextF
     }
     
     res.status(200).json({
-      sessionId,
       permissionId,
       granted,
       resolved: true,

@@ -13,10 +13,10 @@ describe('ThemeToggle', () => {
     expect(screen.getByText('Toggle theme')).toBeInTheDocument();
   });
 
-  it('contains an icon to represent the theme toggle', () => {
+  it('contains both sun and moon icons', () => {
     const { container } = render(<ThemeToggle />);
-    // We now show either sun or moon based on current theme, not both
+    // Check for presence of both icons (we're checking DOM structure here)
     const icons = container.querySelectorAll('svg');
-    expect(icons.length).toBeGreaterThan(0);
+    expect(icons.length).toBe(2);
   });
 });

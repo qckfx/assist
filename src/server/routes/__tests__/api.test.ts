@@ -7,41 +7,6 @@ import { json } from 'express';
 import apiRoutes from '../api';
 import { errorHandler } from '../../middleware/errorHandler';
 
-// Mock E2B to avoid dependency issues
-jest.mock('../../../utils/E2BExecutionAdapter');
-jest.mock('../../../utils/LocalExecutionAdapter');
-
-// Mock AgentService
-jest.mock('../../services/AgentService', () => {
-  return {
-    getAgentService: jest.fn().mockReturnValue({
-      startSession: jest.fn().mockReturnValue({
-        id: '123e4567-e89b-12d3-a456-426614174000',
-        createdAt: new Date('2023-01-01T00:00:00.000Z'),
-        lastActiveAt: new Date('2023-01-01T01:00:00.000Z'),
-        isProcessing: false,
-      }),
-      processQuery: jest.fn().mockResolvedValue({
-        response: 'test response',
-        toolResults: [],
-      }),
-      abortOperation: jest.fn().mockReturnValue(true),
-      getHistory: jest.fn().mockReturnValue([]),
-      isProcessing: jest.fn().mockReturnValue(false),
-      getPermissionRequests: jest.fn().mockReturnValue([]),
-    }),
-    AgentServiceEvent: {
-      PROCESSING_STARTED: 'processing:started',
-      PROCESSING_COMPLETED: 'processing:completed',
-      PROCESSING_ERROR: 'processing:error',
-      PROCESSING_ABORTED: 'processing:aborted',
-      TOOL_EXECUTION: 'tool:execution',
-      PERMISSION_REQUESTED: 'permission:requested',
-      PERMISSION_RESOLVED: 'permission:resolved',
-    },
-  };
-});
-
 // Mock session manager and validation
 jest.mock('../../services/SessionManager', () => {
   const mockSession = {
