@@ -34,14 +34,12 @@ describe('Server Configuration', () => {
       process.env.QCKFX_DISABLE_WEB = 'true';
       process.env.QCKFX_PORT = '5000';
       process.env.QCKFX_HOST = '0.0.0.0';
-      process.env.NODE_ENV = 'production';
       
       const config = createServerConfig({});
       expect(config).toEqual({
         enabled: false,
         port: 5000,
         host: '0.0.0.0',
-        development: false,
       });
     });
     
@@ -68,7 +66,6 @@ describe('Server Configuration', () => {
         port: 3000,
         host: 'localhost',
       };
-      // @ts-ignore - the tests need updating to include the development property
       expect(getServerUrl(config)).toBe('http://localhost:3000');
     });
     
@@ -78,7 +75,6 @@ describe('Server Configuration', () => {
         port: 8080,
         host: '127.0.0.1',
       };
-      // @ts-ignore - the tests need updating to include the development property
       expect(getServerUrl(config)).toBe('http://127.0.0.1:8080');
     });
   });

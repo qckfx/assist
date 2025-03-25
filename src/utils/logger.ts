@@ -17,9 +17,7 @@ export enum LogCategory {
   TOOLS = 'tools',
   MODEL = 'model',
   PERMISSIONS = 'permissions',
-  USER_INTERACTION = 'user',
-  UI = 'ui',
-  STATIC = 'static'
+  USER_INTERACTION = 'user'
 }
 
 export interface LoggerOptions {

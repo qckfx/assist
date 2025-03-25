@@ -145,8 +145,7 @@ const startChat = async (options: {
   e2bSandboxId?: string, 
   quiet?: boolean,
   web?: boolean,
-  port?: number,
-  dev?: boolean
+  port?: number
 }) => {
   // Create a CLI logger first, so we can use it for errors
   const cliLogger = createLogger({ 
@@ -167,7 +166,6 @@ const startChat = async (options: {
   const serverConfig = createServerConfig({
     web: options.web,
     port: options.port,
-    development: options.dev || process.env.NODE_ENV === 'development',
   });
 
   // Start the server if enabled
@@ -320,10 +318,6 @@ const startChat = async (options: {
       cliLogger.info('  --web             Enable web UI (default: true)', LogCategory.USER_INTERACTION);
       cliLogger.info('  --no-web          Disable web UI', LogCategory.USER_INTERACTION);
       cliLogger.info('  --port <port>     Port for web UI (default: 3000)', LogCategory.USER_INTERACTION);
-      cliLogger.info('  --dev             Run in development mode with additional logging', LogCategory.USER_INTERACTION);
-      cliLogger.info('\nWeb UI Development:', LogCategory.USER_INTERACTION);
-      cliLogger.info('  npm run dev:ui     Start the Vite development server for UI development', LogCategory.USER_INTERACTION);
-      cliLogger.info('  npm run dev        Start both backend and frontend in development mode', LogCategory.USER_INTERACTION);
       cliLogger.info('\n', LogCategory.USER_INTERACTION);
       continue;
     }
@@ -435,7 +429,6 @@ program
   .option('--web', 'Enable web UI (default: true)')
   .option('--no-web', 'Disable web UI')
   .option('--port <port>', 'Port for web UI', (value) => parseInt(value, 10))
-  .option('--dev', 'Run in development mode with additional logging and features')
   .action(startChat);
 
 // Default command (when no command is specified)
@@ -447,7 +440,6 @@ program
   .option('--web', 'Enable web UI (default: true)')
   .option('--no-web', 'Disable web UI')
   .option('--port <port>', 'Port for web UI', (value) => parseInt(value, 10))
-  .option('--dev', 'Run in development mode with additional logging and features')
   .action(startChat);
 
 // Parse command line arguments
