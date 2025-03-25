@@ -4,11 +4,20 @@
 
 - **Product name spelling**: Always spell "qckfx" with all lowercase letters. Never capitalize as "QCKFX" or "Qckfx".
 
-## Code Style
+## Code Style and Best Practices
 
-- Follow existing code conventions in the codebase
-- Maintain consistent formatting across components
-- Use CSS variables for theming when available
+- **Follow Existing Patterns**: Maintain consistency with existing code conventions and patterns
+- **Prioritize Efficiency**: Write efficient, optimized code that minimizes unnecessary operations
+- **Use Appropriate Abstractions**: Create clean abstractions that are neither too specific nor too general
+- **Optimize for Maintainability**: Write code that's easy to understand, debug, and extend
+- **Consider Performance Impact**: Be mindful of performance implications, especially in frequently executed code
+- **Document Complex Logic**: Add comments for non-obvious logic or important implementation details
+- **Be Pragmatic**: Choose the simplest solution that meets requirements without over-engineering
+- **Maintain Consistent Formatting**: Follow project styling across components
+- **Use CSS Variables**: Leverage CSS variables for theming when available
+- **Document Failed Approaches**: When you try something that doesn't work, add a comment explaining what was tried and why it failed to prevent others from making the same mistakes
+- **Delete Rather Than Comment Out**: When code is no longer needed, delete it entirely rather than commenting it out or skipping tests
+- **Write Comments for Future Readers**: Comments should be useful to future developers, not just notes about the current development process (e.g., don't leave comments about deleted code)
 
 ## Testing Guidelines
 
@@ -41,3 +50,52 @@ For detailed testing guidelines, see [docs/testing-best-practices.md](docs/testi
 ## Build and Development
 
 - Use `npm run dev` to start the development server
+
+## Commands Reference
+
+### Testing
+
+- **UI Tests** (uses Vitest):
+  - `npm run test:ui` - Run all UI tests
+  - `npm run test:ui -- path/to/test.tsx` - Run specific UI tests
+  - `npm run test:ui:watch` - Run UI tests in watch mode
+
+- **Server Tests** (uses Jest):
+  - `npm run test:server` - Run all server tests
+  - `npm run test:server -- path/to/test.ts` - Run specific server tests
+  - `npm run test:server:watch` - Run server tests in watch mode
+
+### TypeChecking
+
+- `npm run typecheck` - Run TypeScript type checking for all code
+- `npm run typecheck:ui` - Run TypeScript type checking for UI code only
+- `npm run typecheck:server` - Run TypeScript type checking for server code only
+
+### Linting
+
+- `npm run lint` - Run ESLint on all code
+- `npm run lint:fix` - Run ESLint and automatically fix issues
+- `npm run lint:ui` - Run ESLint on UI code only
+- `npm run lint:server` - Run ESLint on server code only
+
+### Building
+
+- `npm run build` - Build both UI and server code
+- `npm run build:ui` - Build UI code only
+- `npm run build:server` - Build server code only
+
+Always run appropriate typechecking and linting before committing changes.
+
+## Testing Best Practices Reminders
+
+- **Use Minimal Mocking**: Only mock what's absolutely necessary. Excessive mocking can hide real issues and create brittle tests.
+  
+- **Be Honest About Underlying Issues**: When a test fails, first investigate if the underlying code has issues. Don't just modify tests or add mocks to make them pass.
+  
+- **Write Efficient Tests**: Keep tests focused and efficient. Avoid testing implementation details that might change.
+  
+- **Test Real Behavior**: Tests should verify what the code actually does, not just what you expect it to do.
+
+- **Prefer Integration Tests When Possible**: Pure unit tests with heavy mocking can miss integration issues.
+
+- **Fix Flaky Tests Properly**: If a test is flaky, fix the root cause rather than making the test more permissive.

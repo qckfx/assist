@@ -13,7 +13,7 @@ export interface ToolExecution {
   id: string;
   tool: string;
   toolName: string;
-  status: 'running' | 'completed' | 'error';
+  status: 'running' | 'completed' | 'error' | 'awaiting-permission';
   args?: Record<string, unknown>;
   paramSummary?: string;
   result?: unknown;
@@ -25,6 +25,8 @@ export interface ToolExecution {
   endTime?: number;
   executionTime?: number;
   timestamp?: number; // For backward compatibility
+  requiresPermission?: boolean;
+  permissionId?: string;
 }
 
 // Interface for batched tool executions
@@ -668,6 +670,86 @@ export function useToolStream() {
       };
     });
   }, []);
+  
+  // Handle permission request events
+  const handlePermissionRequested = useCallback((data: Record<string, unknown>) => {
+    const permission = data.permission as Record<string, unknown>;
+    const toolId = permission.toolId as string;
+    const permissionId = permission.id as string;
+    const args = permission.args as Record<string, unknown>;
+    const timestamp = permission.timestamp as string;
+    
+    // Find the related tool execution
+    setState(prev => {
+      // Try to find matching tool execution
+      const runningTools = Object.entries(prev.toolExecutions)
+        .filter(([, execution]) => execution.tool === toolId && execution.status === 'running')
+        .sort(([, a], [, b]) => b.startTime - a.startTime);
+      
+      if (runningTools.length > 0) {
+        const [matchingExecutionId, matchingExecution] = runningTools[0];
+        
+        // Update the tool execution with permission information
+        const updatedExecution: ToolExecution = {
+          ...matchingExecution,
+          requiresPermission: true,
+          permissionId: permissionId,
+          status: 'awaiting-permission' as const,
+        };
+        
+        return {
+          ...prev,
+          toolExecutions: {
+            ...prev.toolExecutions,
+            [matchingExecutionId]: updatedExecution,
+          }
+        };
+      }
+      
+      return prev;
+    });
+  }, []);
+  
+  // Handle permission resolution events
+  const handlePermissionResolved = useCallback((data: Record<string, unknown>) => {
+    const permissionId = data.permissionId as string;
+    const granted = data.granted as boolean;
+    
+    // Update any tool execution waiting for this permission
+    setState(prev => {
+      const updatedToolExecutions = { ...prev.toolExecutions };
+      
+      // Find any tool execution with this permissionId
+      for (const toolId in updatedToolExecutions) {
+        const tool = updatedToolExecutions[toolId];
+        if (tool.permissionId === permissionId) {
+          // If denied, mark as error
+          if (!granted) {
+            updatedToolExecutions[toolId] = {
+              ...tool,
+              status: 'error',
+              error: { message: 'Permission denied' },
+              requiresPermission: false,
+              permissionId: undefined,
+            };
+          } else {
+            // If granted, return to running state
+            updatedToolExecutions[toolId] = {
+              ...tool,
+              status: 'running',
+              requiresPermission: false,
+              permissionId: undefined,
+            };
+          }
+        }
+      }
+      
+      return {
+        ...prev,
+        toolExecutions: updatedToolExecutions,
+      };
+    });
+  }, []);
 
   // Set up event handlers
   useEffect(() => {
@@ -684,6 +766,10 @@ export function useToolStream() {
     const unsubscribeCompletedViz = subscribe(WebSocketEvent.TOOL_EXECUTION_COMPLETED, handleToolExecutionCompleted);
     const unsubscribeErrorViz = subscribe(WebSocketEvent.TOOL_EXECUTION_ERROR, handleToolExecutionError);
     
+    // Subscribe to permission events
+    const unsubscribePermissionRequested = subscribe(WebSocketEvent.PERMISSION_REQUESTED, handlePermissionRequested);
+    const unsubscribePermissionResolved = subscribe(WebSocketEvent.PERMISSION_RESOLVED, handlePermissionResolved);
+    
     // Clean up subscriptions
     return () => {
       unsubscribeBatch();
@@ -693,6 +779,8 @@ export function useToolStream() {
       unsubscribeStarted();
       unsubscribeCompletedViz();
       unsubscribeErrorViz();
+      unsubscribePermissionRequested();
+      unsubscribePermissionResolved();
     };
   }, [
     subscribe, 
@@ -702,7 +790,9 @@ export function useToolStream() {
     handleProcessingError,
     handleToolExecutionStarted,
     handleToolExecutionCompleted,
-    handleToolExecutionError
+    handleToolExecutionError,
+    handlePermissionRequested,
+    handlePermissionResolved
   ]);
   
   // Clear results

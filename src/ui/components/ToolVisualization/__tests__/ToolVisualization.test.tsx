@@ -14,6 +14,18 @@ describe('ToolVisualization', () => {
     startTime: Date.now(),
   };
   
+  const mockAwaitingPermissionTool = {
+    id: 'tool-3',
+    tool: 'BashTool',
+    toolName: 'BashTool',
+    status: 'awaiting-permission' as const,
+    requiresPermission: true,
+    permissionId: 'perm-123',
+    args: { command: 'ls -la' },
+    paramSummary: 'command: ls -la',
+    startTime: Date.now(),
+  };
+  
   const mockCompletedTool = {
     id: 'tool-2',
     tool: 'BashTool',
@@ -87,5 +99,22 @@ describe('ToolVisualization', () => {
     // Compact version should have less details
     const compactEl = screen.getByTestId('tool-visualization');
     expect(compactEl).toHaveClass('text-sm');
+  });
+  
+  it('displays permission banner for tools awaiting permission', () => {
+    render(<ToolVisualization tool={mockAwaitingPermissionTool} />);
+    
+    // Check for permission banner
+    const banner = screen.getByTestId('permission-banner');
+    expect(banner).toBeInTheDocument();
+    
+    // Check banner content
+    expect(screen.getByText('Permission Required')).toBeInTheDocument();
+    expect(screen.getByText('Type \'y\' to allow, anything else to deny')).toBeInTheDocument();
+  });
+  
+  it('does not display permission banner for tools not awaiting permission', () => {
+    render(<ToolVisualization tool={mockRunningTool} />);
+    expect(screen.queryByTestId('permission-banner')).not.toBeInTheDocument();
   });
 });

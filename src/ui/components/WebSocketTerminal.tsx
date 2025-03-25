@@ -10,6 +10,7 @@ import { ConnectionIndicator as _ConnectionIndicator } from './ConnectionIndicat
 import { TypingIndicator as _TypingIndicator } from './TypingIndicator';
 import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTerminal } from '@/context/TerminalContext';
+import { usePermissionKeyboardHandler } from '@/hooks/usePermissionKeyboardHandler';
 
 interface WebSocketTerminalProps {
   className?: string;
@@ -47,6 +48,9 @@ export function WebSocketTerminal({
   const { state, clearMessages } = useTerminal();
   const [hasConnected, setHasConnected] = useState(false);
   
+  // Add keyboard handler for permission requests
+  usePermissionKeyboardHandler({ sessionId });
+  
   // Check if we've ever connected
   useEffect(() => {
     if (isConnected && !hasConnected) {
@@ -81,19 +85,7 @@ export function WebSocketTerminal({
       
       {/* Typing indicator is now handled inside the Terminal component */}
       
-      {showPermissionRequests && hasPendingPermissions && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-lg w-full max-h-[80vh] overflow-auto">
-            <h2 className="text-xl font-bold mb-4">Permission Request</h2>
-            <PermissionRequest
-              onResolved={(permissionId, granted) => {
-                resolvePermission(permissionId, granted);
-                return true;
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {/* Permissions are now handled through the ToolVisualization component */}
       
       {(isProcessing || isStreaming) && (
         <div className="absolute bottom-14 right-4">

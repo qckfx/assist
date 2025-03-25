@@ -7,131 +7,43 @@ import { ConnectionStatus } from '@/types/api';
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
-// Create mock handlers that we can reference and modify in tests
+// Mock handlers
 const mockHandleCommand = vi.fn();
 const mockResolvePermission = vi.fn();
 const mockAbortProcessing = vi.fn();
 const mockClearMessages = vi.fn();
+const mockUsePermissionKeyboardHandler = vi.fn();
 
-// Mock state with getters/setters for reactive updates
-let _mockConnectionStatus = ConnectionStatus.CONNECTED;
-let _mockIsConnected = true;
-let _mockIsProcessing = false;
-let _mockIsStreaming = false;
-let _mockHasPendingPermissions = false;
+// For mock WebSocketTerminalContext
+let mockConnectionStatus = ConnectionStatus.CONNECTED;
+let mockIsConnected = true;
+let mockIsProcessing = false;
+let mockIsStreaming = false;
+let mockHasPendingPermissions = false;
+let mockSessionId = 'test-session-id';
 
-// Create an API for tests to modify WebSocketTerminal behavior
-const webSocketTerminalMock = {
-  // Getters
-  get connectionStatus() { return _mockConnectionStatus; },
-  get isConnected() { return _mockIsConnected; },
-  get isProcessing() { return _mockIsProcessing; },
-  get isStreaming() { return _mockIsStreaming; },
-  get hasPendingPermissions() { return _mockHasPendingPermissions; },
-  
-  // Function references
-  handleCommand: mockHandleCommand,
-  resolvePermission: mockResolvePermission,
-  abortProcessing: mockAbortProcessing,
-  
-  // Setters for convenient state updates
-  setConnectionStatus(status: ConnectionStatus) {
-    _mockConnectionStatus = status;
-    _mockIsConnected = status === ConnectionStatus.CONNECTED;
-  },
-  setProcessing(isProcessing: boolean) {
-    _mockIsProcessing = isProcessing;
-  },
-  setStreaming(isStreaming: boolean) {
-    _mockIsStreaming = isStreaming;
-  },
-  setHasPendingPermissions(hasPending: boolean) {
-    _mockHasPendingPermissions = hasPending;
-  },
-  
-  // Reset to initial state
-  reset() {
-    _mockConnectionStatus = ConnectionStatus.CONNECTED;
-    _mockIsConnected = true;
-    _mockIsProcessing = false;
-    _mockIsStreaming = false;
-    _mockHasPendingPermissions = false;
-    mockHandleCommand.mockClear();
-    mockResolvePermission.mockClear();
-    mockAbortProcessing.mockClear();
-    mockClearMessages.mockClear();
-  }
-};
-
-// Mock Terminal component
-vi.mock('../Terminal/Terminal', () => ({
-  default: vi.fn(({ 
-    onCommand, 
-    onClear, 
-    messages, 
-    showConnectionIndicator, 
-    showTypingIndicator
-  }: {
-    onCommand: (command: string) => void;
-    onClear: () => void;
-    messages: Array<{id: string; content: string; type: string; timestamp: Date}>;
-    showConnectionIndicator?: boolean;
-    showTypingIndicator?: boolean;
-  }) => (
-    <div data-testid="mock-terminal">
-      <div data-testid="terminal-messages">
-        {messages?.map((msg, i) => (
-          <div key={i} data-testid={`message-${msg.type}`}>{msg.content}</div>
-        ))}
-      </div>
-      {showConnectionIndicator && <div data-testid="connection-indicator" />}
-      {showTypingIndicator && (webSocketTerminalMock.isProcessing || webSocketTerminalMock.isStreaming) && (
-        <div data-testid="typing-indicator" />
-      )}
-      <button data-testid="send-command" onClick={() => onCommand('test command')}>Send</button>
-      <button data-testid="clear-terminal" onClick={() => onClear()}>Clear</button>
-    </div>
-  )),
+// Mock usePermissionKeyboardHandler
+vi.mock('@/hooks/usePermissionKeyboardHandler', () => ({
+  usePermissionKeyboardHandler: (props) => mockUsePermissionKeyboardHandler(props)
 }));
 
-// Mock ConnectionIndicator
-vi.mock('../ConnectionIndicator', () => ({
-  ConnectionIndicator: vi.fn(() => <div data-testid="connection-indicator" />),
-}));
-
-// Mock TypingIndicator
-vi.mock('../TypingIndicator', () => ({
-  TypingIndicator: vi.fn(() => <div data-testid="typing-indicator" />),
-}));
-
-// Mock PermissionRequest
-vi.mock('../PermissionRequest', () => ({
-  PermissionRequest: vi.fn(({ onResolved }: { onResolved: (id: string, granted: boolean) => void }) => (
-    <div data-testid="permission-request">
-      <button data-testid="resolve-permission" onClick={() => onResolved('test-id', true)}>
-        Approve
-      </button>
-    </div>
-  )),
-}));
-
-// Mock WebSocketTerminalContext - using our reactive mock object
+// Mock WebSocketTerminalContext
 vi.mock('@/context/WebSocketTerminalContext', () => ({
   useWebSocketTerminal: () => ({
-    // Destructuring won't work here - we need to pass references to getters
-    get connectionStatus() { return webSocketTerminalMock.connectionStatus; },
-    get isConnected() { return webSocketTerminalMock.isConnected; },
-    get isProcessing() { return webSocketTerminalMock.isProcessing; },
-    get isStreaming() { return webSocketTerminalMock.isStreaming; },
-    get hasPendingPermissions() { return webSocketTerminalMock.hasPendingPermissions; },
-    handleCommand: webSocketTerminalMock.handleCommand,
-    resolvePermission: webSocketTerminalMock.resolvePermission,
-    abortProcessing: webSocketTerminalMock.abortProcessing,
+    connectionStatus: mockConnectionStatus,
+    isConnected: mockIsConnected,
+    isProcessing: mockIsProcessing, 
+    isStreaming: mockIsStreaming,
+    hasPendingPermissions: mockHasPendingPermissions,
+    handleCommand: mockHandleCommand,
+    resolvePermission: mockResolvePermission,
+    abortProcessing: mockAbortProcessing,
+    sessionId: mockSessionId,
   }),
-  WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  WebSocketTerminalProvider: ({ children }) => <>{children}</>
 }));
 
-// Mock Terminal context
+// Mock TerminalContext
 vi.mock('@/context/TerminalContext', () => ({
   useTerminal: () => ({
     state: {
@@ -143,16 +55,74 @@ vi.mock('@/context/TerminalContext', () => ({
     },
     clearMessages: mockClearMessages,
   }),
-  TerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TerminalProvider: ({ children }) => <>{children}</>
 }));
 
-// Import the component AFTER all mocks are set up
+// Mock Terminal component
+vi.mock('../Terminal/Terminal', () => ({
+  default: vi.fn(({ 
+    onCommand, 
+    onClear, 
+    messages, 
+    showConnectionIndicator, 
+    showTypingIndicator
+  }) => (
+    <div data-testid="mock-terminal">
+      <div data-testid="terminal-messages">
+        {messages?.map((msg, i) => (
+          <div key={i} data-testid={`message-${msg.type}`}>{msg.content}</div>
+        ))}
+      </div>
+      {showConnectionIndicator && <div data-testid="connection-indicator" />}
+      {showTypingIndicator && (mockIsProcessing || mockIsStreaming) && (
+        <div data-testid="typing-indicator" />
+      )}
+      <button data-testid="send-command" onClick={() => onCommand('test command')}>Send</button>
+      <button data-testid="clear-terminal" onClick={() => onClear()}>Clear</button>
+    </div>
+  ))
+}));
+
+// Mock ConnectionIndicator
+vi.mock('../ConnectionIndicator', () => ({
+  ConnectionIndicator: vi.fn(() => <div data-testid="connection-indicator" />)
+}));
+
+// Mock TypingIndicator
+vi.mock('../TypingIndicator', () => ({
+  TypingIndicator: vi.fn(() => <div data-testid="typing-indicator" />)
+}));
+
+// Mock PermissionRequest
+vi.mock('../PermissionRequest', () => ({
+  PermissionRequest: vi.fn(({ onResolved }) => (
+    <div data-testid="permission-request">
+      <button data-testid="resolve-permission" onClick={() => onResolved('test-id', true)}>
+        Approve
+      </button>
+    </div>
+  ))
+}));
+
+// Import the component after all mocks are set up
 import { WebSocketTerminal } from '../WebSocketTerminal';
 
 describe('WebSocketTerminal Component', () => {
-  // Reset mock state before each test
   beforeEach(() => {
-    webSocketTerminalMock.reset();
+    // Reset mock values
+    mockConnectionStatus = ConnectionStatus.CONNECTED;
+    mockIsConnected = true;
+    mockIsProcessing = false;
+    mockIsStreaming = false;
+    mockHasPendingPermissions = false;
+    mockSessionId = 'test-session-id';
+    
+    // Reset function mocks
+    mockHandleCommand.mockReset();
+    mockResolvePermission.mockReset();
+    mockAbortProcessing.mockReset();
+    mockClearMessages.mockReset();
+    mockUsePermissionKeyboardHandler.mockReset();
   });
   
   test('renders the Terminal component with messages', () => {
@@ -180,8 +150,8 @@ describe('WebSocketTerminal Component', () => {
   
   test('displays TypingIndicator when processing is true', () => {
     // Set processing state
-    webSocketTerminalMock.setProcessing(true);
-    webSocketTerminalMock.setStreaming(false);
+    mockIsProcessing = true;
+    mockIsStreaming = false;
     
     render(<WebSocketTerminal showTypingIndicator={true} />);
     
@@ -190,8 +160,8 @@ describe('WebSocketTerminal Component', () => {
   
   test('displays TypingIndicator when streaming is true', () => {
     // Set streaming state
-    webSocketTerminalMock.setProcessing(false);
-    webSocketTerminalMock.setStreaming(true);
+    mockIsProcessing = false;
+    mockIsStreaming = true;
     
     render(<WebSocketTerminal showTypingIndicator={true} />);
     
@@ -200,43 +170,24 @@ describe('WebSocketTerminal Component', () => {
   
   test('does not display TypingIndicator when not processing or streaming', () => {
     // Ensure processing and streaming are both false
-    webSocketTerminalMock.setProcessing(false);
-    webSocketTerminalMock.setStreaming(false);
+    mockIsProcessing = false;
+    mockIsStreaming = false;
     
     render(<WebSocketTerminal showTypingIndicator={true} />);
     
     expect(screen.queryByTestId('typing-indicator')).not.toBeInTheDocument();
   });
   
-  test('displays PermissionRequest when hasPendingPermissions is true', () => {
+  test('sets up keyboard handlers when there are pending permissions', () => {
     // Set pending permissions
-    webSocketTerminalMock.setHasPendingPermissions(true);
+    mockHasPendingPermissions = true;
     
     render(<WebSocketTerminal showPermissionRequests={true} />);
     
-    expect(screen.getByTestId('permission-request')).toBeInTheDocument();
+    // Verify the hook was called with the session ID
+    expect(mockUsePermissionKeyboardHandler).toHaveBeenCalledWith({ sessionId: mockSessionId });
   });
   
-  test('does not display PermissionRequest when hasPendingPermissions is false', () => {
-    // Ensure no pending permissions
-    webSocketTerminalMock.setHasPendingPermissions(false);
-    
-    render(<WebSocketTerminal showPermissionRequests={true} />);
-    
-    expect(screen.queryByTestId('permission-request')).not.toBeInTheDocument();
-  });
-  
-  test('calls resolvePermission when permission is resolved', () => {
-    // Set pending permissions
-    webSocketTerminalMock.setHasPendingPermissions(true);
-    
-    render(<WebSocketTerminal showPermissionRequests={true} />);
-    
-    // Click the approve button
-    fireEvent.click(screen.getByTestId('resolve-permission'));
-    
-    expect(mockResolvePermission).toHaveBeenCalledWith('test-id', true);
-  });
   
   test('calls onClear when clear function is triggered', () => {
     render(<WebSocketTerminal />);
@@ -258,7 +209,7 @@ describe('WebSocketTerminal Component', () => {
   
   test('calls abortProcessing when abort button is clicked', () => {
     // Set processing state to show the abort button
-    webSocketTerminalMock.setProcessing(true);
+    mockIsProcessing = true;
     
     render(<WebSocketTerminal />);
     
@@ -275,7 +226,8 @@ describe('WebSocketTerminal Component', () => {
     ConnectionStatus.RECONNECTING,
     ConnectionStatus.ERROR
   ])('displays connection status indicator when status is %s', (status) => {
-    webSocketTerminalMock.setConnectionStatus(status);
+    mockConnectionStatus = status;
+    mockIsConnected = status === ConnectionStatus.CONNECTED;
     
     const { unmount } = render(<WebSocketTerminal showConnectionStatus={true} />);
     
@@ -289,12 +241,14 @@ describe('WebSocketTerminal Component', () => {
   
   test('disables input when disconnected after having connected', () => {
     // Initially connected
-    webSocketTerminalMock.setConnectionStatus(ConnectionStatus.CONNECTED);
+    mockConnectionStatus = ConnectionStatus.CONNECTED;
+    mockIsConnected = true;
     
     const { rerender } = render(<WebSocketTerminal />);
     
     // Now disconnect
-    webSocketTerminalMock.setConnectionStatus(ConnectionStatus.DISCONNECTED);
+    mockConnectionStatus = ConnectionStatus.DISCONNECTED;
+    mockIsConnected = false;
     
     rerender(<WebSocketTerminal />);
     
