@@ -18,7 +18,11 @@ export function useFastEditModeKeyboardShortcut(sessionId?: string, enabled: boo
       shiftKey: true,
       action: () => {
         if (sessionId) {
-          toggleFastEditMode();
+          // Toggle fast edit mode
+          toggleFastEditMode().then(newMode => {
+            console.log(`Fast Edit Mode ${newMode ? 'enabled' : 'disabled'}`);
+            // Server will auto-approve allowed tools when Fast Edit Mode is enabled
+          });
         } else {
           console.error('Cannot toggle Fast Edit Mode: No active session');
         }

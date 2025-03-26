@@ -19,12 +19,20 @@ export function useFastEditMode(sessionId?: string) {
   useEffect(() => {
     if (!sessionId) return;
     
-    const handleFastEditModeEnabled = () => {
+    const handleFastEditModeEnabled = (data: { sessionId: string; enabled: boolean }) => {
+      console.log('Fast Edit Mode enabled event received:', data);
       setFastEditMode(true);
     };
     
-    const handleFastEditModeDisabled = () => {
+    const handleFastEditModeDisabled = (data: { sessionId: string; enabled: boolean }) => {
+      console.log('Fast Edit Mode disabled event received:', data);
       setFastEditMode(false);
+    };
+    
+    // Handle permission resolution (might be auto-approved through Fast Edit Mode)
+    const handlePermissionResolved = (data: { sessionId: string; permissionId: string; resolution: boolean }) => {
+      console.log('Permission resolved:', data);
+      // No direct action needed, will be handled by the permission hooks
     };
     
     // Register event listeners
@@ -36,6 +44,11 @@ export function useFastEditMode(sessionId?: string) {
     const unsubscribeDisabled = subscribe(
       WebSocketEvent.FAST_EDIT_MODE_DISABLED,
       handleFastEditModeDisabled
+    );
+    
+    const unsubscribePermissionResolved = subscribe(
+      WebSocketEvent.PERMISSION_RESOLVED,
+      handlePermissionResolved
     );
     
     // Fetch initial state
@@ -53,6 +66,7 @@ export function useFastEditMode(sessionId?: string) {
     return () => {
       unsubscribeEnabled();
       unsubscribeDisabled();
+      unsubscribePermissionResolved();
     };
   }, [sessionId, subscribe]);
   
@@ -72,8 +86,12 @@ export function useFastEditMode(sessionId?: string) {
         throw new Error(response.error?.message || 'Failed to toggle fast edit mode');
       }
       
-      // State will be updated via WebSocket event
-      return true;
+      // Update state locally for immediate feedback
+      // WebSocket event will update it later to ensure consistency
+      setFastEditMode(enabled);
+      
+      // Return the new state
+      return enabled;
     } catch (error) {
       console.error('Error toggling Fast Edit Mode:', error);
       return false;

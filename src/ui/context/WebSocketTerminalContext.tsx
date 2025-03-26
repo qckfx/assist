@@ -112,6 +112,10 @@ export function WebSocketTerminalProvider({
       if (newSessionId) {
         console.log(`[WebSocketTerminalContext] Session created successfully: ${newSessionId}`);
         
+        // Store the sessionId in sessionStorage for permission handling
+        sessionStorage.setItem('currentSessionId', newSessionId);
+        console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
+        
         // Update session state
         setSessionId(newSessionId);
         sessionIdRef.current = newSessionId;
@@ -185,6 +189,10 @@ export function WebSocketTerminalProvider({
           
           if (newSessionId && isMounted) {
             console.log(`[WebSocketTerminalContext] Successfully created session: ${newSessionId}`);
+            
+            // Store the sessionId in sessionStorage for permission handling
+            sessionStorage.setItem('currentSessionId', newSessionId);
+            console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
           } else if (isMounted) {
             handleSessionCreationError(new Error("Failed to create session: No session ID returned"));
           }

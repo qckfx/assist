@@ -191,8 +191,16 @@ export function WebSocketProvider({
   ) => {
     const socket = connectionManager.current.getSocket();
     if (!socket) {
-      console.log(`WebSocketContext: Cannot subscribe to ${event}, no socket`);
-      return () => {};
+      console.warn(`WebSocketContext: Cannot subscribe to ${event}, no socket. Will attempt to auto-connect.`);
+      
+      // Attempt to reconnect if there's no socket
+      // This helps in production environments where socket might not be initialized yet
+      connectionManager.current.connect();
+      
+      // Return a dummy unsubscribe function that won't fail if called
+      return () => {
+        console.log(`Unsubscribing from ${event} (no-op because there was no socket when subscribed)`);
+      };
     }
     
     // Set up the listener
@@ -201,7 +209,13 @@ export function WebSocketProvider({
     
     // Return unsubscribe function
     return () => {
-      socket.off(event as string, callback as (data: unknown) => void);
+      // Check if socket is still available when unsubscribing
+      const currentSocket = connectionManager.current.getSocket();
+      if (currentSocket) {
+        currentSocket.off(event as string, callback as (data: unknown) => void);
+      } else {
+        console.log(`Cannot unsubscribe from ${event}, socket no longer available`);
+      }
     };
   }, []);
   
@@ -212,19 +226,38 @@ export function WebSocketProvider({
   ) => {
     const buffer = messageBuffer.current;
     
-    // Set up a buffer listener
-    buffer.onFlush(event as string, callback as (items: Array<{ timestamp: number; data: unknown }>) => void);
-    
-    // Subscribe to raw events to add them to the buffer
-    const unsubscribe = on(event, (data) => {
-      buffer.add(event as string, data);
-    });
-    
-    // Return combined unsubscribe function
-    return () => {
-      unsubscribe();
-      buffer.removeListener(event as string);
-    };
+    try {
+      // Set up a buffer listener
+      buffer.onFlush(event as string, callback as (items: Array<{ timestamp: number; data: unknown }>) => void);
+      
+      // Subscribe to raw events to add them to the buffer
+      const unsubscribe = on(event, (data) => {
+        try {
+          buffer.add(event as string, data);
+        } catch (error) {
+          console.warn(`Error adding event to buffer (${event}):`, error);
+        }
+      });
+      
+      // Return combined unsubscribe function with error handling
+      return () => {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.warn(`Error during raw event unsubscribe (${event}):`, error);
+        }
+        
+        try {
+          buffer.removeListener(event as string);
+        } catch (error) {
+          console.warn(`Error removing buffer listener (${event}):`, error);
+        }
+      };
+    } catch (error) {
+      console.warn(`Error setting up batch subscription (${event}):`, error);
+      // Return no-op function that won't fail if called
+      return () => {};
+    }
   }, [on]);
   
   // Create context value with stable references

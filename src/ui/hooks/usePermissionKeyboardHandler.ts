@@ -16,6 +16,11 @@ export function usePermissionKeyboardHandler({
     (event: KeyboardEvent) => {
       if (!pendingPermissions.length) return;
       
+      // Prevent default behavior for y/n keys in this context
+      if (event.key.toLowerCase() === 'y' || event.key.length === 1) {
+        event.preventDefault();
+      }
+      
       console.log('Keyboard event with pending permissions:', 
         { key: event.key, pendingCount: pendingPermissions.length, permissions: pendingPermissions });
       
@@ -57,11 +62,12 @@ export function usePermissionKeyboardHandler({
         pendingPermissions: pendingPermissions.map(p => ({ id: p.id, toolId: p.toolId }))
       });
       
-      window.addEventListener('keydown', handleKeyDown);
+      // Use capture phase to ensure our handler runs before others
+      window.addEventListener('keydown', handleKeyDown, true);
       
       return () => {
         console.log('🔑 Removing keyboard handler for permissions');
-        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keydown', handleKeyDown, true);
       };
     }
   }, [pendingPermissions, handleKeyDown]);
