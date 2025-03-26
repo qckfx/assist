@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { WebSocketEvent } from '../types/api';
 import apiClient from '../services/apiClient';
-import { useTerminal } from '@/context/TerminalContext';
 
 /**
  * Interface for permission request data

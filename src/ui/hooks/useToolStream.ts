@@ -839,34 +839,55 @@ export function useToolStream() {
 
   // Set up event handlers
   useEffect(() => {
+    // Create an array to track all unsubscribe functions
+    const unsubscribers: Array<() => void> = [];
+    
+    // Helper function to safely subscribe and track unsubscribe function
+    const safeSubscribe = (
+      event: WebSocketEvent, 
+      handler: (data: unknown) => void
+    ) => {
+      try {
+        // We need to use `as any` here to bridge TypeScript's validation gap
+        // This is necessary because the types for WebSocketEvent and the handlers have a mismatch
+        // that would be too complex to fully type correctly in this context
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const unsubscribe = subscribe(event, handler as any);
+        unsubscribers.push(unsubscribe);
+        return unsubscribe;
+      } catch (error) {
+        console.warn(`Failed to subscribe to ${event}:`, error);
+        // Return a no-op function
+        return () => {};
+      }
+    };
+    
     // Subscribe to batched tool executions (still needed for performance)
-    const unsubscribeBatch = subscribe(WebSocketEvent.TOOL_EXECUTION_BATCH, handleToolExecutionBatch);
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_BATCH, (data: unknown) => handleToolExecutionBatch(data as ToolExecutionBatch));
     
     // Subscribe to processing events
-    const unsubscribeCompleted = subscribe(WebSocketEvent.PROCESSING_COMPLETED, handleProcessingCompleted);
-    const unsubscribeAborted = subscribe(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted);
-    const unsubscribeError = subscribe(WebSocketEvent.PROCESSING_ERROR, handleProcessingError);
+    safeSubscribe(WebSocketEvent.PROCESSING_COMPLETED, handleProcessingCompleted);
+    safeSubscribe(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted);
+    safeSubscribe(WebSocketEvent.PROCESSING_ERROR, handleProcessingError);
     
     // Subscribe to tool visualization events - these are the primary events we use now
-    const unsubscribeStarted = subscribe(WebSocketEvent.TOOL_EXECUTION_STARTED, handleToolExecutionStarted);
-    const unsubscribeCompletedViz = subscribe(WebSocketEvent.TOOL_EXECUTION_COMPLETED, handleToolExecutionCompleted);
-    const unsubscribeErrorViz = subscribe(WebSocketEvent.TOOL_EXECUTION_ERROR, handleToolExecutionError);
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_STARTED, (data: unknown) => handleToolExecutionStarted(data as Record<string, unknown>));
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_COMPLETED, (data: unknown) => handleToolExecutionCompleted(data as Record<string, unknown>));
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_ERROR, (data: unknown) => handleToolExecutionError(data as Record<string, unknown>));
     
     // Subscribe to permission events
-    const unsubscribePermissionRequested = subscribe(WebSocketEvent.PERMISSION_REQUESTED, handlePermissionRequested);
-    const unsubscribePermissionResolved = subscribe(WebSocketEvent.PERMISSION_RESOLVED, handlePermissionResolved);
+    safeSubscribe(WebSocketEvent.PERMISSION_REQUESTED, (data: unknown) => handlePermissionRequested(data as Record<string, unknown>));
+    safeSubscribe(WebSocketEvent.PERMISSION_RESOLVED, (data: unknown) => handlePermissionResolved(data as Record<string, unknown>));
     
     // Clean up subscriptions
     return () => {
-      unsubscribeBatch();
-      unsubscribeCompleted();
-      unsubscribeAborted();
-      unsubscribeError();
-      unsubscribeStarted();
-      unsubscribeCompletedViz();
-      unsubscribeErrorViz();
-      unsubscribePermissionRequested();
-      unsubscribePermissionResolved();
+      unsubscribers.forEach(unsubscribe => {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.warn('Error during unsubscribe:', error);
+        }
+      });
     };
   }, [
     subscribe, 
