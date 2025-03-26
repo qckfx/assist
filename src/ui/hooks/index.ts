@@ -19,6 +19,7 @@ export * from './useTerminalWebSocket';
 export * from './useStreamingMessages';
 export * from './useTerminalCommands';
 export * from './usePermissionManager';
+export * from './useFastEditMode';
 
 // Default exports
 export { default as useKeyboardShortcuts } from './useKeyboardShortcuts';
@@ -33,3 +34,4 @@ export { default as useTerminalWebSocket } from './useTerminalWebSocket';
 export { default as useStreamingMessages } from './useStreamingMessages';
 export { default as useTerminalCommands } from './useTerminalCommands';
 export { default as usePermissionManager } from './usePermissionManager';
+export { default as useFastEditMode } from './useFastEditMode';
