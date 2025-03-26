@@ -49,7 +49,7 @@ export const createLSTool = (): Tool => {
     name: 'LSTool',
     description: '- Lists files and directories in a given path\n- Provides directory exploration capabilities\n- Offers options for showing hidden files\n- Can display detailed file information\n- Use this tool to explore directory contents before working with files\n- For finding specific files by pattern, use GlobTool instead\n\nUsage notes:\n- Returns all files and directories in the specified path\n- Set showHidden=true to include files starting with \'.\'\n- Set details=true to get additional file information (size, dates)\n- Results are not recursive - only shows direct children of the path\n- Use this before reading or writing files to confirm locations\n- For more targeted file finding, use GlobTool after exploring',
     requiresPermission: false, // Listing directories is generally safe
-    category: ToolCategory.READONLY
+    category: ToolCategory.READONLY,
     
     // Add detailed parameter descriptions
     parameters: {

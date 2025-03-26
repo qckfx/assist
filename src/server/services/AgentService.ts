@@ -10,7 +10,6 @@ import {
 } from '../../index';
 import { Session, sessionManager } from './SessionManager';
 import { ServerError, AgentBusyError } from '../utils/errors';
-import { serverLogger } from '../logger';
 import { ToolResultEntry } from '../../types';
 import { Anthropic } from '@anthropic-ai/sdk';
 
@@ -33,6 +32,10 @@ export enum AgentServiceEvent {
   // Permission events
   PERMISSION_REQUESTED = 'permission:requested',
   PERMISSION_RESOLVED = 'permission:resolved',
+  
+  // Fast Edit Mode events
+  FAST_EDIT_MODE_ENABLED = 'fast_edit_mode:enabled',
+  FAST_EDIT_MODE_DISABLED = 'fast_edit_mode:disabled',
 }
 
 /**
@@ -74,6 +77,7 @@ export class AgentService extends EventEmitter {
   private config: AgentServiceConfig;
   private activeProcessingSessionIds: Set<string> = new Set();
   private permissionRequests: Map<string, PermissionRequest> = new Map();
+  private sessionFastEditMode: Map<string, boolean> = new Map();
   
   /**
    * Creates a concise summary of tool arguments for display
@@ -219,6 +223,10 @@ export class AgentService extends EventEmitter {
           },
         },
       });
+      
+      // Set Fast Edit Mode on the agent's permission manager based on this session's setting
+      const isFastEditModeEnabled = this.getFastEditMode(sessionId);
+      agent.permissionManager.setFastEditMode(isFastEditModeEnabled);
 
       // Collect tool results
       const toolResults: ToolResultEntry[] = [];
@@ -460,6 +468,36 @@ export class AgentService extends EventEmitter {
     // Get the session
     const session = sessionManager.getSession(sessionId);
     return session.state.conversationHistory || [];
+  }
+  
+  /**
+   * Toggle fast edit mode for a session
+   */
+  public toggleFastEditMode(sessionId: string, enabled: boolean): boolean {
+    try {
+      // Verify the session exists (will throw if not found)
+      sessionManager.getSession(sessionId);
+      
+      // Update the fast edit mode state
+      this.sessionFastEditMode.set(sessionId, enabled);
+      
+      // Emit the appropriate event
+      this.emit(
+        enabled ? AgentServiceEvent.FAST_EDIT_MODE_ENABLED : AgentServiceEvent.FAST_EDIT_MODE_DISABLED,
+        { sessionId, enabled }
+      );
+      
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  
+  /**
+   * Get the fast edit mode state for a session
+   */
+  public getFastEditMode(sessionId: string): boolean {
+    return this.sessionFastEditMode.get(sessionId) || false;
   }
 }
 

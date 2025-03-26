@@ -51,15 +51,19 @@ const createAgent = (config: AgentConfig): Agent => {
   // Create core components
   const logger = config.logger || createLogger({ level: LogLevel.INFO });
   
-  const permissionManager = createPermissionManager({
-    uiHandler: config.permissionUIHandler
-  });
+  // Create tool registry first
+  const toolRegistry = createToolRegistry();
+  
+  const permissionManager = createPermissionManager(
+    toolRegistry,
+    {
+      uiHandler: config.permissionUIHandler
+    }
+  );
   
   const modelClient = createModelClient({
     modelProvider: config.modelProvider as ModelProvider
   });
-  
-  const toolRegistry = createToolRegistry();
   
   // Create and register default tools
   const tools: Tool[] = [

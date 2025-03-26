@@ -47,7 +47,7 @@ export const createFileReadTool = (): Tool => {
     name: 'FileReadTool',
     description: '- Reads the contents of files in the filesystem\n- Handles text files with various encodings\n- Supports partial file reading with line offset and count\n- Limits file size for performance and safety\n- Use this tool to examine file contents\n- Use LSTool to explore directories before reading specific files\n\nUsage notes:\n- Provide the exact file path to read\n- Files larger than the maxSize will be truncated\n- Use lineOffset and lineCount to read specific portions of large files\n- Returns raw file content as text without line numbers\n- Returns metadata including file size and encoding\n- File content is returned according to the specified encoding',
     requiresPermission: false, // Reading files is generally safe
-    category: ToolCategory.READONLY
+    category: ToolCategory.READONLY,
     
     // Enhanced parameter descriptions
     parameters: {

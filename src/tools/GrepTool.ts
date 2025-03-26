@@ -47,7 +47,7 @@ export const createGrepTool = (): Tool => {
     name: 'GrepTool',
     description: '- Fast content search tool that works across the codebase\n- Searches file contents using patterns or regular expressions\n- Supports recursive directory traversal\n- Filters files by pattern to narrow search scope\n- Use this tool when you need to find specific text in file contents\n- For finding files by name, use GlobTool instead\n\nUsage notes:\n- Provide a search pattern to find matching content in files\n- Use ignoreCase=true for case-insensitive searching\n- Limit search to specific file types with filePattern\n- Search within a specific directory using the path parameter\n- Results are limited by maxResults to prevent overwhelming output\n- For complex content searches, consider using multiple tool calls',
     requiresPermission: false, // Reading/searching is generally safe
-    category: ToolCategory.READONLY
+    category: ToolCategory.READONLY,
     
     // Enhanced parameter descriptions
     parameters: {
