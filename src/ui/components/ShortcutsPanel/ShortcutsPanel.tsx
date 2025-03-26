@@ -69,17 +69,26 @@ export function ShortcutsPanel({
           {shortcuts.length === 0 ? (
             <p className="text-gray-400">No shortcuts available</p>
           ) : (
-            shortcuts.map((shortcut, index) => (
-              <div
-                key={index}
-                className="flex justify-between py-2 border-b border-gray-800 last:border-0"
-              >
-                <span className="text-gray-300">{shortcut.description}</span>
+            <>
+              {shortcuts.map((shortcut, index) => (
+                <div
+                  key={index}
+                  className="flex justify-between py-2 border-b border-gray-800"
+                >
+                  <span className="text-gray-300">{shortcut.description}</span>
+                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300 font-mono">
+                    {formatKey(shortcut)}
+                  </kbd>
+                </div>
+              ))}
+              {/* Add Fast Edit Mode shortcut */}
+              <div className="flex justify-between py-2 border-b border-gray-800 last:border-0">
+                <span className="text-gray-300">Toggle Fast Edit Mode</span>
                 <kbd className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300 font-mono">
-                  {formatKey(shortcut)}
+                  Shift + Tab
                 </kbd>
               </div>
-            ))
+            </>
           )}
         </div>
         

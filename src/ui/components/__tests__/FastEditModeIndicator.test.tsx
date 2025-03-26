@@ -10,16 +10,16 @@ vi.mock('../../hooks', () => ({
 }));
 
 describe('FastEditModeIndicator', () => {
-  it('should not render when fast edit mode is disabled', () => {
+  it('should show a hint when fast edit mode is disabled', () => {
     // Mock the hook to return fast edit mode disabled
     (useFastEditMode as any).mockReturnValue({
       fastEditMode: false,
     });
     
-    const { container } = render(<FastEditModeIndicator sessionId="test-session" />);
+    render(<FastEditModeIndicator sessionId="test-session" />);
     
-    // Component should not render anything
-    expect(container.firstChild).toBeNull();
+    // Component should render a hint about the shortcut
+    expect(screen.getByText('press shift+tab for auto-accept mode')).toBeInTheDocument();
   });
   
   it('should render when fast edit mode is enabled', () => {
