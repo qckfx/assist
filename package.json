@@ -36,7 +36,7 @@
     "start:dist": "node dist/cli.js",
     "start:dev": "npm run build:complete && npm run start:dist -- --dev --port 3000",
     "prepublishOnly": "npm run build:complete",
-    "postinstall": "chmod +x ./dist/cli.js",
+    "postinstall": "[ -f ./dist/cli.js ] && chmod +x ./dist/cli.js || echo 'dist/cli.js not found, skipping chmod'",
     "prepack": "chmod +x ./dist/cli.js"
   },
   "keywords": [
