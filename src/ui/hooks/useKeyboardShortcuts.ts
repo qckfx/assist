@@ -46,6 +46,19 @@ export function useKeyboardShortcuts({
         target: target.tagName
       });
 
+      // Always prevent default for Shift+Tab to avoid focus navigation 
+      // This ensures our Shift+Tab shortcut works properly in all contexts
+      if (event.key === 'Tab' && event.shiftKey) {
+        // If we're in an input field, still prevent the default behavior
+        // This is needed because Shift+Tab would normally exit the input field
+        event.preventDefault();
+        
+        // Stop propagation to prevent other handlers from running
+        event.stopPropagation();
+        
+        console.log('Prevented default behavior for Shift+Tab');
+      }
+      
       // Check if any shortcut matches the key press
       const matchingShortcut = shortcuts.find(
         (shortcut) => {

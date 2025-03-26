@@ -32,9 +32,16 @@ export function usePermissionManager({
   // Subscribe to permission request events
   useEffect(() => {
     const handlePermissionRequested = (data: { sessionId: string; permission: Record<string, unknown> }) => {
-      const { permission } = data;
+      const { permission, sessionId: eventSessionId } = data;
       
       console.log('[usePermissionManager] Permission request received:', data);
+      
+      // If we have a valid session ID from the event, store it
+      if (eventSessionId && typeof eventSessionId === 'string') {
+        // Store this session ID in sessionStorage for permission resolution
+        sessionStorage.setItem('currentSessionId', eventSessionId);
+        console.log('[usePermissionManager] Stored session ID in sessionStorage:', eventSessionId);
+      }
       
       // Check if this tool should be auto-approved
       if (autoApproveTools.includes(permission.toolId as string)) {

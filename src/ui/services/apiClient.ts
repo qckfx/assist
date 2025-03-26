@@ -160,6 +160,11 @@ export const apiClient = {
     // Need to get the current session from sessionStorage
     const sessionId = sessionStorage.getItem('currentSessionId');
     
+    if (!sessionId) {
+      console.error('No session ID found in sessionStorage');
+      return Promise.reject(new Error('No session ID found'));
+    }
+    
     // Log the request for debugging
     console.log('Resolving permission request:', { 
       sessionId, 
@@ -167,14 +172,20 @@ export const apiClient = {
       granted
     });
     
+    // Ensure all fields are correctly formatted
+    const requestData: PermissionResolveRequest = {
+      sessionId: sessionId,
+      permissionId: permissionId,
+      granted: granted
+    };
+    
+    // Log the final payload to verify it's correct
+    console.log('Permission resolution payload:', requestData);
+    
     return apiRequest<{ resolved: boolean }>(
       API_ENDPOINTS.PERMISSIONS_RESOLVE, 
       'POST', 
-      { 
-        sessionId,  // Send the current session ID
-        permissionId, // Send the permission ID
-        granted 
-      } as PermissionResolveRequest
+      requestData
     );
   },
   
