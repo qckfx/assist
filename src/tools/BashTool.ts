@@ -3,7 +3,7 @@
  */
 
 import { createTool } from './createTool';
-import { Tool, ToolContext, ValidationResult } from '../types/tool';
+import { Tool, ToolContext, ValidationResult, ToolCategory } from '../types/tool';
 
 export interface BashToolArgs {
   command: string;
@@ -37,6 +37,8 @@ export const createBashTool = (): Tool => {
     name: 'BashTool',
     description: '- Executes shell commands in your environment\n- Maintains state between command executions\n- Supports all standard shell features and operations\n- Runs commands in specified working directories\n- Use this tool when you need to run terminal commands\n- For finding files or searching content, use GlobTool and GrepTool instead\n\nUsage notes:\n- Command output is returned as text\n- File operations use the current working directory unless specified\n- Environment variables and shell state persist between commands\n- IMPORTANT: Prefer GlobTool over \'find\' and GrepTool over \'grep\' for more reliable results\n- IMPORTANT: Prefer FileReadTool over \'cat\', \'head\', \'tail\' for more reliable results',
     requiresPermission: true,
+    category: ToolCategory.SHELL_EXECUTION,
+    alwaysRequirePermission: true, // Shell execution always requires permission for security
     
     // Enhanced parameter descriptions
     parameters: {

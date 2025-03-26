@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { WebSocketEvent } from '../types/api';
 import apiClient from '../services/apiClient';
+import { useTerminal } from '@/context/TerminalContext';
 
 /**
  * Interface for permission request data
@@ -61,6 +62,8 @@ export function usePermissionRequests() {
     
     return unsubscribe;
   }, [subscribe]);
+  
+  // No timeout handling - permission requests wait indefinitely for user action
   
   // Resolve a permission request
   const resolvePermission = useCallback(async (permissionId: string, granted: boolean) => {

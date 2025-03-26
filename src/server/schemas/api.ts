@@ -123,6 +123,29 @@ export const permissionResolutionResponseSchema = z.object({
   resolved: z.boolean(),
 });
 
+/**
+ * Schema for fast edit mode toggle request
+ */
+export const fastEditModeToggleSchema = z.object({
+  sessionId: z.string().uuid(),
+  enabled: z.boolean(),
+});
+
+/**
+ * Schema for fast edit mode query
+ */
+export const fastEditModeQuerySchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+/**
+ * Schema for fast edit mode response
+ */
+export const fastEditModeResponseSchema = z.object({
+  sessionId: z.string().uuid(),
+  fastEditMode: z.boolean(),
+});
+
 // Types based on schemas
 export type StartSessionRequest = z.infer<typeof startSessionSchema>;
 export type QueryRequest = z.infer<typeof querySchema>;
@@ -136,3 +159,6 @@ export type PermissionRequestQuery = z.infer<typeof permissionRequestQuerySchema
 export type PermissionResolution = z.infer<typeof permissionResolutionSchema>;
 export type PermissionRequestsResponse = z.infer<typeof permissionRequestsResponseSchema>;
 export type PermissionResolutionResponse = z.infer<typeof permissionResolutionResponseSchema>;
+export type FastEditModeToggle = z.infer<typeof fastEditModeToggleSchema>;
+export type FastEditModeQuery = z.infer<typeof fastEditModeQuerySchema>;
+export type FastEditModeResponse = z.infer<typeof fastEditModeResponseSchema>;

@@ -14,6 +14,8 @@ export interface PermissionManagerConfig {
     warn: (message: string, ...args: unknown[]) => void;
     error: (message: string, ...args: unknown[]) => void;
   };
+  // Optional initial state for fast edit mode
+  initialFastEditMode?: boolean;
 }
 
 export interface PermissionManager {
@@ -21,4 +23,11 @@ export interface PermissionManager {
   requestPermission(toolId: string, args: Record<string, unknown>): Promise<boolean>;
   revokePermission(toolId: string): void;
   clearAllPermissions(): void;
+  
+  // Fast Edit Mode methods
+  setFastEditMode(enabled: boolean): void;
+  isFastEditMode(): boolean;
+  
+  // Method to check if a tool should require permission
+  shouldRequirePermission(toolId: string): boolean;
 }

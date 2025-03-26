@@ -14,6 +14,8 @@ import { useIsSmallScreen } from '@/hooks/useMediaQuery';
 import { TypingIndicator } from '@/components/TypingIndicator';
 import { ConnectionIndicator } from '@/components/ConnectionIndicator';
 import { useToolStream } from '@/hooks/useToolStream';
+import { useFastEditModeKeyboardShortcut } from '@/hooks/useFastEditModeKeyboardShortcut';
+import { FastEditModeIndicator } from '@/components/FastEditModeIndicator';
 // We'll use this component in the future
 import _ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
 
@@ -197,6 +199,9 @@ export function Terminal({
     enabled: !inputDisabled,
   });
 
+  // Register Fast Edit Mode keyboard shortcut (Shift+Tab)
+  useFastEditModeKeyboardShortcut(sessionId, !inputDisabled);
+
   return (
     <div
       ref={terminalRef}
@@ -339,6 +344,12 @@ export function Terminal({
           {showTypingIndicator && terminalContext.typingIndicator && (
             <TypingIndicator className="mx-4 my-2" />
           )}
+          
+          {/* Fast Edit Mode Indicator - positioned inside the terminal */}
+          <FastEditModeIndicator 
+            sessionId={sessionId} 
+            className="mx-4 mb-2"
+          />
         </div>
         
         <div className="flex-shrink-0" style={{ height: '40px', maxHeight: '40px', minHeight: '40px' }}>
@@ -374,6 +385,7 @@ export function Terminal({
         Press question mark to view keyboard shortcuts. 
         Use arrow keys to navigate command history.
         Press {isMac ? 'Command+K' : 'Control+K'} to clear the terminal.
+        Press Shift+Tab to toggle Fast Edit Mode.
       </div>
     </div>
   );

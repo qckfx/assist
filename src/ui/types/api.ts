@@ -98,6 +98,10 @@ export enum WebSocketEvent {
   PERMISSION_RESOLVED = 'permission_resolved',
   SESSION_UPDATED = 'session_updated',
   STREAM_CONTENT = 'stream_content',
+  
+  // Fast Edit Mode events
+  FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
+  FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
 }
 
 /**
@@ -183,4 +187,6 @@ export interface WebSocketEventMap {
   [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };
   [WebSocketEvent.SESSION_UPDATED]: SessionData;
   [WebSocketEvent.STREAM_CONTENT]: { sessionId: string; content: string; };
+  [WebSocketEvent.FAST_EDIT_MODE_ENABLED]: { sessionId: string; enabled: true; };
+  [WebSocketEvent.FAST_EDIT_MODE_DISABLED]: { sessionId: string; enabled: false; };
 }

@@ -7,7 +7,9 @@ import { getAgentService } from '../services/AgentService';
 import { ValidationError, NotFoundError } from '../utils/errors';
 import { 
   permissionRequestQuerySchema, 
-  permissionResolutionSchema 
+  permissionResolutionSchema,
+  fastEditModeToggleSchema,
+  fastEditModeQuerySchema
 } from '../schemas/api';
 
 /**
@@ -56,6 +58,66 @@ export async function resolvePermission(req: Request, res: Response, next: NextF
       permissionId,
       granted,
       resolved: true,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new ValidationError('Invalid request data', error.format()));
+    } else {
+      next(error);
+    }
+  }
+}
+
+/**
+ * Toggle fast edit mode for a session
+ * @route POST /api/permissions/fast-edit-mode
+ */
+export async function toggleFastEditMode(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { sessionId, enabled } = fastEditModeToggleSchema.parse(req.body);
+    
+    // Get the agent service
+    const agentService = getAgentService();
+    
+    // Toggle fast edit mode
+    const success = agentService.toggleFastEditMode(sessionId, enabled);
+    
+    if (!success) {
+      throw new NotFoundError(`Session ${sessionId} not found`);
+    }
+    
+    res.status(200).json({
+      success: true,
+      sessionId,
+      fastEditMode: enabled,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new ValidationError('Invalid request data', error.format()));
+    } else {
+      next(error);
+    }
+  }
+}
+
+/**
+ * Get fast edit mode status for a session
+ * @route GET /api/permissions/fast-edit-mode
+ */
+export async function getFastEditMode(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { sessionId } = fastEditModeQuerySchema.parse(req.query);
+    
+    // Get the agent service
+    const agentService = getAgentService();
+    
+    // Get fast edit mode state
+    const enabled = agentService.getFastEditMode(sessionId);
+    
+    res.status(200).json({
+      success: true,
+      sessionId,
+      fastEditMode: enabled,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

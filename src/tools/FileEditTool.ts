@@ -3,7 +3,7 @@
  */
 
 import { createTool } from './createTool';
-import { Tool, ToolContext, ValidationResult } from '../types/tool';
+import { Tool, ToolContext, ValidationResult, ToolCategory } from '../types/tool';
 
 // Interface for the arguments accepted by the FileEditTool
 // Used for type checking and documentation
@@ -39,6 +39,8 @@ export const createFileEditTool = (): Tool => {
     name: 'FileEditTool',
     description: '- Modifies existing files by replacing specific content\n- Ensures precise targeting of text to be replaced\n- Preserves file structure and formatting\n- Maintains file encodings during edits\n- Use this tool for targeted edits to existing files\n- For creating new files, use FileWriteTool instead\n\nUsage notes:\n- First use FileReadTool to understand the file\'s contents\n- The searchCode MUST match exactly once in the file\n- IMPORTANT: Include sufficient context in searchCode to ensure uniqueness\n- Make sure replaceCode maintains correct syntax and indentation\n- WARNING: The edit will fail if searchCode is found multiple times\n- WARNING: The edit will fail if searchCode isn\'t found exactly as provided',
     requiresPermission: true,
+    category: ToolCategory.FILE_OPERATION,
+    alwaysRequirePermission: false, // Can be bypassed in fast edit mode
     
     // Enhanced parameter descriptions
     parameters: {

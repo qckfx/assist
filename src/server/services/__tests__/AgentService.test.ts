@@ -78,6 +78,18 @@ jest.mock('../../../index', () => {
       
       return result;
     }),
+    isToolInCategory: jest.fn().mockReturnValue(false),
+  };
+  
+  // Mock the permission manager
+  const mockPermissionManager = {
+    hasPermission: jest.fn().mockReturnValue(true),
+    requestPermission: jest.fn().mockResolvedValue(true),
+    revokePermission: jest.fn(),
+    clearAllPermissions: jest.fn(),
+    setFastEditMode: jest.fn(),
+    isFastEditMode: jest.fn().mockReturnValue(false),
+    shouldRequirePermission: jest.fn().mockReturnValue(false),
   };
   
   // Create a mock agent that includes the tool registry
@@ -92,6 +104,7 @@ jest.mock('../../../index', () => {
       done: true
     }),
     toolRegistry: mockToolRegistry,
+    permissionManager: mockPermissionManager,
   };
   
   return {
@@ -359,6 +372,61 @@ describe('AgentService', () => {
       const result = agentService.resolvePermission('non-existent-id', true);
       
       expect(result).toBe(false);
+    });
+  });
+  
+  describe('Fast Edit Mode', () => {
+    it('should toggle fast edit mode for a session', () => {
+      // Set up event listeners
+      const fastEditModeEnabledHandler = jest.fn();
+      const fastEditModeDisabledHandler = jest.fn();
+      
+      agentService.on(AgentServiceEvent.FAST_EDIT_MODE_ENABLED, fastEditModeEnabledHandler);
+      agentService.on(AgentServiceEvent.FAST_EDIT_MODE_DISABLED, fastEditModeDisabledHandler);
+      
+      // Toggle fast edit mode on
+      const result1 = agentService.toggleFastEditMode('mock-session-id', true);
+      
+      // Verify result
+      expect(result1).toBe(true);
+      expect(fastEditModeEnabledHandler).toHaveBeenCalledWith({
+        sessionId: 'mock-session-id',
+        enabled: true,
+      });
+      expect(agentService.getFastEditMode('mock-session-id')).toBe(true);
+      
+      // Toggle fast edit mode off
+      const result2 = agentService.toggleFastEditMode('mock-session-id', false);
+      
+      // Verify result
+      expect(result2).toBe(true);
+      expect(fastEditModeDisabledHandler).toHaveBeenCalledWith({
+        sessionId: 'mock-session-id',
+        enabled: false,
+      });
+      expect(agentService.getFastEditMode('mock-session-id')).toBe(false);
+    });
+    
+    it('should return false for getFastEditMode when session does not have Fast Edit Mode set', () => {
+      expect(agentService.getFastEditMode('new-session-id')).toBe(false);
+    });
+    
+    it('should set the agent\'s permission manager Fast Edit Mode when processing a query', async () => {
+      // Get a reference to the module
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const indexModule = require('../../../index');
+      
+      // Enable Fast Edit Mode for the session
+      agentService.toggleFastEditMode('mock-session-id', true);
+      
+      // Process a query
+      await agentService.processQuery('mock-session-id', 'Test query with Fast Edit Mode');
+      
+      // Get the mock agent from the last createAgent call
+      const mockAgent = (indexModule.createAgent as jest.Mock).mock.results[0].value;
+      
+      // Verify that setFastEditMode was called with the correct value
+      expect(mockAgent.permissionManager.setFastEditMode).toHaveBeenCalledWith(true);
     });
   });
   

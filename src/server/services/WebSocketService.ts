@@ -24,8 +24,11 @@ export enum WebSocketEvent {
   TOOL_EXECUTION_ERROR = 'tool_execution_error',
   PERMISSION_REQUESTED = 'permission_requested',
   PERMISSION_RESOLVED = 'permission_resolved',
+  PERMISSION_TIMEOUT = 'permission_timeout',
   SESSION_UPDATED = 'session_updated',
   STREAM_CONTENT = 'stream_content',
+  FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
+  FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
 }
 
 /**
@@ -485,5 +488,27 @@ export class WebSocketService {
         resolution: granted, // Map "granted" to "resolution" to match the WebSocketEvent type
       });
     });
+    
+    // Fast Edit Mode enabled
+    this.agentService.on(AgentServiceEvent.FAST_EDIT_MODE_ENABLED, ({ sessionId }) => {
+      this.io.to(sessionId).emit(WebSocketEvent.FAST_EDIT_MODE_ENABLED, { 
+        sessionId,
+        enabled: true,
+      });
+      
+      serverLogger.debug(`Fast Edit Mode enabled for session ${sessionId}`);
+    });
+    
+    // Fast Edit Mode disabled
+    this.agentService.on(AgentServiceEvent.FAST_EDIT_MODE_DISABLED, ({ sessionId }) => {
+      this.io.to(sessionId).emit(WebSocketEvent.FAST_EDIT_MODE_DISABLED, { 
+        sessionId,
+        enabled: false,
+      });
+      
+      serverLogger.debug(`Fast Edit Mode disabled for session ${sessionId}`);
+    });
+    
+    // No permission timeout handler - permission requests wait indefinitely
   }
 }

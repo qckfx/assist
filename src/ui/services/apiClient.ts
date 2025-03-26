@@ -183,6 +183,24 @@ export const apiClient = {
    */
   getApiDocs: () => 
     apiRequest<Record<string, unknown>>(API_ENDPOINTS.DOCS),
+    
+  /**
+   * Toggle fast edit mode for a session
+   */
+  toggleFastEditMode: (sessionId: string, enabled: boolean) => 
+    apiRequest<{ sessionId: string; fastEditMode: boolean }>(
+      API_ENDPOINTS.FAST_EDIT_MODE,
+      'POST',
+      { sessionId, enabled }
+    ),
+    
+  /**
+   * Get fast edit mode status for a session
+   */
+  getFastEditMode: (sessionId: string) => 
+    apiRequest<{ sessionId: string; fastEditMode: boolean }>(
+      `${API_ENDPOINTS.FAST_EDIT_MODE}?sessionId=${encodeURIComponent(sessionId)}`
+    ),
 };
 
 export default apiClient;
