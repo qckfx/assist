@@ -29,6 +29,8 @@ jest.mock('../../services/AgentService', () => {
       getHistory: jest.fn().mockReturnValue([]),
       isProcessing: jest.fn().mockReturnValue(false),
       getPermissionRequests: jest.fn().mockReturnValue([]),
+      toggleFastEditMode: jest.fn().mockReturnValue(true),
+      getFastEditMode: jest.fn().mockReturnValue(false),
     }),
     AgentServiceEvent: {
       PROCESSING_STARTED: 'processing:started',
@@ -38,6 +40,8 @@ jest.mock('../../services/AgentService', () => {
       TOOL_EXECUTION: 'tool:execution',
       PERMISSION_REQUESTED: 'permission:requested',
       PERMISSION_RESOLVED: 'permission:resolved',
+      FAST_EDIT_MODE_ENABLED: 'fast_edit_mode:enabled',
+      FAST_EDIT_MODE_DISABLED: 'fast_edit_mode:disabled',
     },
   };
 });
@@ -224,6 +228,72 @@ describe('API Routes', () => {
     it('should validate session ID', async () => {
       const response = await request(app)
         .get('/api/status')
+        .query({
+          sessionId: 'invalid-uuid',
+        });
+      
+      expect(response.status).toBe(400);
+      expect(response.body.error).toHaveProperty('code', 'VALIDATION_ERROR');
+    });
+  });
+  
+  describe('POST /api/permissions/fast-edit-mode', () => {
+    it('should toggle fast edit mode', async () => {
+      const response = await request(app)
+        .post('/api/permissions/fast-edit-mode')
+        .send({
+          sessionId: '123e4567-e89b-12d3-a456-426614174000',
+          enabled: true,
+        });
+      
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('sessionId');
+      expect(response.body).toHaveProperty('fastEditMode', true);
+    });
+
+    it('should validate session ID', async () => {
+      const response = await request(app)
+        .post('/api/permissions/fast-edit-mode')
+        .send({
+          sessionId: 'invalid-uuid',
+          enabled: true,
+        });
+      
+      expect(response.status).toBe(400);
+      expect(response.body.error).toHaveProperty('code', 'VALIDATION_ERROR');
+    });
+
+    it('should validate enabled parameter', async () => {
+      const response = await request(app)
+        .post('/api/permissions/fast-edit-mode')
+        .send({
+          sessionId: '123e4567-e89b-12d3-a456-426614174000',
+          enabled: 'not-a-boolean',
+        });
+      
+      expect(response.status).toBe(400);
+      expect(response.body.error).toHaveProperty('code', 'VALIDATION_ERROR');
+    });
+  });
+
+  describe('GET /api/permissions/fast-edit-mode', () => {
+    it('should get fast edit mode status', async () => {
+      const response = await request(app)
+        .get('/api/permissions/fast-edit-mode')
+        .query({
+          sessionId: '123e4567-e89b-12d3-a456-426614174000',
+        });
+      
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('sessionId');
+      expect(response.body).toHaveProperty('fastEditMode');
+    });
+
+    it('should validate session ID', async () => {
+      const response = await request(app)
+        .get('/api/permissions/fast-edit-mode')
         .query({
           sessionId: 'invalid-uuid',
         });

@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
   STATUS: '/status',
   PERMISSIONS: '/permissions',
   PERMISSIONS_RESOLVE: '/permissions/resolve',
+  FAST_EDIT_MODE: '/permissions/fast-edit-mode',
   DOCS: '/docs',
 };
 

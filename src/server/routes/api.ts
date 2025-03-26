@@ -13,6 +13,8 @@ import {
   statusSchema,
   permissionRequestQuerySchema,
   permissionResolutionSchema,
+  fastEditModeToggleSchema,
+  fastEditModeQuerySchema,
 } from '../schemas/api';
 import { apiDocumentation } from '../docs/api';
 
@@ -59,6 +61,18 @@ router.get('/permissions', validateQuery(permissionRequestQuerySchema), permissi
  * @desc    Resolve a permission request
  */
 router.post('/permissions/resolve', validateBody(permissionResolutionSchema), permissionController.resolvePermission);
+
+/**
+ * @route   POST /api/permissions/fast-edit-mode
+ * @desc    Toggle fast edit mode for a session
+ */
+router.post('/permissions/fast-edit-mode', validateBody(fastEditModeToggleSchema), permissionController.toggleFastEditMode);
+
+/**
+ * @route   GET /api/permissions/fast-edit-mode
+ * @desc    Get fast edit mode status for a session
+ */
+router.get('/permissions/fast-edit-mode', validateQuery(fastEditModeQuerySchema), permissionController.getFastEditMode);
 
 /**
  * @route   GET /api/docs

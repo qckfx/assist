@@ -34,8 +34,8 @@ export enum AgentServiceEvent {
   PERMISSION_RESOLVED = 'permission:resolved',
   
   // Fast Edit Mode events
-  FAST_EDIT_MODE_ENABLED = 'fast_edit_mode:enabled',
-  FAST_EDIT_MODE_DISABLED = 'fast_edit_mode:disabled',
+  FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
+  FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
 }
 
 /**
