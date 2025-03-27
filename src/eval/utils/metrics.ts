@@ -4,8 +4,15 @@
 
 import fs from 'fs';
 import path from 'path';
-import { MetricsData, PromptComparisonResult, TestCase, SystemPromptConfig, TestRunWithHistory } from '../models/types';
-import { AgentExecutionHistory } from '../models/types';
+import { 
+  MetricsData, 
+  PromptComparisonResult, 
+  TestCase, 
+  SystemPromptConfig, 
+  TestRunWithHistory,
+  AgentExecutionHistory,
+  JudgmentResult
+} from '../models/types';
 import { loadExampleByCategory } from '../models/evaluation-examples';
 
 /**
@@ -103,7 +110,7 @@ export function saveMetricsToJson(metrics: MetricsData[], outputDir: string): st
  * @param outputDir Directory to save the report in
  * @returns Path to the generated report
  */
-export function generateMarkdownReport(
+export function generateComparisonMarkdownReport(
   comparisons: PromptComparisonResult[],
   originalPrompt: SystemPromptConfig,
   newPrompt: SystemPromptConfig,
@@ -285,7 +292,114 @@ export function loadTestCases(configFilePath: string): TestCase[] {
 }
 
 /**
- * Generate a markdown report from evaluation results
+ * Options for report generation
+ */
+interface ReportOptions {
+  /**
+   * Whether to include judgment results in the report
+   */
+  includeJudgment?: boolean;
+  
+  /**
+   * Whether to include execution history details
+   */
+  includeHistory?: boolean;
+  
+  /**
+   * Format for the report output
+   */
+  format?: 'markdown' | 'json';
+  
+  /**
+   * Title for the report
+   */
+  title?: string;
+}
+
+/**
+ * Generate a Markdown summary table for judgment results
+ */
+function generateJudgmentSummaryTable(judgments: JudgmentResult[]): string {
+  if (judgments.length === 0) {
+    return 'No judgment results available.';
+  }
+  
+  // Get all unique dimensions from all judgments
+  const allDimensions = new Set<string>();
+  judgments.forEach(judgment => {
+    Object.keys(judgment.scores).forEach(dimension => {
+      allDimensions.add(dimension);
+    });
+  });
+  
+  const dimensions = Array.from(allDimensions);
+  
+  // Create table header
+  let table = '| Run | ' + dimensions.join(' | ') + ' | Overall |\n';
+  table += '|-----|' + dimensions.map(() => '-----').join('|') + '|-------|\n';
+  
+  // Add rows for each judgment
+  judgments.forEach((judgment, index) => {
+    const row = [`Run ${index + 1}`];
+    
+    dimensions.forEach(dimension => {
+      const score = judgment.scores[dimension as keyof typeof judgment.scores] !== undefined
+        ? judgment.scores[dimension as keyof typeof judgment.scores]
+        : 'N/A';
+      row.push(score.toString());
+    });
+    
+    // Add overall assessment
+    row.push(judgment.overall?.substring(0, 50) + '...');
+    
+    table += `| ${row.join(' | ')} |\n`;
+  });
+  
+  return table;
+}
+
+/**
+ * Generate a detailed report section for a judgment result
+ */
+function generateJudgmentDetailSection(judgment: JudgmentResult, runIndex: number): string {
+  let section = `#### Run ${runIndex + 1} Judgment\n\n`;
+  
+  // Add scores table
+  section += '##### Scores\n\n';
+  section += '| Dimension | Score | Explanation |\n';
+  section += '|-----------|-------|-------------|\n';
+  
+  Object.entries(judgment.scores).forEach(([dimension, score]) => {
+    const explanation = judgment.explanations?.[dimension] || 'No explanation provided';
+    section += `| ${dimension} | ${score}/10 | ${explanation.substring(0, 100)}... |\n`;
+  });
+  
+  // Add overall assessment
+  section += '\n##### Overall Assessment\n\n';
+  section += judgment.overall || 'No overall assessment provided';
+  
+  // Add strengths and weaknesses if available
+  if (judgment.strengths && judgment.strengths.length > 0) {
+    section += '\n\n##### Strengths\n\n';
+    section += judgment.strengths.map(s => `- ${s}`).join('\n');
+  }
+  
+  if (judgment.weaknesses && judgment.weaknesses.length > 0) {
+    section += '\n\n##### Weaknesses\n\n';
+    section += judgment.weaknesses.map(w => `- ${w}`).join('\n');
+  }
+  
+  // Add suggestions if available
+  if (judgment.suggestions && judgment.suggestions.length > 0) {
+    section += '\n\n##### Suggestions for Improvement\n\n';
+    section += judgment.suggestions.map(s => `- ${s}`).join('\n');
+  }
+  
+  return section;
+}
+
+/**
+ * Generate a report from test results
  * 
  * @param runs Evaluation runs
  * @param outputPath Path to write the report
@@ -295,18 +409,20 @@ export function loadTestCases(configFilePath: string): TestCase[] {
 export async function generateReport(
   runs: TestRunWithHistory[],
   outputPath: string,
-  options: { includeJudgment?: boolean } = {}
+  options: ReportOptions = {}
 ): Promise<string> {
-  const { includeJudgment = false } = options;
+  const {
+    includeJudgment = true,
+    includeHistory = false,
+    format = 'markdown',
+    title = 'Evaluation Report',
+  } = options;
   
   // Ensure the output directory exists
   const outputDir = path.dirname(outputPath);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
-  
-  let markdown = `# Evaluation Report\n\n`;
-  markdown += `Generated: ${new Date().toLocaleString()}\n\n`;
   
   // Group runs by test case
   const runsByTest: Record<string, TestRunWithHistory[]> = {};
@@ -318,13 +434,57 @@ export async function generateReport(
     runsByTest[testName].push(run);
   }
   
+  // Generate report based on format
+  let report = '';
+  
+  if (format === 'markdown') {
+    // Markdown report
+    report = generateMarkdownReport(
+      runsByTest, 
+      runs, 
+      includeJudgment,
+      includeHistory,
+      title
+    );
+  } else {
+    // JSON report
+    report = generateJsonReport(
+      runsByTest, 
+      runs, 
+      includeJudgment,
+      includeHistory,
+      title
+    );
+  }
+  
+  // Write the report to the output file
+  fs.writeFileSync(outputPath, report);
+  return outputPath;
+}
+
+/**
+ * Generate a markdown report for test runs
+ */
+function generateMarkdownReport(
+  runsByTest: Record<string, TestRunWithHistory[]>,
+  allRuns: TestRunWithHistory[],
+  includeJudgment: boolean,
+  includeHistory: boolean,
+  title: string
+): string {
+  
+  let markdown = `# ${title}\n\n`;
+  markdown += `Generated: ${new Date().toLocaleString()}\n\n`;
+  
+  // Summary section
   markdown += `## Summary\n\n`;
   markdown += `- Total test cases: ${Object.keys(runsByTest).length}\n`;
-  markdown += `- Total runs: ${runs.length}\n`;
+  markdown += `- Total runs: ${allRuns.length}\n`;
   
+  // Judgment summary if applicable
   if (includeJudgment) {
-    const runsWithJudgment = runs.filter(run => run.judgment);
-    markdown += `- Runs with judgment: ${runsWithJudgment.length}/${runs.length}\n`;
+    const runsWithJudgment = allRuns.filter(run => run.judgment);
+    markdown += `- Runs with judgment: ${runsWithJudgment.length}/${allRuns.length}\n`;
     
     if (runsWithJudgment.length > 0) {
       markdown += `\n### Average Judgment Scores\n\n`;
@@ -341,7 +501,7 @@ export async function generateReport(
           
           runsWithJudgment.forEach(run => {
             if (run.judgment?.scores) {
-              const score = (run.judgment.scores as any)[dimension];
+              const score = run.judgment.scores[dimension as keyof typeof run.judgment.scores];
               if (typeof score === 'number') {
                 sum += score;
                 count++;
@@ -400,110 +560,311 @@ export async function generateReport(
     }
   }
   
-  markdown += `\n## Test Case Results\n\n`;
+  // Test case summary table
+  markdown += `\n### Test Case Summary\n\n`;
+  markdown += `| Test Case | Runs | Success Rate | Avg Duration (s) | Avg Tool Calls |\n`;
+  markdown += `|-----------|------|-------------|-----------------|---------------|\n`;
   
-  // Generate details for each test case
+  Object.entries(runsByTest).forEach(([testName, runs]) => {
+    const successfulRuns = runs.filter(run => run.metrics.success).length;
+    const successRate = (successfulRuns / runs.length) * 100;
+    const avgDuration = runs.reduce((sum, run) => sum + run.metrics.duration, 0) / runs.length;
+    const avgToolCalls = runs.reduce((sum, run) => sum + run.metrics.toolCalls, 0) / runs.length;
+    
+    markdown += `| ${testName} | ${runs.length} | ${successRate.toFixed(1)}% | ${avgDuration.toFixed(2)} | ${avgToolCalls.toFixed(1)} |\n`;
+  });
+  
+  // Detailed test case sections
+  markdown += `\n## Test Case Details\n\n`;
+  
   Object.entries(runsByTest).forEach(([testName, testRuns], index) => {
     markdown += `### ${index + 1}. ${testName}\n\n`;
     
     const testCase = testRuns[0].testCase;
     markdown += `**Task:** ${testCase.instructions}\n\n`;
     
-    // Calculate success rate
-    const successfulRuns = testRuns.filter(run => run.metrics.success).length;
-    const successRate = (successfulRuns / testRuns.length) * 100;
-    
-    // Calculate averages
-    const avgDuration = testRuns.reduce((sum, run) => sum + run.metrics.duration, 0) / testRuns.length;
-    const avgToolCalls = testRuns.reduce((sum, run) => sum + run.metrics.toolCalls, 0) / testRuns.length;
-    
-    markdown += `**Results Summary:**\n\n`;
-    markdown += `- Runs: ${testRuns.length}\n`;
-    markdown += `- Success Rate: ${successRate.toFixed(1)}% (${successfulRuns}/${testRuns.length})\n`;
-    markdown += `- Average Duration: ${avgDuration.toFixed(2)}s\n`;
-    markdown += `- Average Tool Calls: ${Math.round(avgToolCalls)}\n`;
-    
+    // Add judgment summary if available and requested
     if (includeJudgment) {
       const runsWithJudgment = testRuns.filter(run => run.judgment);
       if (runsWithJudgment.length > 0) {
-        markdown += `\n**Judgment Summary:**\n\n`;
-        
-        // Calculate average scores for this test
-        const dimensions = Object.keys(runsWithJudgment[0].judgment?.scores || {});
-        if (dimensions.length > 0) {
-          markdown += `| Dimension | Average Score |\n`;
-          markdown += `|-----------|---------------|\n`;
-          
-          dimensions.forEach(dimension => {
-            let sum = 0;
-            let count = 0;
-            
-            runsWithJudgment.forEach(run => {
-              if (run.judgment?.scores) {
-                const score = (run.judgment.scores as any)[dimension];
-                if (typeof score === 'number') {
-                  sum += score;
-                  count++;
-                }
-              }
-            });
-            
-            const average = count > 0 ? (sum / count).toFixed(2) : 'N/A';
-            markdown += `| ${dimension} | ${average} |\n`;
-          });
-        }
-        
-        // Include a sample judgment explanation
-        if (runsWithJudgment[0].judgment?.overall) {
-          markdown += `\n**Sample Overall Assessment:**\n\n`;
-          markdown += `> ${runsWithJudgment[0].judgment.overall}\n`;
-        }
+        markdown += `#### Judgment Summary\n\n`;
+        markdown += generateJudgmentSummaryTable(runsWithJudgment.map(run => run.judgment!));
+        markdown += '\n\n';
       }
     }
     
-    markdown += `\n**Individual Runs:**\n\n`;
+    // Metrics for each run
+    markdown += `#### Run Metrics\n\n`;
+    markdown += '| Run | Duration (s) | Tool Calls | Token Usage | Success |\n';
+    markdown += '|-----|--------------|------------|-------------|--------|\n';
     
-    testRuns.forEach((run, runIndex) => {
-      markdown += `#### Run ${runIndex + 1}\n\n`;
-      markdown += `- Success: ${run.metrics.success ? '✅' : '❌'}\n`;
-      markdown += `- Duration: ${run.metrics.duration.toFixed(2)}s\n`;
-      markdown += `- Tool Calls: ${run.metrics.toolCalls}\n`;
+    testRuns.forEach((run, i) => {
+      const duration = run.metrics.duration;
+      const toolCalls = run.metrics.toolCalls;
+      const tokenUsage = run.metrics.tokenUsage?.total || 'N/A';
+      const success = run.metrics.success ? '✅' : '❌';
       
-      if (run.metrics.notes) {
-        markdown += `- Notes: ${run.metrics.notes}\n`;
-      }
-      
-      if (includeJudgment && run.judgment) {
-        markdown += `\n**Judgment:**\n\n`;
-        
-        if (run.judgment.scores) {
-          markdown += `*Scores:*\n\n`;
-          Object.entries(run.judgment.scores).forEach(([dimension, score]) => {
-            markdown += `- ${dimension}: ${score}/10\n`;
-          });
-        }
-        
-        if (run.judgment.strengths && run.judgment.strengths.length > 0) {
-          markdown += `\n*Strengths:*\n\n`;
-          run.judgment.strengths.forEach(strength => {
-            markdown += `- ${strength}\n`;
-          });
-        }
-        
-        if (run.judgment.weaknesses && run.judgment.weaknesses.length > 0) {
-          markdown += `\n*Weaknesses:*\n\n`;
-          run.judgment.weaknesses.forEach(weakness => {
-            markdown += `- ${weakness}\n`;
-          });
-        }
-      }
-      
-      markdown += `\n`;
+      markdown += `| ${i + 1} | ${duration.toFixed(2)} | ${toolCalls} | ${tokenUsage} | ${success} |\n`;
     });
+    
+    // Add detailed judgment results if available and requested
+    if (includeJudgment) {
+      const runsWithJudgment = testRuns.filter(run => run.judgment);
+      if (runsWithJudgment.length > 0) {
+        markdown += '\n#### Judgment Details\n\n';
+        
+        runsWithJudgment.forEach((run, i) => {
+          if (run.judgment) {
+            markdown += generateJudgmentDetailSection(run.judgment, i);
+            markdown += '\n\n';
+          }
+        });
+      }
+    }
+    
+    // Add execution history if requested
+    if (includeHistory) {
+      markdown += '\n#### Execution History\n\n';
+      
+      testRuns.forEach((run, i) => {
+        if (run.executionHistory) {
+          markdown += `##### Run ${i + 1}\n\n`;
+          
+          // Add tool calls table
+          markdown += '| # | Tool | Arguments | Result |\n';
+          markdown += '|---|------|-----------|--------|\n';
+          
+          run.executionHistory.toolCalls.forEach((toolCall, toolIndex) => {
+            const args = JSON.stringify(toolCall.args).substring(0, 50) + (JSON.stringify(toolCall.args).length > 50 ? '...' : '');
+            const result = toolCall.result?.substring(0, 50) + (toolCall.result && toolCall.result.length > 50 ? '...' : '');
+            
+            markdown += `| ${toolIndex + 1} | ${toolCall.tool} | ${args} | ${result} |\n`;
+          });
+          
+          markdown += '\n';
+        }
+      });
+    }
     
     markdown += `---\n\n`;
   });
   
+  return markdown;
+}
+
+/**
+ * Generate a JSON report for test runs
+ */
+function generateJsonReport(
+  runsByTest: Record<string, TestRunWithHistory[]>,
+  allRuns: TestRunWithHistory[],
+  includeJudgment: boolean,
+  includeHistory: boolean,
+  title: string
+): string {
+  
+  // Calculate summary statistics
+  const runsWithJudgment = allRuns.filter(run => run.judgment);
+  
+  // Build the JSON structure
+  const reportData = {
+    title,
+    generated: new Date().toISOString(),
+    summary: {
+      testCases: Object.keys(runsByTest).length,
+      totalRuns: allRuns.length,
+      runsWithJudgment: runsWithJudgment.length
+    },
+    testCases: Object.entries(runsByTest).map(([testName, runs]) => {
+      // Calculate statistics for this test case
+      const successfulRuns = runs.filter(run => run.metrics.success).length;
+      const successRate = (successfulRuns / runs.length) * 100;
+      const avgDuration = runs.reduce((sum, run) => sum + run.metrics.duration, 0) / runs.length;
+      const avgToolCalls = runs.reduce((sum, run) => sum + run.metrics.toolCalls, 0) / runs.length;
+      
+      // Build the test case entry
+      const testCase = {
+        name: testName,
+        task: runs[0].testCase.instructions,
+        stats: {
+          runs: runs.length,
+          successRate: successRate,
+          avgDuration: avgDuration,
+          avgToolCalls: avgToolCalls
+        },
+        runs: runs.map(run => {
+          const result: any = {
+            metrics: run.metrics
+          };
+          
+          // Add judgment if requested and available
+          if (includeJudgment && run.judgment) {
+            result.judgment = run.judgment;
+          }
+          
+          // Add execution history if requested
+          if (includeHistory && run.executionHistory) {
+            result.executionHistory = run.executionHistory;
+          }
+          
+          return result;
+        })
+      };
+      
+      return testCase;
+    })
+  };
+  
+  // Return the JSON string with pretty formatting
+  return JSON.stringify(reportData, null, 2);
+}
+
+/**
+ * Load a report from a file
+ * @param reportPath Path to the report file
+ * @returns The loaded report data
+ */
+export function loadReport(reportPath: string): any {
+  try {
+    // Determine format based on extension
+    const ext = path.extname(reportPath).toLowerCase();
+    const isJson = ext === '.json';
+    
+    if (!fs.existsSync(reportPath)) {
+      throw new Error(`Report file not found: ${reportPath}`);
+    }
+    
+    const content = fs.readFileSync(reportPath, 'utf8');
+    
+    if (isJson) {
+      return JSON.parse(content);
+    } else {
+      // For markdown, just return the raw content
+      return { content, format: 'markdown' };
+    }
+  } catch (error) {
+    throw new Error(`Error loading report: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Compare two reports and generate a comparison report
+ * @param reportPath1 Path to the first report
+ * @param reportPath2 Path to the second report
+ * @param outputPath Path to write the comparison report
+ * @returns Path to the generated comparison report
+ */
+export async function compareReports(
+  reportPath1: string,
+  reportPath2: string,
+  outputPath: string
+): Promise<string> {
+  try {
+    // Load both reports
+    const report1 = loadReport(reportPath1);
+    const report2 = loadReport(reportPath2);
+    
+    // Check if both reports are in the same format
+    const isJson1 = reportPath1.toLowerCase().endsWith('.json');
+    const isJson2 = reportPath2.toLowerCase().endsWith('.json');
+    
+    if (isJson1 !== isJson2) {
+      throw new Error('Cannot compare reports in different formats');
+    }
+    
+    // For JSON reports, generate a detailed comparison
+    if (isJson1 && isJson2) {
+      return generateJsonComparison(report1, report2, reportPath1, reportPath2, outputPath);
+    } else {
+      // For markdown reports, generate a simple comparison
+      return generateMarkdownComparison(report1, report2, reportPath1, reportPath2, outputPath);
+    }
+  } catch (error) {
+    throw new Error(`Error comparing reports: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Generate a comparison between two JSON reports
+ */
+function generateJsonComparison(
+  report1: any,
+  report2: any,
+  reportPath1: string,
+  reportPath2: string,
+  outputPath: string
+): string {
+  // Ensure the output directory exists
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+  
+  let markdown = `# Report Comparison\n\n`;
+  markdown += `Generated: ${new Date().toLocaleString()}\n\n`;
+  
+  // Add report info
+  markdown += `## Reports Compared\n\n`;
+  markdown += `- Report 1: ${path.basename(reportPath1)}\n`;
+  markdown += `- Report 2: ${path.basename(reportPath2)}\n\n`;
+  
+  // Add summary comparison
+  markdown += `## Summary Comparison\n\n`;
+  markdown += `| Metric | Report 1 | Report 2 | Difference |\n`;
+  markdown += `|--------|----------|----------|------------|\n`;
+  
+  // Compare the number of test cases
+  const testCases1 = report1.summary?.testCases || 0;
+  const testCases2 = report2.summary?.testCases || 0;
+  markdown += `| Test Cases | ${testCases1} | ${testCases2} | ${testCases2 - testCases1} |\n`;
+  
+  // Compare the total runs
+  const totalRuns1 = report1.summary?.totalRuns || 0;
+  const totalRuns2 = report2.summary?.totalRuns || 0;
+  markdown += `| Total Runs | ${totalRuns1} | ${totalRuns2} | ${totalRuns2 - totalRuns1} |\n`;
+  
+  // If both reports have judgment data, compare them
+  if (report1.summary?.runsWithJudgment !== undefined && report2.summary?.runsWithJudgment !== undefined) {
+    const runsWithJudgment1 = report1.summary.runsWithJudgment;
+    const runsWithJudgment2 = report2.summary.runsWithJudgment;
+    markdown += `| Runs with Judgment | ${runsWithJudgment1} | ${runsWithJudgment2} | ${runsWithJudgment2 - runsWithJudgment1} |\n`;
+  }
+  
+  // Write the comparison to the output file
+  fs.writeFileSync(outputPath, markdown);
+  return outputPath;
+}
+
+/**
+ * Generate a comparison between two markdown reports
+ */
+function generateMarkdownComparison(
+  report1: any,
+  report2: any,
+  reportPath1: string,
+  reportPath2: string,
+  outputPath: string
+): string {
+  // Ensure the output directory exists
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+  
+  let markdown = `# Report Comparison\n\n`;
+  markdown += `Generated: ${new Date().toLocaleString()}\n\n`;
+  
+  // Add report info
+  markdown += `## Reports Compared\n\n`;
+  markdown += `- Report 1: ${path.basename(reportPath1)}\n`;
+  markdown += `- Report 2: ${path.basename(reportPath2)}\n\n`;
+  
+  // Add simple comparison note
+  markdown += `## Note\n\n`;
+  markdown += `This is a simple comparison of two markdown reports. For a more detailed comparison, `;
+  markdown += `convert the reports to JSON format.\n\n`;
+  
+  // Write the comparison to the output file
   fs.writeFileSync(outputPath, markdown);
   return outputPath;
 }

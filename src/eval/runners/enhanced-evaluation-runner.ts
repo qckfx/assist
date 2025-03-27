@@ -189,70 +189,97 @@ export async function runEnhancedEvaluation(
     }
     
     // Execute all test runs using the sandbox pool
+    // For judged runs, don't reset the sandbox between agent run and judging
     const runPromises = testRuns.map(({ testCase, runIndex }) => 
-      sandboxPool.withExecutionAdapter(async (sandbox) => {
-        const testName = testCase.name;
-        logger.info(`Running test "${testName}" (run ${runIndex + 1}/${runsPerTest})`);
-        
-        try {
-          // Run the test case and collect execution history
-          const run = await runTestCaseWithHistory(testCase, sandbox, modelProvider);
-          
-          // Store the execution history
-          const executionId = storageService.storeExecutionHistory(run.executionHistory, {
-            runId,
-            testName,
-          });
-          
-          // Run the judge if enabled
-          if (enableJudge) {
-            try {
-              // Prepare examples for the judge if enabled and available
-              const testCaseWithExamples = testCase as any; // Cast to any to access potential examples
-              const examples = useExamples && testCaseWithExamples.examples ? {
-                good: testCaseWithExamples.examples.good?.executionHistory,
-                bad: testCaseWithExamples.examples.bad?.executionHistory,
-              } : undefined;
-              
-              // Run the AI judge
-              const judgment = await runJudge(
-                run.executionHistory,
-                testCase.instructions,
-                modelProviderAdapter,
-                {
-                  examples,
-                  systemPromptOverride: judgeSystemPrompt,
+      enableJudge
+        // If judging is enabled, use consecutive operations to preserve state
+        ? sandboxPool.withConsecutiveOperations(async (sandboxInfo) => {
+            const testName = testCase.name;
+            logger.info(`Running test "${testName}" (run ${runIndex + 1}/${runsPerTest})`);
+            
+            // Run the test case and collect execution history
+            const run = await runTestCaseWithHistory(testCase, sandboxInfo.executionAdapter, modelProvider);
+            
+            // Store the execution history
+            const executionId = storageService.storeExecutionHistory(run.executionHistory, {
+              runId,
+              testName,
+            });
+            
+            // Return a function to run the judge on the same sandbox
+            return async () => {
+              try {
+                // Prepare examples for the judge if enabled and available
+                const testCaseWithExamples = testCase as any; // Cast to any to access potential examples
+                const examples = useExamples && testCaseWithExamples.examples ? {
+                  good: testCaseWithExamples.examples.good?.executionHistory,
+                  bad: testCaseWithExamples.examples.bad?.executionHistory,
+                } : undefined;
+                
+                // Run the AI judge using the same sandbox without resetting
+                logger.info(`Running judge for test "${testName}" (run ${runIndex + 1}/${runsPerTest})`);
+                const judgment = await runJudge(
+                  run.executionHistory,
+                  testCase.instructions,
+                  modelProviderAdapter,
+                  {
+                    examples,
+                    systemPromptOverride: judgeSystemPrompt,
+                  }
+                );
+                
+                if (judgment) {
+                  // Store the judgment result
+                  const judgmentId = storageService.storeJudgmentResult(judgment, executionId, {
+                    runId,
+                    testName,
+                  });
+                  
+                  return {
+                    ...run,
+                    executionId,
+                    judgment,
+                    judgmentId,
+                  };
                 }
-              );
-              
-              if (judgment) {
-                // Store the judgment result
-                const judgmentId = storageService.storeJudgmentResult(judgment, executionId, {
-                  runId,
-                  testName,
-                });
                 
                 return {
                   ...run,
                   executionId,
-                  judgment,
-                  judgmentId,
+                };
+              } catch (error) {
+                logger.error(`Failed to run judge for test "${testName}"`, error);
+                return {
+                  ...run,
+                  executionId,
                 };
               }
+            };
+          })
+        // If judging is disabled, just use the execution adapter
+        : sandboxPool.withExecutionAdapter(async (sandbox) => {
+            const testName = testCase.name;
+            logger.info(`Running test "${testName}" (run ${runIndex + 1}/${runsPerTest})`);
+            
+            try {
+              // Run the test case and collect execution history
+              const run = await runTestCaseWithHistory(testCase, sandbox, modelProvider);
+              
+              // Store the execution history
+              const executionId = storageService.storeExecutionHistory(run.executionHistory, {
+                runId,
+                testName,
+              });
+              
+              return {
+                ...run,
+                executionId,
+              };
             } catch (error) {
-              logger.error(`Failed to run judge for test "${testName}"`, error);
+              logger.error(`Failed to run test "${testName}"`, error);
+              throw error;
             }
-          }
-          
-          return {
-            ...run,
-            executionId,
-          };
-        } catch (error) {
-          logger.error(`Failed to run test "${testName}"`, error);
-          throw error;
-        }
-      })
+          })
     );
     
     // Wait for all test runs to complete
@@ -423,7 +450,7 @@ async function runComparisons(
     
     // Only compare if we have multiple runs
     if (runs.length > 1) {
-      logger.info(`Running comparisons for test "${testName}" with ${runs.length} runs`);
+      logger.info(`Running comparisons for test "${testName}" with ${runs.length} runs (using existing judgments)`);
       
       // Compare each pair of runs
       for (let i = 0; i < runs.length; i++) {
@@ -438,16 +465,18 @@ async function runComparisons(
           }
           
           try {
-            // Run the comparison
-            logger.info(`Comparing run ${i+1} vs run ${j+1}`);
+            // Run the comparison using existing judgments
+            logger.info(`Comparing run ${i+1} vs run ${j+1} (using existing judgments)`);
             const comparisonResult = await compareWithJudge(
               {
                 history: runA.executionHistory,
                 task: runA.testCase.instructions,
+                judgment: runA.judgment  // Pass existing judgment for runA
               },
               {
                 history: runB.executionHistory,
                 task: runB.testCase.instructions,
+                judgment: runB.judgment  // Pass existing judgment for runB
               },
               modelProvider,
               {

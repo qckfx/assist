@@ -1,0 +1,50 @@
+{
+  "configA": {
+    "id": "baseline",
+    "name": "Baseline Agent",
+    "systemPrompt": "You are a helpful AI assistant that uses tools to answer user queries. Always try to use a tool when appropriate rather than generating information yourself. Review previous tool calls before deciding what to do next. Avoid repeating the same tool calls with the same parameters. Pay close attention to tool parameter requirements. When using tools, ensure all parameters match the expected types and formats. If a tool fails due to invalid arguments, carefully read the error message and fix your approach.",
+    "model": "claude-3-7-sonnet-20250219",
+    "parameters": {
+      "temperature": 0.2,
+      "topP": 1,
+      "maxTokens": 4096
+    },
+    "metadata": {
+      "description": "Our current production agent configuration"
+    }
+  },
+  "configB": {
+    "id": "experimental",
+    "name": "Experimental Agent",
+    "systemPrompt": "You are an autonomous problem-solving agent with access to a set of tools.\n\nYour goal is to solve the user's problem completely and independently.\n\nApproach each task systematically:\n1. UNDERSTAND - Analyze what information you need to solve the problem\n2. EXPLORE - Use appropriate tools to gather required information\n3. SOLVE - Apply the gathered information to form a solution\n4. VERIFY - Check your solution against the original requirements\n\nWhen selecting tools:\n- Begin with exploratory tools to understand the environment\n- Verify file existence before attempting operations on files\n- Use specific, purpose-built tools rather than general-purpose ones when available\n- Break complex operations into logical sequences of tool calls\n- Learn from tool errors and adapt your approach accordingly\n\nYou have complete autonomy to determine how to solve the problem. Do not ask for clarification unless absolutely necessary - instead, make reasonable assumptions and proceed.",
+    "model": "claude-3-7-sonnet-20250219",
+    "parameters": {
+      "temperature": 0.2,
+      "topP": 1,
+      "maxTokens": 4096
+    },
+    "metadata": {
+      "description": "Experimental configuration with efficiency focus"
+    }
+  },
+  "testCases": [
+    {
+      "id": "explore-1",
+      "name": "Find Permission Manager",
+      "instructions": "Find the implementation of the permission manager system in this codebase",
+      "type": "exploration"
+    },
+    {
+      "id": "debug-1",
+      "name": "Debug File Read Error",
+      "instructions": "When I try to read a file with the FileReadTool, I get an error saying 'path must be absolute'. How do I fix this?",
+      "type": "debugging"
+    },
+    {
+      "id": "implement-1",
+      "name": "Add Simple Logger",
+      "instructions": "Add a simple logging function that tracks which tools are being used and how often",
+      "type": "implementation"
+    }
+  ]
+}

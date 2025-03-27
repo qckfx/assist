@@ -1,0 +1,110 @@
+{
+  "good": {
+    "metadata": {
+      "task": "When I try to read a file with the FileReadTool, I get an error saying \"path must be absolute\". How do I fix this?"
+    },
+    "toolCalls": [
+      {
+        "tool": "GlobTool",
+        "args": {
+          "pattern": "**/FileReadTool.ts"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts",
+        "startTime": "2023-09-10T14:35:00Z",
+        "endTime": "2023-09-10T14:35:01Z"
+      },
+      {
+        "tool": "View",
+        "args": {
+          "file_path": "/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts"
+        },
+        "result": "/**\n * Tool for reading files from the filesystem\n */\n\nimport fs from 'fs';\nimport path from 'path';\nimport { Tool, ToolDefinition } from '../types/tool';\n\ninterface FileReadOptions {\n  file_path: string;\n  offset?: number;\n  limit?: number;\n}\n\n/**\n * Tool for reading files from the filesystem\n */\nexport const FileReadTool: Tool<FileReadOptions> = {\n  name: 'ReadFile',\n  description: 'Read a file from the filesystem',\n  schema: {\n    type: 'object',\n    required: ['file_path'],\n    properties: {\n      file_path: {\n        type: 'string',\n        description: 'Path to the file to read (must be absolute, not relative)'\n      },\n      offset: {\n        type: 'number',\n        description: 'Line number to start reading from (0-indexed)'\n      },\n      limit: {\n        type: 'number',\n        description: 'Maximum number of lines to read'\n      }\n    }\n  },\n  execute: async ({ file_path, offset = 0, limit = 1000 }) => {\n    // Validate that the path is absolute\n    if (!path.isAbsolute(file_path)) {\n      throw new Error('File path must be absolute, not relative');\n    }\n\n    try {\n      // Check if the file exists\n      if (!fs.existsSync(file_path)) {\n        return `File not found: ${file_path}`;\n      }\n\n      // Read the file content\n      const content = fs.readFileSync(file_path, 'utf-8');\n      \n      // If offset or limit are provided, handle partial reading\n      if (offset > 0 || limit < Infinity) {\n        const lines = content.split('\\n');\n        const selectedLines = lines.slice(offset, offset + limit);\n        return selectedLines.join('\\n');\n      }\n      \n      return content;\n    } catch (error) {\n      return `Error reading file: ${error.message}`;\n    }\n  }\n};\n\n/**\n * Tool definition for the file read tool\n */\nexport const FileReadToolDefinition: ToolDefinition = {\n  name: FileReadTool.name,\n  description: FileReadTool.description,\n  schema: FileReadTool.schema\n};\n",
+        "startTime": "2023-09-10T14:35:02Z",
+        "endTime": "2023-09-10T14:35:03Z"
+      },
+      {
+        "tool": "GrepTool",
+        "args": {
+          "pattern": "isAbsolute",
+          "include": "*.ts"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:    if (!path.isAbsolute(file_path)) {",
+        "startTime": "2023-09-10T14:35:04Z",
+        "endTime": "2023-09-10T14:35:05Z"
+      },
+      {
+        "tool": "GrepTool",
+        "args": {
+          "pattern": "path\\.resolve",
+          "include": "*.ts"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/utils/logger.ts:  const logDir = path.resolve(process.cwd(), 'logs');",
+        "startTime": "2023-09-10T14:35:06Z",
+        "endTime": "2023-09-10T14:35:07Z"
+      },
+      {
+        "tool": "GlobTool",
+        "args": {
+          "pattern": "**/utils/*.ts"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/utils/logger.ts\n/Users/chris/Projects/qckfx/agent/src/utils/TokenManager.ts\n/Users/chris/Projects/qckfx/agent/src/utils/LocalExecutionAdapter.ts\n/Users/chris/Projects/qckfx/agent/src/utils/E2BExecutionAdapter.ts\n/Users/chris/Projects/qckfx/agent/src/utils/ErrorHandler.ts",
+        "startTime": "2023-09-10T14:35:08Z",
+        "endTime": "2023-09-10T14:35:09Z"
+      }
+    ]
+  },
+  "bad": {
+    "metadata": {
+      "task": "When I try to read a file with the FileReadTool, I get an error saying \"path must be absolute\". How do I fix this?"
+    },
+    "toolCalls": [
+      {
+        "tool": "GrepTool",
+        "args": {
+          "pattern": "FileReadTool",
+          "include": "*.ts"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts",
+        "startTime": "2023-09-10T14:35:00Z",
+        "endTime": "2023-09-10T14:35:01Z"
+      },
+      {
+        "tool": "View",
+        "args": {
+          "file_path": "/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts"
+        },
+        "result": "/**\n * Tool for reading files from the filesystem\n */\n\nimport fs from 'fs';\nimport path from 'path';\nimport { Tool, ToolDefinition } from '../types/tool';\n\ninterface FileReadOptions {\n  file_path: string;\n  offset?: number;\n  limit?: number;\n}\n\n/**\n * Tool for reading files from the filesystem\n */\nexport const FileReadTool: Tool<FileReadOptions> = {\n  name: 'ReadFile',\n  description: 'Read a file from the filesystem',\n  schema: {\n    type: 'object',\n    required: ['file_path'],\n    properties: {\n      file_path: {\n        type: 'string',\n        description: 'Path to the file to read (must be absolute, not relative)'\n      },\n      offset: {\n        type: 'number',\n        description: 'Line number to start reading from (0-indexed)'\n      },\n      limit: {\n        type: 'number',\n        description: 'Maximum number of lines to read'\n      }\n    }\n  },\n  execute: async ({ file_path, offset = 0, limit = 1000 }) => {\n    // Validate that the path is absolute\n    if (!path.isAbsolute(file_path)) {\n      throw new Error('File path must be absolute, not relative');\n    }\n\n    try {\n      // Check if the file exists\n      if (!fs.existsSync(file_path)) {\n        return `File not found: ${file_path}`;\n      }\n\n      // Read the file content\n      const content = fs.readFileSync(file_path, 'utf-8');\n      \n      // If offset or limit are provided, handle partial reading\n      if (offset > 0 || limit < Infinity) {\n        const lines = content.split('\\n');\n        const selectedLines = lines.slice(offset, offset + limit);\n        return selectedLines.join('\\n');\n      }\n      \n      return content;\n    } catch (error) {\n      return `Error reading file: ${error.message}`;\n    }\n  }\n};\n\n/**\n * Tool definition for the file read tool\n */\nexport const FileReadToolDefinition: ToolDefinition = {\n  name: FileReadTool.name,\n  description: FileReadTool.description,\n  schema: FileReadTool.schema\n};\n",
+        "startTime": "2023-09-10T14:35:02Z",
+        "endTime": "2023-09-10T14:35:03Z"
+      },
+      {
+        "tool": "View",
+        "args": {
+          "file_path": "./src/tools/FileReadTool.ts"
+        },
+        "result": "Error: File path must be absolute, not relative",
+        "startTime": "2023-09-10T14:35:04Z",
+        "endTime": "2023-09-10T14:35:05Z"
+      },
+      {
+        "tool": "Bash",
+        "args": {
+          "command": "cd /Users/chris/Projects/qckfx/agent && pwd"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent",
+        "startTime": "2023-09-10T14:35:06Z",
+        "endTime": "2023-09-10T14:35:07Z"
+      },
+      {
+        "tool": "GrepTool",
+        "args": {
+          "pattern": "file_path",
+          "path": "/Users/chris/Projects/qckfx/agent/src/tools"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:  file_path: string;\n/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:      file_path: {\n/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:  execute: async ({ file_path, offset = 0, limit = 1000 }) => {\n/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:    if (!path.isAbsolute(file_path)) {\n/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:      throw new Error('File path must be absolute, not relative');\n/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:      if (!fs.existsSync(file_path)) {\n/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:        return `File not found: ${file_path}`;\n/Users/chris/Projects/qckfx/agent/src/tools/FileReadTool.ts:      const content = fs.readFileSync(file_path, 'utf-8');",
+        "startTime": "2023-09-10T14:35:08Z",
+        "endTime": "2023-09-10T14:35:09Z"
+      }
+    ]
+  }
+}

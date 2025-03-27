@@ -1,0 +1,100 @@
+{
+  "good": {
+    "metadata": {
+      "task": "Find the implementation of the permission manager system in this codebase"
+    },
+    "toolCalls": [
+      {
+        "tool": "GlobTool",
+        "args": {
+          "pattern": "**/*Permission*.ts"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/core/PermissionManager.ts\n/Users/chris/Projects/qckfx/agent/src/core/__tests__/PermissionManager.test.ts\n/Users/chris/Projects/qckfx/agent/src/server/controllers/permissions.ts\n/Users/chris/Projects/qckfx/agent/src/server/controllers/__tests__/permissions.test.ts",
+        "startTime": "2023-09-10T14:30:00Z",
+        "endTime": "2023-09-10T14:30:01Z"
+      },
+      {
+        "tool": "View",
+        "args": {
+          "file_path": "/Users/chris/Projects/qckfx/agent/src/core/PermissionManager.ts"
+        },
+        "result": "/**\n * Permission management system for controlling access to sensitive tools and operations\n */\n\nimport { EventEmitter } from 'events';\nimport { Permission, PermissionStatus, PermissionRequest } from '../types/permission';\n\n/**\n * Manages permission requests and responses for sensitive operations\n */\nexport class PermissionManager extends EventEmitter {\n  private permissions: Map<string, PermissionStatus> = new Map();\n  private pendingRequests: Map<string, PermissionRequest> = new Map();\n\n  constructor() {\n    super();\n  }\n\n  /**\n   * Request permission for a sensitive operation\n   * \n   * @param permission The permission being requested\n   * @returns A promise that resolves when the permission is granted or rejected\n   */\n  public async requestPermission(permission: Permission): Promise<boolean> {\n    const existingStatus = this.permissions.get(permission.id);\n    \n    // If permission was previously granted, return immediately\n    if (existingStatus === PermissionStatus.GRANTED) {\n      return true;\n    }\n    \n    // If permission was previously denied, return immediately\n    if (existingStatus === PermissionStatus.DENIED) {\n      return false;\n    }\n    \n    // Create a new request\n    const requestId = `${permission.id}-${Date.now()}`;\n    const request: PermissionRequest = {\n      id: requestId,\n      permission,\n      timestamp: new Date(),\n      status: PermissionStatus.PENDING\n    };\n    \n    this.pendingRequests.set(requestId, request);\n    \n    // Emit event for UI to handle\n    this.emit('permissionRequested', request);\n    \n    // Wait for response\n    return new Promise((resolve) => {\n      const handler = (id: string, granted: boolean) => {\n        if (id === requestId) {\n          this.removeListener('permissionResolved', handler);\n          resolve(granted);\n        }\n      };\n      \n      this.on('permissionResolved', handler);\n    });\n  }\n\n  /**\n   * Respond to a permission request\n   * \n   * @param requestId The ID of the request to respond to\n   * @param granted Whether the permission is granted\n   * @returns Whether the response was processed\n   */\n  public respondToPermissionRequest(requestId: string, granted: boolean): boolean {\n    const request = this.pendingRequests.get(requestId);\n    \n    if (!request) {\n      return false;\n    }\n    \n    // Update permission status\n    const status = granted ? PermissionStatus.GRANTED : PermissionStatus.DENIED;\n    this.permissions.set(request.permission.id, status);\n    \n    // Update request status\n    request.status = status;\n    \n    // Remove from pending\n    this.pendingRequests.delete(requestId);\n    \n    // Emit resolution event\n    this.emit('permissionResolved', requestId, granted);\n    \n    return true;\n  }\n\n  /**\n   * Get all pending permission requests\n   * \n   * @returns Array of pending requests\n   */\n  public getPendingRequests(): PermissionRequest[] {\n    return Array.from(this.pendingRequests.values());\n  }\n\n  /**\n   * Clear all permission status\n   */\n  public clearPermissions(): void {\n    this.permissions.clear();\n  }\n\n  /**\n   * Check if a permission is granted without requesting it\n   * \n   * @param permissionId The ID of the permission to check\n   * @returns Whether the permission is granted\n   */\n  public isPermissionGranted(permissionId: string): boolean {\n    return this.permissions.get(permissionId) === PermissionStatus.GRANTED;\n  }\n}\n",
+        "startTime": "2023-09-10T14:30:02Z",
+        "endTime": "2023-09-10T14:30:03Z"
+      },
+      {
+        "tool": "View",
+        "args": {
+          "file_path": "/Users/chris/Projects/qckfx/agent/src/types/permission.ts"
+        },
+        "result": "/**\n * Type definitions for the permission system\n */\n\n/**\n * Status of a permission request\n */\nexport enum PermissionStatus {\n  PENDING = 'pending',\n  GRANTED = 'granted',\n  DENIED = 'denied'\n}\n\n/**\n * Represents a permission that can be requested or granted\n */\nexport interface Permission {\n  /** Unique identifier for the permission */\n  id: string;\n  \n  /** Human-readable name of the permission */\n  name: string;\n  \n  /** Description of what the permission allows */\n  description: string;\n  \n  /** Risk level associated with the permission */\n  riskLevel: 'low' | 'medium' | 'high';\n}\n\n/**\n * Represents a request for permission\n */\nexport interface PermissionRequest {\n  /** Unique identifier for the request */\n  id: string;\n  \n  /** The permission being requested */\n  permission: Permission;\n  \n  /** When the request was made */\n  timestamp: Date;\n  \n  /** Current status of the request */\n  status: PermissionStatus;\n}\n",
+        "startTime": "2023-09-10T14:30:04Z",
+        "endTime": "2023-09-10T14:30:05Z"
+      },
+      {
+        "tool": "View",
+        "args": {
+          "file_path": "/Users/chris/Projects/qckfx/agent/src/server/controllers/permissions.ts"
+        },
+        "result": "/**\n * Controllers for handling permission-related API requests\n */\n\nimport { Request, Response } from 'express';\nimport { PermissionManager } from '../../core/PermissionManager';\n\n/**\n * Get all pending permission requests\n */\nexport async function getPendingPermissions(\n  req: Request,\n  res: Response,\n  permissionManager: PermissionManager\n) {\n  const pendingRequests = permissionManager.getPendingRequests();\n  res.json({ requests: pendingRequests });\n}\n\n/**\n * Respond to a permission request\n */\nexport async function respondToPermission(\n  req: Request,\n  res: Response,\n  permissionManager: PermissionManager\n) {\n  const { requestId, granted } = req.body;\n  \n  if (typeof requestId !== 'string' || typeof granted !== 'boolean') {\n    return res.status(400).json({ error: 'Invalid request parameters' });\n  }\n  \n  const success = permissionManager.respondToPermissionRequest(requestId, granted);\n  \n  if (!success) {\n    return res.status(404).json({ error: 'Permission request not found' });\n  }\n  \n  res.json({ success: true });\n}\n",
+        "startTime": "2023-09-10T14:30:06Z",
+        "endTime": "2023-09-10T14:30:07Z"
+      }
+    ]
+  },
+  "bad": {
+    "metadata": {
+      "task": "Find the implementation of the permission manager system in this codebase"
+    },
+    "toolCalls": [
+      {
+        "tool": "GrepTool",
+        "args": {
+          "pattern": "permission",
+          "include": "*.ts"
+        },
+        "result": "Too many results to display. Try narrowing your search pattern.",
+        "startTime": "2023-09-10T14:30:00Z",
+        "endTime": "2023-09-10T14:30:01Z"
+      },
+      {
+        "tool": "GrepTool",
+        "args": {
+          "pattern": "permissionManager",
+          "include": "*.ts"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/server/controllers/permissions.ts\n/Users/chris/Projects/qckfx/agent/src/server/controllers/__tests__/permissions.test.ts",
+        "startTime": "2023-09-10T14:30:02Z",
+        "endTime": "2023-09-10T14:30:03Z"
+      },
+      {
+        "tool": "View",
+        "args": {
+          "file_path": "/Users/chris/Projects/qckfx/agent/src/server/controllers/permissions.ts"
+        },
+        "result": "/**\n * Controllers for handling permission-related API requests\n */\n\nimport { Request, Response } from 'express';\nimport { PermissionManager } from '../../core/PermissionManager';\n\n/**\n * Get all pending permission requests\n */\nexport async function getPendingPermissions(\n  req: Request,\n  res: Response,\n  permissionManager: PermissionManager\n) {\n  const pendingRequests = permissionManager.getPendingRequests();\n  res.json({ requests: pendingRequests });\n}\n\n/**\n * Respond to a permission request\n */\nexport async function respondToPermission(\n  req: Request,\n  res: Response,\n  permissionManager: PermissionManager\n) {\n  const { requestId, granted } = req.body;\n  \n  if (typeof requestId !== 'string' || typeof granted !== 'boolean') {\n    return res.status(400).json({ error: 'Invalid request parameters' });\n  }\n  \n  const success = permissionManager.respondToPermissionRequest(requestId, granted);\n  \n  if (!success) {\n    return res.status(404).json({ error: 'Permission request not found' });\n  }\n  \n  res.json({ success: true });\n}\n",
+        "startTime": "2023-09-10T14:30:04Z",
+        "endTime": "2023-09-10T14:30:05Z"
+      },
+      {
+        "tool": "GrepTool",
+        "args": {
+          "pattern": "class.*Permission",
+          "include": "*.ts"
+        },
+        "result": "/Users/chris/Projects/qckfx/agent/src/core/PermissionManager.ts:export class PermissionManager extends EventEmitter {",
+        "startTime": "2023-09-10T14:30:06Z",
+        "endTime": "2023-09-10T14:30:07Z"
+      },
+      {
+        "tool": "View",
+        "args": {
+          "file_path": "/Users/chris/Projects/qckfx/agent/src/types/permission.ts"
+        },
+        "result": "/**\n * Type definitions for the permission system\n */\n\n/**\n * Status of a permission request\n */\nexport enum PermissionStatus {\n  PENDING = 'pending',\n  GRANTED = 'granted',\n  DENIED = 'denied'\n}\n\n/**\n * Represents a permission that can be requested or granted\n */\nexport interface Permission {\n  /** Unique identifier for the permission */\n  id: string;\n  \n  /** Human-readable name of the permission */\n  name: string;\n  \n  /** Description of what the permission allows */\n  description: string;\n  \n  /** Risk level associated with the permission */\n  riskLevel: 'low' | 'medium' | 'high';\n}\n\n/**\n * Represents a request for permission\n */\nexport interface PermissionRequest {\n  /** Unique identifier for the request */\n  id: string;\n  \n  /** The permission being requested */\n  permission: Permission;\n  \n  /** When the request was made */\n  timestamp: Date;\n  \n  /** Current status of the request */\n  status: PermissionStatus;\n}\n",
+        "startTime": "2023-09-10T14:30:08Z",
+        "endTime": "2023-09-10T14:30:09Z"
+      }
+    ]
+  }
+}

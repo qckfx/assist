@@ -14,7 +14,7 @@ import { LogLevel, LogCategory, createLogger } from '../../utils/logger';
 import { EvaluationConfig, MetricsData, PromptComparisonResult, TestCase } from '../models/types';
 import { runTestCase } from './test-runner';
 import { initializeSandbox, cleanupSandbox, resetSandbox } from '../utils/sandbox';
-import { calculateDifference, saveMetricsToJson, generateMarkdownReport, averageMetrics } from '../utils/metrics';
+import { calculateDifference, saveMetricsToJson, generateComparisonMarkdownReport as generateMarkdownReport, averageMetrics } from '../utils/metrics';
 import { originalPrompt, newPrompt } from '../prompts/defaults';
 import { testCases, getQuickTestCases } from '../models/test-cases';
 

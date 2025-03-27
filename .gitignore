@@ -50,4 +50,4 @@ Thumbs.db
 
 # Evaluation results
 evaluation-results/
-app/
+app/.eval-data/

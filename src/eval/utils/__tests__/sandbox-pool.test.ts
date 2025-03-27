@@ -22,6 +22,18 @@ jest.mock('e2b', () => {
           }
         };
       }),
+      connect: jest.fn().mockImplementation(async (sandboxId) => {
+        return {
+          sandboxId,
+          commands: {
+            run: jest.fn().mockResolvedValue({
+              stdout: 'Sandbox connected',
+              stderr: '',
+              exitCode: 0
+            })
+          }
+        };
+      }),
       kill: jest.fn().mockResolvedValue(undefined)
     }
   };
@@ -38,6 +50,29 @@ jest.mock('../../../utils/E2BExecutionAdapter', () => {
         };
       })
     }
+  };
+});
+
+// Mock the sandbox.ts module
+jest.mock('../sandbox', () => {
+  return {
+    initializeSandbox: jest.fn().mockImplementation(async () => {
+      const sandboxId = `sandbox-${Math.random().toString(36).substring(2, 9)}`;
+      return {
+        sandboxId,
+        executionAdapter: {
+          sandboxId,
+          execute: jest.fn()
+        }
+      };
+    }),
+    resetSandbox: jest.fn().mockImplementation(async (sandboxId) => {
+      return {
+        sandboxId,
+        execute: jest.fn()
+      };
+    }),
+    cleanupSandbox: jest.fn().mockResolvedValue(undefined)
   };
 });
 
@@ -59,24 +94,27 @@ describe('SandboxPool', () => {
   });
   
   describe('createSandbox', () => {
-    it('should create a sandbox instance', async () => {
-      const sandbox = await createSandbox();
+    it('should create a sandbox instance with proper initialization', async () => {
+      const { initializeSandbox } = require('../sandbox');
+      const sandboxInfo = await createSandbox();
       
-      // Verify Sandbox.create was called
-      expect(Sandbox.create).toHaveBeenCalledWith('base', { timeoutMs: 300000 });
+      // Verify initializeSandbox was called
+      expect(initializeSandbox).toHaveBeenCalled();
       
-      // Verify sandbox is returned
-      expect(sandbox).toBeDefined();
-      expect(sandbox.sandboxId).toBeDefined();
-      expect(sandbox.commands.run).toBeDefined();
+      // Verify we get a complete sandbox info object
+      expect(sandboxInfo).toBeDefined();
+      expect(sandboxInfo.sandbox).toBeDefined();
+      expect(sandboxInfo.sandboxId).toBeDefined();
+      expect(sandboxInfo.executionAdapter).toBeDefined();
     });
     
-    it('should throw an error if E2B_API_KEY is missing', async () => {
-      // Remove the API key
-      delete process.env.E2B_API_KEY;
+    it('should throw an error if initializeSandbox fails', async () => {
+      // Mock initializeSandbox to fail
+      const { initializeSandbox } = require('../sandbox');
+      initializeSandbox.mockRejectedValueOnce(new Error('Initialization failed'));
       
       // Expect the createSandbox function to throw
-      await expect(createSandbox()).rejects.toThrow('E2B_API_KEY is required');
+      await expect(createSandbox()).rejects.toThrow('Initialization failed');
     });
   });
   
@@ -103,32 +141,48 @@ describe('SandboxPool', () => {
       await pool.waitForInitialization();
       
       // Acquire a sandbox
-      const sandbox1 = await pool.acquireSandbox();
+      const sandboxInfo1 = await pool.acquireSandbox();
       
       // Verify counts
       expect(pool.availableCount).toBe(1);
       expect(pool.busyCount).toBe(1);
       
       // Acquire another sandbox
-      const sandbox2 = await pool.acquireSandbox();
+      const sandboxInfo2 = await pool.acquireSandbox();
       
       // Verify counts
       expect(pool.availableCount).toBe(0);
       expect(pool.busyCount).toBe(2);
       
       // Release the first sandbox
-      pool.releaseSandbox(sandbox1!);
+      await pool.releaseSandbox(sandboxInfo1!.sandboxId, false); // Skip reset for test
       
       // Verify counts
       expect(pool.availableCount).toBe(1);
       expect(pool.busyCount).toBe(1);
       
       // Release the second sandbox
-      pool.releaseSandbox(sandbox2!);
+      await pool.releaseSandbox(sandboxInfo2!.sandboxId, false); // Skip reset for test
       
       // Verify counts
       expect(pool.availableCount).toBe(2);
       expect(pool.busyCount).toBe(0);
+    });
+    
+    it('should reset sandbox when releasing with reset flag', async () => {
+      const { resetSandbox } = require('../sandbox');
+      
+      const pool = new SandboxPool(1);
+      await pool.waitForInitialization();
+      
+      // Acquire the sandbox
+      const sandboxInfo = await pool.acquireSandbox();
+      
+      // Release with reset
+      await pool.releaseSandbox(sandboxInfo!.sandboxId, true);
+      
+      // Verify resetSandbox was called
+      expect(resetSandbox).toHaveBeenCalledWith(sandboxInfo!.sandboxId, expect.anything());
     });
     
     it('should honor timeouts when acquiring sandboxes', async () => {
@@ -137,16 +191,16 @@ describe('SandboxPool', () => {
       await pool.waitForInitialization();
       
       // Acquire the only sandbox
-      const sandbox = await pool.acquireSandbox();
-      expect(sandbox).toBeDefined();
+      const sandboxInfo = await pool.acquireSandbox();
+      expect(sandboxInfo).toBeDefined();
       
       // Try to acquire another sandbox with a short timeout
       const start = Date.now();
-      const anotherSandbox = await pool.acquireSandbox(100);
+      const anotherSandboxInfo = await pool.acquireSandbox(100);
       const elapsed = Date.now() - start;
       
       // Verify timeout behavior
-      expect(anotherSandbox).toBeNull();
+      expect(anotherSandboxInfo).toBeNull();
       expect(elapsed).toBeGreaterThanOrEqual(100);
       expect(elapsed).toBeLessThan(500); // Should not wait too long
     });
@@ -161,12 +215,14 @@ describe('SandboxPool', () => {
       const mockFn = jest.fn().mockResolvedValue('result');
       
       // Execute the function with a sandbox
-      const result = await pool.withSandbox(mockFn);
+      const result = await pool.withSandbox(mockFn, false); // Skip reset for test
       
-      // Verify function was called with a sandbox
+      // Verify function was called with a sandbox info object
       expect(mockFn).toHaveBeenCalledTimes(1);
       expect(mockFn.mock.calls[0][0]).toBeDefined();
+      expect(mockFn.mock.calls[0][0].sandbox).toBeDefined();
       expect(mockFn.mock.calls[0][0].sandboxId).toBeDefined();
+      expect(mockFn.mock.calls[0][0].executionAdapter).toBeDefined();
       
       // Verify sandbox was released
       expect(pool.availableCount).toBe(1);
@@ -186,7 +242,7 @@ describe('SandboxPool', () => {
       });
       
       // Execute the function with a sandbox, expect it to throw
-      await expect(pool.withSandbox(mockFn)).rejects.toThrow('Test error');
+      await expect(pool.withSandbox(mockFn, false)).rejects.toThrow('Test error');
       
       // Verify function was called
       expect(mockFn).toHaveBeenCalledTimes(1);
@@ -197,8 +253,40 @@ describe('SandboxPool', () => {
     });
   });
   
+  describe('withConsecutiveOperations', () => {
+    it('should run multiple operations on the same sandbox', async () => {
+      const pool = new SandboxPool(1);
+      await pool.waitForInitialization();
+      
+      // First operation function
+      const firstOperation = jest.fn().mockImplementation(async (sandboxInfo) => {
+        // Return a function for the second operation
+        return async (sameInfo) => {
+          // Verify it's the same sandbox
+          expect(sameInfo.sandboxId).toBe(sandboxInfo.sandboxId);
+          return 'second result';
+        };
+      });
+      
+      // Execute consecutive operations
+      const result = await pool.withConsecutiveOperations(firstOperation);
+      
+      // Verify first operation was called
+      expect(firstOperation).toHaveBeenCalledTimes(1);
+      
+      // Verify result from second operation
+      expect(result).toBe('second result');
+      
+      // Verify sandbox was released
+      expect(pool.availableCount).toBe(1);
+      expect(pool.busyCount).toBe(0);
+    });
+  });
+  
   describe('shutdown', () => {
     it('should close all sandboxes', async () => {
+      const { cleanupSandbox } = require('../sandbox');
+      
       const pool = new SandboxPool(3);
       await pool.waitForInitialization();
       
@@ -206,7 +294,7 @@ describe('SandboxPool', () => {
       expect(pool.totalCount).toBe(3);
       
       // Acquire one sandbox to test closing both available and busy sandboxes
-      const sandbox = await pool.acquireSandbox();
+      const sandboxInfo = await pool.acquireSandbox();
       
       // Verify counts
       expect(pool.availableCount).toBe(2);
@@ -220,8 +308,8 @@ describe('SandboxPool', () => {
       expect(pool.busyCount).toBe(0);
       expect(pool.totalCount).toBe(0);
       
-      // Should have called kill 3 times (once for each sandbox)
-      expect(Sandbox.kill).toHaveBeenCalledTimes(3);
+      // Should have called cleanupSandbox 3 times (once for each sandbox)
+      expect(cleanupSandbox).toHaveBeenCalledTimes(3);
     });
     
     it('should reject new sandbox requests after shutdown', async () => {
@@ -237,7 +325,7 @@ describe('SandboxPool', () => {
   });
   
   describe('withExecutionAdapter', () => {
-    it('should create an execution adapter and execute a function with it', async () => {
+    it('should execute a function with an execution adapter', async () => {
       const pool = new SandboxPool(1);
       await pool.waitForInitialization();
       
@@ -245,15 +333,11 @@ describe('SandboxPool', () => {
       const mockFn = jest.fn().mockResolvedValue('result');
       
       // Execute the function with an execution adapter
-      const result = await pool.withExecutionAdapter(mockFn);
+      const result = await pool.withExecutionAdapter(mockFn, false); // Skip reset for test
       
       // Verify function was called with an adapter
       expect(mockFn).toHaveBeenCalledTimes(1);
       expect(mockFn.mock.calls[0][0]).toBeDefined();
-      expect(mockFn.mock.calls[0][0].execute).toBeDefined();
-      
-      // Verify E2BExecutionAdapter.create was called
-      expect(E2BExecutionAdapter.create).toHaveBeenCalledTimes(1);
       
       // Verify sandbox was released
       expect(pool.availableCount).toBe(1);
@@ -261,6 +345,22 @@ describe('SandboxPool', () => {
       
       // Verify function result
       expect(result).toBe('result');
+    });
+    
+    it('should reset sandbox after use when flag is set', async () => {
+      const { resetSandbox } = require('../sandbox');
+      
+      const pool = new SandboxPool(1);
+      await pool.waitForInitialization();
+      
+      // Mock function to execute
+      const mockFn = jest.fn().mockResolvedValue('result');
+      
+      // Execute the function with an execution adapter and reset
+      await pool.withExecutionAdapter(mockFn, true);
+      
+      // Verify resetSandbox was called
+      expect(resetSandbox).toHaveBeenCalled();
     });
   });
 });

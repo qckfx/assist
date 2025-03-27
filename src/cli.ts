@@ -5,11 +5,10 @@
 
 import { program } from 'commander';
 import { createAgent, createAnthropicProvider, createLogger, LogLevel, LogCategory, startServer, createServerConfig } from './index';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import { SessionState, ToolResultEntry } from './types';
 import chalk from 'chalk';
 import prompts from 'prompts';
-import path from 'path';
 import { setupEvaluationCommands } from './eval/cli';
 
 // Load environment variables from .env file

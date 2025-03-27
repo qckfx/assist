@@ -38,6 +38,25 @@ jest.mock('../../utils/sandbox-pool', () => {
       withExecutionAdapter: jest.fn().mockImplementation((fn) => fn({
         execute: jest.fn().mockResolvedValue({ result: 'success' })
       })),
+      withConsecutiveOperations: jest.fn().mockImplementation((fn) => {
+        // Execute the first function to get the second function
+        return fn({
+          sandbox: { sandboxId: 'mock-sandbox-id' },
+          sandboxId: 'mock-sandbox-id',
+          executionAdapter: {
+            execute: jest.fn().mockResolvedValue({ result: 'success' })
+          }
+        }).then(secondFn => {
+          // Execute the second function
+          return secondFn({
+            sandbox: { sandboxId: 'mock-sandbox-id' },
+            sandboxId: 'mock-sandbox-id',
+            executionAdapter: {
+              execute: jest.fn().mockResolvedValue({ result: 'success' })
+            }
+          });
+        });
+      }),
       shutdown: jest.fn().mockResolvedValue(undefined)
     }))
   };

@@ -220,32 +220,49 @@ Format your response as a markdown report with clear section headings.
 
 /**
  * Compare two execution histories using the AI judge.
- * @param executionA First execution to compare
- * @param executionB Second execution to compare
+ * @param executionA First execution to compare, or a run with existing judgment
+ * @param executionB Second execution to compare, or a run with existing judgment
  * @param modelProvider The model provider to use for judging
  * @param options Additional options for the judge
  * @returns Comparison result
  */
 export async function compareWithJudge(
-  executionA: { history: AgentExecutionHistory; task: string },
-  executionB: { history: AgentExecutionHistory; task: string },
+  executionA: { history: AgentExecutionHistory; task: string; judgment?: JudgmentResult },
+  executionB: { history: AgentExecutionHistory; task: string; judgment?: JudgmentResult },
   modelProvider: ModelProvider,
   options: JudgeOptions = {}
 ): Promise<ComparisonResult> {
-  // Run the judge on both executions
-  const judgmentA = await runJudge(
-    executionA.history, 
-    executionA.task, 
-    modelProvider,
-    options
-  );
+  let judgmentA: JudgmentResult | null;
+  let judgmentB: JudgmentResult | null;
   
-  const judgmentB = await runJudge(
-    executionB.history, 
-    executionB.task, 
-    modelProvider,
-    options
-  );
+  // Use existing judgments if provided, otherwise run the judge
+  if (executionA.judgment) {
+    logger.info('Using existing judgment for execution A');
+    judgmentA = executionA.judgment;
+  } else {
+    // Run the judge on execution A
+    logger.info('Running AI judge evaluation for execution A');
+    judgmentA = await runJudge(
+      executionA.history, 
+      executionA.task, 
+      modelProvider,
+      options
+    );
+  }
+  
+  if (executionB.judgment) {
+    logger.info('Using existing judgment for execution B');
+    judgmentB = executionB.judgment;
+  } else {
+    // Run the judge on execution B
+    logger.info('Running AI judge evaluation for execution B');
+    judgmentB = await runJudge(
+      executionB.history, 
+      executionB.task, 
+      modelProvider,
+      options
+    );
+  }
   
   // If either judgment failed, return what we have
   if (!judgmentA || !judgmentB) {
