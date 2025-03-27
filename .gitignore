@@ -47,3 +47,7 @@ coverage/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Evaluation results
+evaluation-results/
+app/
