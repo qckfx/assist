@@ -2,7 +2,6 @@
  * Judge runner for evaluating agent performance using AI judging
  */
 
-import { createAnthropicProvider } from '../../providers/AnthropicProvider';
 import { JudgmentResult, AgentExecutionHistory } from '../models/types';
 import { createJudgingPrompt, getJudgeSystemPrompt } from '../utils/judge-prompts';
 import { createLogger, LogLevel } from '../../utils/logger';
@@ -14,26 +13,99 @@ const logger = createLogger({
 });
 
 /**
+ * Interface for a model provider that can process queries
+ */
+export interface ModelProvider {
+  processQuery: (
+    prompt: string, 
+    options: ProcessQueryOptions
+  ) => Promise<{ response: string | null }>;
+}
+
+/**
+ * Options for processing a query through a model provider
+ */
+export interface ProcessQueryOptions {
+  temperature?: number;
+  maxTokens?: number;
+  [key: string]: any;
+}
+
+/**
+ * Options for running a judge evaluation
+ */
+export interface JudgeOptions {
+  examples?: {
+    good?: AgentExecutionHistory;
+    bad?: AgentExecutionHistory;
+  };
+  systemPromptOverride?: string;
+}
+
+/**
+ * Result from a comparison between two executions
+ */
+export interface ComparisonResult {
+  judgmentA: JudgmentResult | null;
+  judgmentB: JudgmentResult | null;
+  comparison: string | null;
+}
+
+/**
+ * Extract JSON from a string containing JSON blocks
+ * @param output String that may contain JSON blocks
+ * @returns Extracted JSON string or null if not found
+ */
+export function extractJsonFromString(output: string): string | null {
+  // Look for JSON block in the output using regex
+  const jsonMatch = output.match(/```json\n([\s\S]*?)\n```/) || 
+                    output.match(/{[\s\S]*}/);
+  
+  if (!jsonMatch) {
+    return null;
+  }
+  
+  // Extract the JSON content
+  return (jsonMatch[1] || jsonMatch[0]).trim();
+}
+
+/**
+ * Validate that an object meets the requirements for a judgment result
+ * @param result Object to validate
+ * @returns Whether the object is a valid judgment result
+ */
+export function isValidJudgmentResult(result: any): boolean {
+  if (!result) return false;
+  if (typeof result !== 'object') return false;
+  if (!result.scores || typeof result.scores !== 'object') return false;
+  if (!result.explanations || typeof result.explanations !== 'object') return false;
+  if (!result.overall || typeof result.overall !== 'string') return false;
+  if (!Array.isArray(result.strengths)) return false;
+  if (!Array.isArray(result.weaknesses)) return false;
+  
+  return true;
+}
+
+/**
  * Parse the judgment output from the LLM.
  * The output should be a JSON string with scores and explanations.
+ * @param output Raw output from the LLM
+ * @returns Parsed judgment result or null if parsing failed
  */
 export function parseJudgmentOutput(output: string): JudgmentResult | null {
   try {
-    // Look for JSON block in the output using regex
-    const jsonMatch = output.match(/```json\n([\s\S]*?)\n```/) || 
-                      output.match(/{[\s\S]*}/);
+    const jsonContent = extractJsonFromString(output);
     
-    if (!jsonMatch) {
+    if (!jsonContent) {
       logger.error('Failed to find JSON in judge output');
       return null;
     }
     
     // Parse the JSON content
-    const jsonContent = jsonMatch[1] || jsonMatch[0];
-    const result = JSON.parse(jsonContent.trim());
+    const result = JSON.parse(jsonContent);
     
     // Validate the structure
-    if (!result.scores || !result.explanations) {
+    if (!isValidJudgmentResult(result)) {
       logger.error('Invalid judgment result structure', result);
       return null;
     }
@@ -46,28 +118,63 @@ export function parseJudgmentOutput(output: string): JudgmentResult | null {
 }
 
 /**
+ * Create a judging prompt for the given execution history
+ * @param task The task that was given to the agent
+ * @param executionHistory The agent's execution history
+ * @param options Additional options for the judge
+ * @returns The prompt for the judge
+ */
+export function createJudgePrompt(
+  task: string,
+  executionHistory: AgentExecutionHistory,
+  options: JudgeOptions = {}
+): string {
+  return createJudgingPrompt({
+    task,
+    executionHistory,
+    examples: options.examples,
+    systemPromptOverride: options.systemPromptOverride,
+  });
+}
+
+/**
+ * Process the model's response to extract a judgment result
+ * @param modelResponse The response from the model
+ * @returns Parsed judgment result or null if parsing failed
+ */
+export function processJudgeResponse(modelResponse: string | null): JudgmentResult | null {
+  if (!modelResponse) {
+    logger.error('No response from judge model');
+    return null;
+  }
+  
+  const judgmentResult = parseJudgmentOutput(modelResponse);
+  
+  if (!judgmentResult) {
+    logger.error('Failed to parse judgment result');
+    return null;
+  }
+  
+  return judgmentResult;
+}
+
+/**
  * Run the AI judge to evaluate an agent's execution history.
+ * @param executionHistory The agent's execution history
+ * @param task The task that was given to the agent
+ * @param modelProvider The model provider to use for judging
+ * @param options Additional options for the judge
+ * @returns The judgment result or null if judging failed
  */
 export async function runJudge(
   executionHistory: AgentExecutionHistory,
   task: string,
-  modelProvider: any,
-  options: {
-    examples?: {
-      good?: AgentExecutionHistory;
-      bad?: AgentExecutionHistory;
-    };
-    systemPromptOverride?: string;
-  } = {}
+  modelProvider: ModelProvider,
+  options: JudgeOptions = {}
 ): Promise<JudgmentResult | null> {
   try {
-    // Create the judging prompt with the execution history
-    const prompt = createJudgingPrompt({
-      task,
-      executionHistory,
-      examples: options.examples,
-      systemPromptOverride: options.systemPromptOverride,
-    });
+    // Create the judging prompt
+    const prompt = createJudgePrompt(task, executionHistory, options);
     
     // Run the judge model
     logger.info('Running AI judge evaluation');
@@ -76,20 +183,8 @@ export async function runJudge(
       maxTokens: 2000,   // Ensure enough tokens for detailed analysis
     });
     
-    if (!result.response) {
-      logger.error('No response from judge model');
-      return null;
-    }
-    
-    // Parse the judgment output
-    const judgmentResult = parseJudgmentOutput(result.response);
-    
-    if (!judgmentResult) {
-      logger.error('Failed to parse judgment result');
-      return null;
-    }
-    
-    return judgmentResult;
+    // Process the response
+    return processJudgeResponse(result.response);
   } catch (error) {
     logger.error('Error running judge', error);
     return null;
@@ -97,20 +192,46 @@ export async function runJudge(
 }
 
 /**
+ * Create a comparison prompt for two judgment results
+ * @param judgmentA First judgment result
+ * @param judgmentB Second judgment result
+ * @returns Comparison prompt
+ */
+export function createComparisonPrompt(
+  judgmentA: JudgmentResult,
+  judgmentB: JudgmentResult
+): string {
+  return `
+I need you to compare two different AI agent executions that have been judged.
+
+EXECUTION A JUDGMENT:
+${JSON.stringify(judgmentA, null, 2)}
+
+EXECUTION B JUDGMENT:
+${JSON.stringify(judgmentB, null, 2)}
+
+Compare these two executions and explain which one performed better overall and why.
+Include specific comparisons across each dimension scored (correctness, completeness, etc.).
+Clearly state which execution is superior and by how much.
+
+Format your response as a markdown report with clear section headings.
+`;
+}
+
+/**
  * Compare two execution histories using the AI judge.
+ * @param executionA First execution to compare
+ * @param executionB Second execution to compare
+ * @param modelProvider The model provider to use for judging
+ * @param options Additional options for the judge
+ * @returns Comparison result
  */
 export async function compareWithJudge(
   executionA: { history: AgentExecutionHistory; task: string },
   executionB: { history: AgentExecutionHistory; task: string },
-  modelProvider: any,
-  options: {
-    systemPromptOverride?: string;
-  } = {}
-): Promise<{
-  judgmentA: JudgmentResult | null;
-  judgmentB: JudgmentResult | null;
-  comparison: string | null;
-}> {
+  modelProvider: ModelProvider,
+  options: JudgeOptions = {}
+): Promise<ComparisonResult> {
   // Run the judge on both executions
   const judgmentA = await runJudge(
     executionA.history, 
@@ -135,26 +256,11 @@ export async function compareWithJudge(
     };
   }
   
-  // Create a comparison prompt
-  const comparisonPrompt = `
-I need you to compare two different AI agent executions that have been judged.
-
-EXECUTION A JUDGMENT:
-${JSON.stringify(judgmentA, null, 2)}
-
-EXECUTION B JUDGMENT:
-${JSON.stringify(judgmentB, null, 2)}
-
-Compare these two executions and explain which one performed better overall and why.
-Include specific comparisons across each dimension scored (correctness, completeness, etc.).
-Clearly state which execution is superior and by how much.
-
-Format your response as a markdown report with clear section headings.
-`;
-
-  // Run the comparison
+  // Create and run the comparison
   try {
     logger.info('Running judgment comparison');
+    const comparisonPrompt = createComparisonPrompt(judgmentA, judgmentB);
+    
     const comparisonResult = await modelProvider.processQuery(comparisonPrompt, {
       temperature: 0.2,
       maxTokens: 2000,

@@ -10,6 +10,8 @@ import {
 } from '../types';
 import { LogCategory } from '../utils/logger';
 
+export { AnthropicProvider };
+
 /**
  * Creates a provider for Anthropic's Claude API
  * @param config - Configuration options
