@@ -37,7 +37,12 @@
     "start:dev": "npm run build:complete && npm run start:dist -- --dev --port 3000",
     "prepublishOnly": "npm run build:complete",
     "postinstall": "[ -f ./dist/cli.js ] && chmod +x ./dist/cli.js || echo 'dist/cli.js not found, skipping chmod'",
-    "prepack": "chmod +x ./dist/cli.js"
+    "prepack": "chmod +x ./dist/cli.js",
+    "eval": "ts-node src/eval/index.ts --output-dir ./evaluation-results",
+    "eval:quick": "ts-node src/eval/index.ts --output-dir ./evaluation-results --quick",
+    "eval:list": "ts-node src/eval/index.ts --list-tests",
+    "eval:build": "npm run build && node dist/eval/index.js --output-dir ./evaluation-results --quick",
+    "eval:setup": "echo 'Set ANTHROPIC_API_KEY and E2B_API_KEY in your environment variables'"
   },
   "keywords": [
     "ai",
