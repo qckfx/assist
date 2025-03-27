@@ -312,6 +312,38 @@ See [frontend development guide](docs/web-server/frontend-development.md) for mo
 
 Visit [qckfx.com](https://qckfx.com) for a hosted version of qckfx, designed specifically for fixing GitHub issues asynchronously and fully-autonomously.
 
+## System Prompt Evaluation
+
+qckfx includes a framework for evaluating and comparing system prompts. This can be used to test different versions of system prompts against each other and measure their impact on the agent's performance.
+
+### Running Evaluations
+
+```bash
+# Run a full evaluation with all test cases
+npm run eval
+
+# Run a quick evaluation with a subset of test cases
+npm run eval:quick
+
+# List available test cases
+npm run eval:list
+```
+
+### How It Works
+
+The evaluation system:
+
+1. Runs each test case in an isolated E2B sandbox environment
+2. Executes the test with both the original and new system prompts
+3. Collects metrics like success rate, duration, token usage, and tool calls
+4. Generates a comprehensive comparison report in Markdown format
+
+### Adding Custom Test Cases
+
+You can add your own test cases by editing `src/eval/models/test-cases.ts`. Each test case includes a unique ID, name, instructions for the agent, and type.
+
+For more details, see the [Evaluation System Documentation](src/eval/README.md).
+
 ## License
 
 MIT
