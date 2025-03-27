@@ -13,6 +13,7 @@ import {
 } from '../types/model';
 import { ToolDescription } from '../types/registry';
 import { trackTokenUsage } from '../utils/TokenManager';
+import { createDefaultPromptManager, PromptManager } from './PromptManager';
 
 /**
  * Creates a client for interacting with the language model
@@ -25,6 +26,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
   }
   
   const modelProvider: ModelProvider = config.modelProvider;
+  const promptManager: PromptManager = config.promptManager || createDefaultPromptManager();
   
   return {
     /**
@@ -59,20 +61,9 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       // Format tools for Claude
       const claudeTools = this.formatToolsForClaude(toolDescriptions);
       
-      // Build conversation history from sessionState
-      const conversationHistory = sessionState.conversationHistory || [];
-      
-      // Create a system message with instructions about tool usage
-      const systemMessage = "You are an AI assistant that helps with codebase exploration. " +
-                 "Review previous tool calls before deciding what to do next. " +
-                 "Avoid repeating the same tool calls with the same parameters. " +
-                 "Pay close attention to tool parameter requirements. " +
-                 "When using tools, ensure all parameters match the expected types and formats. " +
-                 (sessionState.lastToolError ? 
-                   `In your last tool call to ${sessionState.lastToolError.toolId}, ` +
-                   `you encountered this error: "${sessionState.lastToolError.error}". ` +
-                   "Please correct your approach accordingly." : "") +
-                 "If a tool fails due to invalid arguments, carefully read the error message and fix your approach.";
+      // Get system message and temperature from the prompt manager
+      const systemMessage = promptManager.getSystemPrompt(sessionState);
+      const temperature = promptManager.getTemperature(sessionState);
       
       // Prepare the request for AnthropicProvider
       const request: ModelProviderRequest = {
@@ -81,8 +72,9 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         tool_choice: { type: "auto" },
         encourageToolUse: true,
         systemMessage: systemMessage,
+        temperature: temperature,
         // Pass the conversation history in a way AnthropicProvider can use
-        messages: conversationHistory
+        sessionState
       };
       
       // Call the model provider
@@ -145,26 +137,16 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       // Format tools for Claude
       const claudeTools = this.formatToolsForClaude(toolDescriptions);
       
+      // Get system message and temperature from the prompt manager
+      const systemMessage = promptManager.getSystemPrompt(sessionState);
+      const temperature = promptManager.getTemperature(sessionState);
+      
       const prompt: ModelProviderRequest = {
         tools: claudeTools,
-        messages: sessionState.conversationHistory,
-        responseType: 'user_message'
+        sessionState,
+        systemMessage,
+        temperature
       };
-      
-      // If there was a tool error, modify the prompt to include guidance
-      if (sessionState.lastToolError) {
-        prompt.errorGuidance = true;
-        prompt.toolErrorContext = {
-          toolId: sessionState.lastToolError.toolId,
-          error: sessionState.lastToolError.error,
-          args: sessionState.lastToolError.args
-        };
-      }
-      
-      // If this is an exploration session, encourage detailed responses
-      if (sessionState.isExplorationSession || sessionState.shouldExplore) {
-        prompt.encourageDetailedResponse = true;
-      }
       
       const response = await modelProvider(prompt);
       

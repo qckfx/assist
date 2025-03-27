@@ -4,6 +4,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { ToolDescription } from './registry';
+import { PromptManager } from '../core/PromptManager';
 
 export interface ToolCall {
   toolId: string;
@@ -51,22 +52,21 @@ export interface ModelProviderRequest {
   tools?: unknown[];
   tool_choice?: { type: string };
   encourageToolUse?: boolean;
-  systemMessage?: string;
-  messages?: Anthropic.Messages.MessageParam[];
-  responseType?: string;
-  errorGuidance?: boolean;
+  systemMessage: string;
+  temperature: number;
   toolErrorContext?: {
     toolId: string;
     error: string;
     args: Record<string, unknown>;
   };
-  encourageDetailedResponse?: boolean;
+  sessionState?: SessionState;
 }
 
 export type ModelProvider = (request: ModelProviderRequest) => Promise<Anthropic.Messages.Message>;
 
 export interface ModelClientConfig {
   modelProvider: ModelProvider;
+  promptManager?: PromptManager;
 }
 
 export interface ModelClient {
