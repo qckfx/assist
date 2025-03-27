@@ -16,6 +16,8 @@ export interface PermissionManagerConfig {
   };
   // Optional initial state for fast edit mode
   initialFastEditMode?: boolean;
+  // DANGER_MODE: Auto-approve all tool operations (use only in sandbox environments)
+  DANGER_MODE?: boolean;
 }
 
 export interface PermissionManager {
@@ -30,4 +32,9 @@ export interface PermissionManager {
   
   // Method to check if a tool should require permission
   shouldRequirePermission(toolId: string): boolean;
+  
+  // DANGER_MODE methods - use only in secure environments
+  enableDangerMode(): void;
+  disableDangerMode(): void;
+  isDangerModeEnabled(): boolean;
 }

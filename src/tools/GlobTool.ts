@@ -46,7 +46,7 @@ export const createGlobTool = (): Tool => {
   return createTool({
     id: 'glob',
     name: 'GlobTool',
-    description: '- Fast file pattern matching tool that works across the codebase\n- Searches for files based on name patterns (not content)\n- Supports powerful glob patterns for flexible matching\n- Provides options to filter results by type and attributes\n- Use this tool when you need to find files by name patterns\n- For searching file contents, use GrepTool instead\n\nUsage notes:\n- Glob patterns use wildcards to match filenames\n- Common patterns: \'**/*.js\' (all JS files), \'src/**/*.ts\' (all TS files in src)\n- Use the dot option to include hidden files (starting with \'.\')\n- Use nodir to exclude directories from results\n- Results are limited by maxResults to prevent overwhelming output\n- For complex multi-step file searches, consider using multiple tool calls',
+    description: '- Fast file pattern matching tool that works across the codebase\n- Searches for files based on name patterns (not content)\n- Supports powerful glob patterns for flexible matching\n- Provides options to filter results by type and attributes\n- Use this tool when you need to find files by name patterns\n- For searching file contents, use GrepTool instead\n\nUsage notes:\n- Glob patterns use wildcards to match filenames\n- Common patterns: \'**/*.js\' (all JS files), \'src/**/*.ts\' (all TS files in src)\n- Use the dot option to include hidden files (starting with \'.\')\n- Use nodir to exclude directories from results\n- Results are LIMITED TO MAX 100 FILES regardless of maxResults parameter\n- For large codebases, use more specific patterns to limit results\n- If you need to search comprehensively, make multiple targeted tool calls',
     requiresPermission: false, // Finding files is generally safe
     category: ToolCategory.READONLY,
     
@@ -105,7 +105,7 @@ export const createGlobTool = (): Tool => {
           absolute: true, // Return absolute paths
           nosort: false, // Sort the results
           silent: true, // Don't throw on permission errors etc.
-          limit: maxResults // Limit number of results
+          limit: Math.min(maxResults, 100) // Hard cap at 100 results to prevent context overflow
         };
         
         // Execute the glob

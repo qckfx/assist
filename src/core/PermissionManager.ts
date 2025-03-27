@@ -25,6 +25,9 @@ export const createPermissionManager = (
   // Fast Edit Mode state - when enabled, file operations don't require permission
   let fastEditMode = config.initialFastEditMode || false;
   
+  // DANGER_MODE - when enabled, all tools are auto-approved (use only in sandbox environments)
+  let dangerMode = config.DANGER_MODE || false;
+  
   // UI handler for requesting permissions
   const uiHandler: UIHandler = config.uiHandler || {
     async requestPermission(toolId: string, args: Record<string, unknown>): Promise<boolean> {
@@ -51,6 +54,12 @@ export const createPermissionManager = (
      * @returns Whether permission was granted
      */
     async requestPermission(toolId: string, args: Record<string, unknown>): Promise<boolean> {
+      // When DANGER_MODE is enabled, auto-approve everything
+      if (dangerMode) {
+        logger?.info(`DANGER_MODE enabled, auto-approving tool: ${toolId}`, LogCategory.PERMISSIONS);
+        return true;
+      }
+      
       const tool = toolRegistry.getTool(toolId);
       
       // Handle unknown tools - require permission by default
@@ -120,6 +129,11 @@ export const createPermissionManager = (
      * @returns Whether the tool should require permission
      */
     shouldRequirePermission(toolId: string): boolean {
+      // When DANGER_MODE is enabled, no tools require permission
+      if (dangerMode) {
+        return false;
+      }
+      
       const tool = toolRegistry.getTool(toolId);
       
       // If we don't know the tool, require permission by default
@@ -144,6 +158,31 @@ export const createPermissionManager = (
       
       // Default to the tool's own requiresPermission value
       return tool.requiresPermission;
+    },
+    
+    /**
+     * Enable DANGER_MODE - auto-approves all tool operations
+     * ONLY use this in secure sandbox environments
+     */
+    enableDangerMode(): void {
+      dangerMode = true;
+      logger?.warn('DANGER_MODE enabled - all tools will be auto-approved', LogCategory.PERMISSIONS);
+    },
+    
+    /**
+     * Disable DANGER_MODE
+     */
+    disableDangerMode(): void {
+      dangerMode = false;
+      logger?.info('DANGER_MODE disabled', LogCategory.PERMISSIONS);
+    },
+    
+    /**
+     * Check if DANGER_MODE is enabled
+     * @returns Whether DANGER_MODE is enabled
+     */
+    isDangerModeEnabled(): boolean {
+      return dangerMode;
     }
   };
 };

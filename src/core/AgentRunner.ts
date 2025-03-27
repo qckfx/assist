@@ -98,7 +98,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         let currentQuery = query;
         const toolResults: ToolResultEntry[] = [];
         let finalResponse = null;
-        const maxIterations = 15; // Prevent infinite loops
+        // When danger mode is enabled, use a higher iterations limit
+        const maxIterations = permissionManager.isDangerModeEnabled() ? 40 : 15;
         let iterations = 0;
         
         // Initialize conversation history if it doesn't exist
