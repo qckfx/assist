@@ -96,10 +96,9 @@ export const createFileEditTool = (): Tool => {
       const encoding = args.encoding as string || 'utf8';
 
       const executionAdapter = context.executionAdapter;
-      const { editFile } = executionAdapter;
-
+      
       try {
-        return await editFile(filePath, searchCode, replaceCode, encoding);
+        return await executionAdapter.editFile(filePath, searchCode, replaceCode, encoding);
       } catch (error: unknown) {
         const err = error as Error;
         context.logger?.error(`Error editing file: ${err.message}`);
