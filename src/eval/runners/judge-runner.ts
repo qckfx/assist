@@ -3,13 +3,18 @@
  */
 
 import { JudgmentResult, AgentExecutionHistory } from '../models/types';
-import { createJudgingPrompt, getJudgeSystemPrompt } from '../utils/judge-prompts';
+import { createJudgingPrompt } from '../utils/judge-prompts';
 import { createLogger, LogLevel } from '../../utils/logger';
 
 // Create a logger for the judge runner
 const logger = createLogger({
   level: LogLevel.INFO,
-  prefix: 'JudgeRunner'
+  prefix: 'JudgeRunner',
+  formatOptions: {
+    showTimestamp: true,
+    showPrefix: true,
+    colors: true
+  }
 });
 
 /**
@@ -28,6 +33,7 @@ export interface ModelProvider {
 export interface ProcessQueryOptions {
   temperature?: number;
   maxTokens?: number;
+  systemPrompt?: string;
   [key: string]: any;
 }
 
@@ -180,7 +186,7 @@ export async function runJudge(
     logger.info('Running AI judge evaluation');
     const result = await modelProvider.processQuery(prompt, {
       temperature: 0.2,  // Low temperature for more consistent judgments
-      maxTokens: 2000,   // Ensure enough tokens for detailed analysis
+      maxTokens: 4000,   // Ensure enough tokens for detailed analysis
     });
     
     // Process the response

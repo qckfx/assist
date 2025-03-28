@@ -10,7 +10,7 @@
 
 import path from 'path';
 import fs from 'fs';
-import { LogLevel, LogCategory, createLogger } from '../../utils/logger';
+import { LogLevel, LogCategory, createLogger, Logger } from '../../utils/logger';
 import { EvaluationConfig, MetricsData, PromptComparisonResult, TestCase } from '../models/types';
 import { runTestCase } from './test-runner';
 import { initializeSandbox, cleanupSandbox, resetSandbox } from '../utils/sandbox';
@@ -44,7 +44,7 @@ export async function runEvaluation(config: Partial<EvaluationConfig> = {}): Pro
   }
 
   // Create a logger for the evaluation
-  const logger = createLogger({ 
+  const logger: Logger = createLogger({ 
     level: LogLevel.INFO,
     prefix: 'Evaluation'
   });

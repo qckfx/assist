@@ -7,6 +7,7 @@ import { createModelClient } from '../../core/ModelClient';
 import { createToolRegistry } from '../../core/ToolRegistry';
 import { createPermissionManager } from '../../core/PermissionManager';
 import { createAnthropicProvider } from '../../providers/AnthropicProvider';
+import { PromptManager } from '../../core/PromptManager';
 import { LogLevel, LogCategory, createLogger } from '../../utils/logger';
 import { TestCase, MetricsData, SystemPromptConfig, AgentExecutionHistory, TestRunWithHistory } from '../models/types';
 import { E2BExecutionAdapter } from '../../utils/E2BExecutionAdapter';
@@ -18,6 +19,7 @@ import { createFileReadTool } from '../../tools/FileReadTool';
 import { createFileEditTool } from '../../tools/FileEditTool';
 import { createFileWriteTool } from '../../tools/FileWriteTool';
 import { extractExecutionHistory } from '../utils/execution-history';
+import { ModelProvider } from '../../types';
 
 /**
  * Run a single test case with the given system prompt
@@ -38,6 +40,13 @@ export async function runTestCase(
   const logger = createLogger({ 
     level: LogLevel.INFO,
     prefix: `Test ${testCase.id}`
+  });
+  
+  // Set context information for the test run
+  logger.setContext({
+    testId: testCase.id,
+    testName: testCase.name,
+    promptName: systemPrompt.name
   });
   
   // Set the base path for sandbox environment
@@ -110,17 +119,17 @@ export async function runTestCase(
   // Set up tool event listeners to count approved tool calls
   const startListener = toolRegistry.onToolExecutionStart(() => {
     toolCalls++;
-    console.log(`Tool call count increased to ${toolCalls}`);
+    logger.info(`Tool call count increased to ${toolCalls}`);
   });
   
   // Also count completed tool calls in case any fail
   const completeListener = toolRegistry.onToolExecutionComplete((toolId) => {
-    console.log(`Tool ${toolId} executed successfully`);
+    logger.info(`Tool ${toolId} executed successfully`);
   });
   
   // Also count error calls
   const errorListener = toolRegistry.onToolExecutionError((toolId, args, error) => {
-    console.log(`Tool ${toolId} failed with error: ${error.message}`);
+    logger.error(`Tool ${toolId} failed with error: ${error.message}`);
   });
   
   try {
@@ -189,11 +198,8 @@ export async function runTestCase(
 export async function runTestCaseWithHistory(
   testCase: TestCase,
   sandbox: E2BExecutionAdapter,
-  modelProvider: any,
-  options: {
-    systemPrompt?: string;
-    model?: string;
-  } = {}
+  modelProvider: ModelProvider,
+  promptManager: PromptManager,
 ): Promise<TestRunWithHistory> {
   console.log(`Running test case with history: ${testCase.name}`);
   
@@ -203,13 +209,12 @@ export async function runTestCaseWithHistory(
     prefix: `Test ${testCase.id}`
   });
   
-  // Create a system prompt config from the provided options
-  const systemPromptConfig: SystemPromptConfig = {
-    name: 'test-run-prompt',
-    systemPrompt: options.systemPrompt || '',
-    model: options.model || 'claude-3-7-sonnet-20250219',
-    apiKey: process.env.ANTHROPIC_API_KEY || ''
-  };
+  // Set context information for the test run
+  logger.setContext({
+    testId: testCase.id,
+    testName: testCase.name,
+    modelName: (modelProvider as any).model || 'unknown-model'
+  });
   
   // Initialize the tool registry
   const toolRegistry = createToolRegistry();
@@ -236,7 +241,8 @@ export async function runTestCaseWithHistory(
   permissionManager.enableDangerMode();
   
   const modelClient = createModelClient({
-    modelProvider
+    modelProvider,
+    promptManager
   });
   
   // Create the agent runner
@@ -262,15 +268,15 @@ export async function runTestCaseWithHistory(
   // Set up tool event listeners
   const startListener = toolRegistry.onToolExecutionStart(() => {
     toolCalls++;
-    console.log(`Tool call count increased to ${toolCalls}`);
+    logger.info(`Tool call count increased to ${toolCalls}`);
   });
   
   const completeListener = toolRegistry.onToolExecutionComplete((toolId) => {
-    console.log(`Tool ${toolId} executed successfully`);
+    logger.info(`Tool ${toolId} executed successfully`);
   });
   
   const errorListener = toolRegistry.onToolExecutionError((toolId, args, error) => {
-    console.log(`Tool ${toolId} failed with error: ${error.message}`);
+    logger.error(`Tool ${toolId} failed with error: ${error.message}`);
   });
   
   try {
@@ -310,13 +316,26 @@ export async function runTestCaseWithHistory(
       notes = testCase.notes(result.result);
     }
     
-    // Extract execution history
-    const executionHistory = extractExecutionHistory(result, testCase.instructions);
+    // Extract execution history with run and model information
+    const executionHistory = extractExecutionHistory(
+      result, 
+      testCase.instructions,
+      {
+        runInfo: {
+          testId: testCase.id,
+          testName: testCase.name
+        },
+        configInfo: {
+          promptName: testCase.name,
+          modelName: (modelProvider as any).model || 'unknown-model'
+        }
+      }
+    );
     
     // Create metrics
     const metrics: MetricsData = {
       testCase: testCase.name,
-      promptName: systemPromptConfig.name,
+      promptName: testCase.name,
       duration,
       toolCalls,
       tokenUsage,
@@ -336,7 +355,7 @@ export async function runTestCaseWithHistory(
     const duration = (Date.now() - startTime) / 1000;
     const metrics: MetricsData = {
       testCase: testCase.name,
-      promptName: systemPromptConfig.name,
+      promptName: testCase.name,
       duration,
       toolCalls,
       tokenUsage,

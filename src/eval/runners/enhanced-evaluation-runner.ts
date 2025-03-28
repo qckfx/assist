@@ -21,7 +21,8 @@ import {
 import { createLogger, LogLevel } from '../../utils/logger';
 import { ModelProvider, ProcessQueryOptions } from './judge-runner';
 import path from 'path';
-import fs from 'fs';
+import { createPromptManager } from '../../core/PromptManager';
+import { MessageParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs';
 
 // Create a logger specifically for the enhanced evaluation runner
 const logger = createLogger({
@@ -43,12 +44,14 @@ class AnthropicProviderAdapter implements ModelProvider {
   async processQuery(prompt: string, options: ProcessQueryOptions = {}) {
     try {
       // Adapt the provider to the ModelProvider interface
+      const userMessage: MessageParam = { role: 'user', content: [{ type: 'text', text: prompt }] };
+      
       const response = await this.provider({
-        messages: [
-          { role: 'user', content: [{ type: 'text', text: prompt }] }
-        ],
-        systemMessage: options.systemPrompt,
-        responseType: 'tool_use'
+        systemMessage: options.systemPrompt || "You are an expert AI evaluator and judge.",
+        temperature: 0.1, // Lower temperature for more consistent judging
+        sessionState: {
+          conversationHistory: [userMessage]
+        }
       });
 
       // Extract the text content from the response
@@ -178,6 +181,7 @@ export async function runEnhancedEvaluation(
   await sandboxPool.waitForInitialization();
   
   const allRuns: TestRunWithHistory[] = [];
+  const promptManager = createPromptManager(judgeSystemPrompt || "You are an expert AI evaluator and judge.", 0.1);
   
   try {
     // Create a flat list of all test runs to execute
@@ -198,12 +202,12 @@ export async function runEnhancedEvaluation(
             logger.info(`Running test "${testName}" (run ${runIndex + 1}/${runsPerTest})`);
             
             // Run the test case and collect execution history
-            const run = await runTestCaseWithHistory(testCase, sandboxInfo.executionAdapter, modelProvider);
+            const run = await runTestCaseWithHistory(testCase, sandboxInfo.executionAdapter, modelProvider, promptManager);
             
             // Store the execution history
             const executionId = storageService.storeExecutionHistory(run.executionHistory, {
               runId,
-              testName,
+              testName
             });
             
             // Return a function to run the judge on the same sandbox
@@ -263,7 +267,7 @@ export async function runEnhancedEvaluation(
             
             try {
               // Run the test case and collect execution history
-              const run = await runTestCaseWithHistory(testCase, sandbox, modelProvider);
+              const run = await runTestCaseWithHistory(testCase, sandbox, modelProvider, promptManager);
               
               // Store the execution history
               const executionId = storageService.storeExecutionHistory(run.executionHistory, {

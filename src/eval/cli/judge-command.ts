@@ -11,7 +11,7 @@ import { createAnthropicProvider } from '../../providers/AnthropicProvider';
 import { runJudge, JudgeOptions } from '../runners/judge-runner';
 import { loadExampleByCategory } from '../models/evaluation-examples';
 import { generateReport } from '../utils/metrics';
-
+import { MessageParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs';
 /**
  * Sets up the judge command
  * @param evalCommand The parent eval command
@@ -68,7 +68,7 @@ export function setupJudgeCommand(evalCommand: Command): void {
         console.log(chalk.blue('Running AI judge evaluation...'));
         
         // Set up examples if requested
-        let judgeOptions: JudgeOptions = {};
+        const judgeOptions: JudgeOptions = {};
         
         if (options.examples) {
           const category = options.category || 'file-search';
@@ -115,16 +115,20 @@ export function setupJudgeCommand(evalCommand: Command): void {
                 // Map to AnthropicProvider format
                 // We need to adapt the AnthropicProvider (which expects ModelProviderRequest)
                 // to the judge's ModelProvider interface (which expects a simple prompt string)
+                // Map the user prompt to a proper session state
+                const userMessage: MessageParam = { 
+                  role: "user", 
+                  content: [
+                    { type: "text", text: prompt }
+                  ]
+                };
+
                 const result = await modelProvider({
-                  messages: [
-                    { 
-                      role: "user", 
-                      content: [
-                        { type: "text", text: prompt }
-                      ]
-                    }
-                  ],
-                  systemMessage: "You are a judge evaluating an AI agent's performance. Provide detailed feedback on strengths and weaknesses."
+                  systemMessage: "You are a judge evaluating an AI agent's performance. Provide detailed feedback on strengths and weaknesses.",
+                  temperature: 0.1, // Lower temperature for more consistent judging
+                  sessionState: {
+                    conversationHistory: [userMessage]
+                  }
                 });
                 
                 // Find the text content in the response

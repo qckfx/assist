@@ -37,11 +37,11 @@ export async function initializeSandbox(logger?: Logger): Promise<{
     }
     
     // Create the sandbox using the default template with a longer timeout
-    const sandbox = await Sandbox.create('base', { timeoutMs: 300000 });
+    const sandbox = await Sandbox.create('base', { timeoutMs: 600000 });
     const sandboxId = sandbox.sandboxId;
     
     // Define command options with longer timeout
-    const cmdOpts = { timeoutMs: 300000 };
+    const cmdOpts = { timeoutMs: 600000 };
 
     // Verify sandbox is ready
     const result = await sandbox.commands.run('echo "Sandbox initialized"', cmdOpts);
@@ -145,7 +145,7 @@ export async function resetSandbox(sandboxId: string, logger?: Logger): Promise<
     log.info('Fast resetting repository state...', LogCategory.SYSTEM);
     
     // Set longer timeout for git operations 
-    const options = { timeoutMs: 30000 };
+    const options = { timeoutMs: 600000 };
     
     // Hard reset and clean working directory
     const resetResult = await sandbox.commands.run(`cd ${appDir} && git reset --hard 29e5c28 && git clean -fdx`, options);
@@ -154,7 +154,7 @@ export async function resetSandbox(sandboxId: string, logger?: Logger): Promise<
     }
 
     // Refresh sandbox timeout
-    await sandbox.setTimeout(300000); // 5 minutes timeout for sandbox operations
+    await sandbox.setTimeout(600000); // 10 minutes timeout for sandbox operations
     
     // Reset the environment variable for SANDBOX_ROOT
     process.env.SANDBOX_ROOT = appDir;

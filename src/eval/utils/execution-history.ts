@@ -10,7 +10,20 @@ import { ProcessQueryResult } from '../../types/agent';
  */
 export function extractExecutionHistory(
   result: ProcessQueryResult,
-  taskDescription?: string
+  taskDescription?: string,
+  options?: {
+    runInfo?: {
+      runId?: string;
+      testId?: string;
+      testName?: string;
+    },
+    configInfo?: {
+      configId?: string;
+      configName?: string;
+      modelName?: string;
+      promptName?: string;
+    }
+  }
 ): AgentExecutionHistory {
   // Extract tool calls from the result
   const toolCalls: ToolCallRecord[] = [];
@@ -31,13 +44,16 @@ export function extractExecutionHistory(
   let metadata: ExecutionMetadata | undefined;
   if (taskDescription) {
     metadata = {
-      task: taskDescription
+      task: taskDescription,
+      runInfo: options?.runInfo,
+      configInfo: options?.configInfo
     };
   }
   
   return {
     metadata,
-    toolCalls
+    toolCalls,
+    response: result.response // Include the agent's final response
   };
 }
 
@@ -75,8 +91,34 @@ export function formatExecutionHistoryForJudge(history: AgentExecutionHistory): 
     formattedHistory += `### Task\n${history.metadata.task}\n\n`;
   }
   
+  // Add run info if available
+  if (history.metadata?.runInfo) {
+    const runInfo = history.metadata.runInfo;
+    formattedHistory += `### Run Information\n`;
+    if (runInfo.runId) formattedHistory += `Run ID: ${runInfo.runId}\n`;
+    if (runInfo.testId) formattedHistory += `Test ID: ${runInfo.testId}\n`;
+    if (runInfo.testName) formattedHistory += `Test Name: ${runInfo.testName}\n`;
+    formattedHistory += `\n`;
+  }
+  
+  // Add configuration info if available
+  if (history.metadata?.configInfo) {
+    const configInfo = history.metadata.configInfo;
+    formattedHistory += `### Configuration\n`;
+    if (configInfo.configId) formattedHistory += `Config ID: ${configInfo.configId}\n`;
+    if (configInfo.configName) formattedHistory += `Config Name: ${configInfo.configName}\n`;
+    if (configInfo.modelName) formattedHistory += `Model: ${configInfo.modelName}\n`;
+    if (configInfo.promptName) formattedHistory += `Prompt: ${configInfo.promptName}\n`;
+    formattedHistory += `\n`;
+  }
+  
+  // Add the agent's final response first if available (to emphasize its importance)
+  if (history.response) {
+    formattedHistory += `### Agent Final Response (PRIMARY OUTPUT TO EVALUATE)\n${history.response}\n\n`;
+  }
+  
   // Add tool call sequence heading
-  formattedHistory += `### Tool Call Sequence\n`;
+  formattedHistory += `### Tool Call Sequence (Agent's Thinking Process)\n`;
   
   if (history.toolCalls.length === 0) {
     formattedHistory += 'No tool calls were made during execution.\n\n';
@@ -90,6 +132,11 @@ export function formatExecutionHistoryForJudge(history: AgentExecutionHistory): 
       // Add timing information if available
       if (tc.startTime && tc.endTime) {
         formattedHistory += `**Execution Time:** ${formatTimeDifference(tc.startTime, tc.endTime)}\n`;
+      }
+      
+      // Add special highlight for code writing tools
+      if (tc.tool === 'Edit' || tc.tool === 'Replace' || tc.tool === 'FileEditTool' || tc.tool === 'FileWriteTool') {
+        formattedHistory += `**NOTE: This is a CODE WRITING action (important for evaluation)**\n`;
       }
     });
   }

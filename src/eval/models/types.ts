@@ -157,6 +157,33 @@ export interface ExecutionMetadata {
   
   /** Additional notes about the execution */
   notes?: string;
+  
+  /** Information about the test run */
+  runInfo?: {
+    /** Unique ID for the test run */
+    runId?: string;
+    
+    /** Test case ID */
+    testId?: string;
+    
+    /** Test case name */
+    testName?: string;
+  };
+  
+  /** Information about the agent configuration */
+  configInfo?: {
+    /** Configuration ID */
+    configId?: string;
+    
+    /** Configuration name */
+    configName?: string;
+    
+    /** Model name used */
+    modelName?: string;
+    
+    /** Prompt name */
+    promptName?: string;
+  };
 }
 
 /**
@@ -168,6 +195,9 @@ export interface AgentExecutionHistory {
   
   /** The tool calls made during execution */
   toolCalls: ToolCallRecord[];
+
+  /** The agent's final response text */
+  response?: string;
 }
 
 /**

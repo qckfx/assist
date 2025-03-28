@@ -6,12 +6,12 @@
  */
 
 import { Sandbox } from 'e2b';
-import { createLogger, LogLevel, LogCategory } from '../../utils/logger';
+import { createLogger, LogLevel, LogCategory, Logger } from '../../utils/logger';
 import { E2BExecutionAdapter } from '../../utils/E2BExecutionAdapter';
 import { initializeSandbox } from './sandbox';
 
 // Create a logger for the sandbox pool
-const logger = createLogger({
+const logger: Logger = createLogger({
   level: LogLevel.INFO,
   prefix: 'SandboxPool'
 });
