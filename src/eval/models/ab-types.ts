@@ -29,6 +29,13 @@ export interface AgentConfiguration {
     [key: string]: any;
   };
   
+  /**
+   * Optional array of tool IDs that this agent configuration has access to.
+   * If not provided, the agent will have access to all registered tools.
+   * Example: ["bash", "glob", "grep", "ls", "view", "edit"]
+   */
+  availableTools?: string[];
+  
   /** Additional metadata about this configuration */
   metadata?: Record<string, any>;
 }
