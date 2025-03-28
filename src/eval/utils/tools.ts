@@ -13,7 +13,6 @@ import { createGlobTool } from '../../tools/GlobTool';
 import { createGrepTool } from '../../tools/GrepTool';
 import { createLSTool } from '../../tools/LSTool';
 import { createThinkTool } from '../../tools/ThinkTool';
-import { createScratchpadTool } from '../../tools/ScratchpadTool';
 import { Logger, createLogger, LogLevel } from '../../utils/logger';
 
 // Create a logger for tool operations
@@ -35,7 +34,6 @@ export function createAllTools(): Tool[] {
     createGlobTool(),
     createGrepTool(),
     createLSTool(),
-    createScratchpadTool(),
     createThinkTool()
   ];
 }
@@ -51,7 +49,6 @@ export const TOOL_NAMES: Record<string, string> = {
   'glob': 'Glob',
   'grep': 'Grep',
   'ls': 'LS',
-  'scratchpad': 'Scratchpad',
   'think': 'Think'
 };
 
