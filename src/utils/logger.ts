@@ -1,42 +1,14 @@
 /**
- * Log levels in order of increasing verbosity
+ * Logger implementation
  */
-export enum LogLevel {
-  SILENT = 'silent',
-  ERROR = 'error',
-  WARN = 'warn',
-  INFO = 'info',
-  DEBUG = 'debug'
-}
+
+import { LogCategory, LogLevel, LoggerOptions } from '../types/logger';
+
+export { LogCategory, LogLevel, LoggerOptions };
 
 /**
- * Log categories for better filtering
+ * Logger class for application logging
  */
-export enum LogCategory {
-  SYSTEM = 'system',
-  TOOLS = 'tools',
-  MODEL = 'model',
-  PERMISSIONS = 'permissions',
-  USER_INTERACTION = 'user',
-  UI = 'ui',
-  STATIC = 'static'
-}
-
-export interface LoggerOptions {
-  level: LogLevel;
-  prefix?: string;
-  silent?: boolean;
-  formatOptions?: {
-    showTimestamp?: boolean;
-    showPrefix?: boolean;
-    colors?: boolean;
-  };
-  /**
-   * Categories to include in logs (if not specified, all categories are included)
-   */
-  enabledCategories?: LogCategory[];
-}
-
 export class Logger {
   private level: LogLevel;
   private prefix: string;
@@ -47,6 +19,7 @@ export class Logger {
     colors: boolean;
   };
   private enabledCategories?: LogCategory[];
+  private contextInfo: Record<string, string> = {};
 
   constructor(options: LoggerOptions) {
     this.level = options.level;
@@ -59,6 +32,14 @@ export class Logger {
     };
     this.enabledCategories = options.enabledCategories;
   }
+  
+  /**
+   * Set context information for this logger
+   * Useful for adding details like test ID, config name, etc.
+   */
+  setContext(context: Record<string, string>): void {
+    this.contextInfo = {...this.contextInfo, ...context};
+  }
 
   /**
    * Format a log message with optional timestamp and styling
@@ -66,7 +47,16 @@ export class Logger {
   private format(level: string, message: string): string {
     const timestamp = this.formatOptions.showTimestamp ? `[${new Date().toISOString()}] ` : '';
     const prefix = this.formatOptions.showPrefix && this.prefix ? `${this.prefix} ` : '';
-    return `${timestamp}${prefix}[${level}] ${message}`;
+    
+    // Add context information if available
+    let contextStr = '';
+    if (Object.keys(this.contextInfo).length > 0) {
+      contextStr = Object.entries(this.contextInfo)
+        .map(([key, value]) => `[${key}:${value}]`)
+        .join(' ') + ' ';
+    }
+    
+    return `${timestamp}${prefix}${contextStr}[${level}] ${message}`;
   }
 
   /**
@@ -95,22 +85,7 @@ export class Logger {
     return levels[this.level] >= levels[messageLevel];
   }
 
-  /**
-   * Log a debug message
-   * @param message - The message to log
-   * @param args - Additional arguments to log
-   */
-  debug(message: string, ...args: unknown[]): void;
-
-  /**
-   * Log a debug message with category
-   * @param message - The message to log
-   * @param category - Category for filtering
-   * @param args - Additional arguments to log
-   */
-  debug(message: string, category: LogCategory, ...args: unknown[]): void;
-
-  // Implementation that handles both overloads
+  // Implementation for overloaded debug method
   debug(message: string, categoryOrArg?: LogCategory | unknown, ...args: unknown[]): void {
     let category = LogCategory.SYSTEM;
     let logArgs: unknown[] = [];
@@ -130,22 +105,7 @@ export class Logger {
     }
   }
 
-  /**
-   * Log an info message
-   * @param message - The message to log
-   * @param args - Additional arguments to log
-   */
-  info(message: string, ...args: unknown[]): void;
-
-  /**
-   * Log an info message with category
-   * @param message - The message to log
-   * @param category - Category for filtering
-   * @param args - Additional arguments to log
-   */
-  info(message: string, category: LogCategory, ...args: unknown[]): void;
-
-  // Implementation that handles both overloads
+  // Implementation for overloaded info method
   info(message: string, categoryOrArg?: LogCategory | unknown, ...args: unknown[]): void {
     let category = LogCategory.SYSTEM;
     let logArgs: unknown[] = [];
@@ -165,22 +125,7 @@ export class Logger {
     }
   }
 
-  /**
-   * Log a warning message
-   * @param message - The message to log
-   * @param args - Additional arguments to log
-   */
-  warn(message: string, ...args: unknown[]): void;
-
-  /**
-   * Log a warning message with category
-   * @param message - The message to log
-   * @param category - Category for filtering
-   * @param args - Additional arguments to log
-   */
-  warn(message: string, category: LogCategory, ...args: unknown[]): void;
-
-  // Implementation that handles both overloads
+  // Implementation for overloaded warn method
   warn(message: string, categoryOrArg?: LogCategory | unknown, ...args: unknown[]): void {
     let category = LogCategory.SYSTEM;
     let logArgs: unknown[] = [];
@@ -200,40 +145,30 @@ export class Logger {
     }
   }
 
-  /**
-   * Log an error message
-   * @param message - The message to log
-   * @param error - Optional error object to log
-   */
-  error(message: string, error?: Error | unknown): void;
-
-  /**
-   * Log an error message with category
-   * @param message - The message to log
-   * @param error - Optional error object to log
-   * @param category - Category for filtering
-   */
-  error(message: string, error: Error | unknown, category: LogCategory): void;
-
-  // Implementation that handles both overloads
-  error(message: string, errorOrCategory?: Error | unknown | LogCategory, categoryOrNothing?: LogCategory): void {
-    let error: Error | unknown | undefined;
+  // Implementation for overloaded error method
+  error(message: string, errorOrCategory?: unknown, categoryOrData?: unknown): void {
+    let error: unknown | undefined;
     let category = LogCategory.SYSTEM;
+    let data: unknown | undefined;
 
     if (errorOrCategory !== undefined) {
-      if (Object.values(LogCategory).includes(errorOrCategory as LogCategory) && categoryOrNothing === undefined) {
+      if (Object.values(LogCategory).includes(errorOrCategory as LogCategory) && categoryOrData === undefined) {
         category = errorOrCategory as LogCategory;
       } else {
         error = errorOrCategory;
-        if (categoryOrNothing !== undefined) {
-          category = categoryOrNothing;
+        if (categoryOrData !== undefined) {
+          if (Object.values(LogCategory).includes(categoryOrData as LogCategory)) {
+            category = categoryOrData as LogCategory;
+          } else {
+            data = categoryOrData;
+          }
         }
       }
     }
 
     if (this.shouldLog(LogLevel.ERROR, category)) {
       const categoryPrefix = category ? `[${category}] ` : '';
-      console.error(this.format('ERROR', `${categoryPrefix}${message}`));
+      console.error(this.format('ERROR', `${categoryPrefix}${message} ${data ? JSON.stringify(data) : ''}`));
       if (error && this.level === LogLevel.DEBUG) {
         console.error(error);
       }
