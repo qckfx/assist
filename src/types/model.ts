@@ -5,6 +5,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ToolDescription } from './registry';
 import { PromptManager } from '../core/PromptManager';
+import { Logger } from '../utils/logger';
 
 export interface ToolCall {
   toolId: string;
@@ -73,4 +74,13 @@ export interface ModelClient {
   formatToolsForClaude(toolDescriptions: ToolDescription[]): unknown[];
   getToolCall(query: string, toolDescriptions: ToolDescription[], sessionState?: SessionState): Promise<ToolCallResponse>;
   generateResponse(query: string, toolDescriptions: ToolDescription[], sessionState?: SessionState): Promise<Anthropic.Messages.Message>;
+}
+
+// TokenManager interface for conversation compression
+export interface TokenManager {
+  manageConversationSize: (
+    sessionState: SessionState, 
+    maxTokens: number,
+    logger?: Logger
+  ) => void;
 }

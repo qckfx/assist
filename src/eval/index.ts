@@ -13,7 +13,6 @@ dotenv.config();
 import { Command } from 'commander';
 import { testCases } from './models/test-cases';
 import { setupABCommand } from './runners/ab/cli';
-import path from 'path';
 
 // Create a command line interface
 const program = new Command();
