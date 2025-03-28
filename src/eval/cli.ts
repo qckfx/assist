@@ -11,6 +11,7 @@ import chalk from 'chalk';
 import { ABEvaluationOptions } from './models/ab-types';
 import { runABEvaluation } from './runners/ab-runner';
 import { testCases, getQuickTestCases } from './models/test-cases';
+import { getToolFriendlyName } from './utils/tools';
 
 /**
  * Setup the evaluation CLI
@@ -98,6 +99,38 @@ export function setupEvalCLI(): Command {
         console.log(chalk.green(`A/B evaluation completed successfully!`));
         console.log(chalk.green(`Total runs: ${result.runs.length}`));
         console.log(chalk.green(`Report: ${path.join(result.outputDir, 'ab-report.md')}`));
+        
+        // Print tool usage summary if available
+        if (result.toolUsageAnalysis) {
+          console.log(chalk.blue.bold(`\nTool Usage Summary:`));
+          
+          const usageA = result.toolUsageAnalysis[config.configA.id];
+          const usageB = result.toolUsageAnalysis[config.configB.id];
+          
+          if (usageA && usageB) {
+            console.log(`${config.configA.name}: ${usageA.avgTotal.toFixed(1)} tools/run (${usageA.avgUniqueTools.toFixed(1)} unique)`);
+            console.log(`${config.configB.name}: ${usageB.avgTotal.toFixed(1)} tools/run (${usageB.avgUniqueTools.toFixed(1)} unique)`);
+            
+            // Show top 3 tools by usage for each config
+            const topToolsA = Object.entries(usageA.avgCounts)
+              .sort(([, countA], [, countB]) => countB - countA)
+              .slice(0, 3);
+              
+            const topToolsB = Object.entries(usageB.avgCounts)
+              .sort(([, countA], [, countB]) => countB - countA)
+              .slice(0, 3);
+            
+            if (topToolsA.length > 0) {
+              console.log(`\n${config.configA.name} top tools: ${topToolsA.map(([tool, count]) => 
+                `${getToolFriendlyName(tool)} (${count.toFixed(1)})`).join(', ')}`);
+            }
+            
+            if (topToolsB.length > 0) {
+              console.log(`${config.configB.name} top tools: ${topToolsB.map(([tool, count]) => 
+                `${getToolFriendlyName(tool)} (${count.toFixed(1)})`).join(', ')}`);
+            }
+          }
+        }
         
         // Display summary if judging was enabled
         if (abOptions.enableJudge && result.averageJudgment) {

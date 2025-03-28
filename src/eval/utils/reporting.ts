@@ -6,6 +6,11 @@ import fs from 'fs';
 import path from 'path';
 import { ABTestRunWithHistory, ConfigurationComparison } from '../models/ab-types';
 import { createJudgeModelProvider } from './model-provider';
+import { 
+  analyzeAggregateToolUsage, 
+  generateToolUsageComparisonTable,
+  generateToolPatternsSection
+} from './tool-analysis';
 
 /**
  * Generate a comprehensive A/B testing report
@@ -270,46 +275,20 @@ function generateToolUsageSection(data: {
   const runsA = data.configA.runs || [];
   const runsB = data.configB.runs || [];
   
-  // Analyze tool usage
-  const toolUsageA = analyzeToolUsage(runsA);
-  const toolUsageB = analyzeToolUsage(runsB);
-  
-  // Combine all tool IDs
-  const allTools = new Set([
-    ...Object.keys(toolUsageA),
-    ...Object.keys(toolUsageB)
-  ]);
+  // Analyze tool usage for each configuration
+  const toolUsageA = analyzeAggregateToolUsage(runsA);
+  const toolUsageB = analyzeAggregateToolUsage(runsB);
   
   // Skip if no tools were used
-  if (allTools.size === 0) {
+  if (Object.keys(toolUsageA.avgCounts).length === 0 && Object.keys(toolUsageB.avgCounts).length === 0) {
     return '';
   }
   
-  let section = `### Tool Usage Comparison\n\n`;
-  section += `This section compares how the two configurations used available tools. The numbers represent the average number of times each tool was used per test run.\n\n`;
-  
-  section += `| Tool | ${data.configA.name} | ${data.configB.name} | Difference |\n`;
-  section += `|------|-----------------|-----------------|------------|\n`;
-  
-  // Add rows for each tool
-  for (const tool of Array.from(allTools).sort()) {
-    const usageA = toolUsageA[tool] || 0;
-    const usageB = toolUsageB[tool] || 0;
-    const rawDiff = usageB - usageA;
-    const diff = rawDiff.toFixed(2);
-    
-    // Calculate percentage change, handling division by zero
-    let percentChange = '';
-    if (usageA > 0) {
-      const percent = (rawDiff / usageA) * 100;
-      percentChange = ` (${percent > 0 ? '+' : ''}${percent.toFixed(1)}%)`;
-    }
-    
-    section += `| ${getToolFriendlyName(tool)} | ${usageA.toFixed(2)} | ${usageB.toFixed(2)} | ${diff}${percentChange} |\n`;
-  }
+  let section = `\n## Tool Usage Analysis\n\n`;
+  section += `This section analyzes how the two configurations used tools during task execution.\n\n`;
   
   // Add tool availability information
-  section += `\n#### Tool Availability\n\n`;
+  section += `### Tool Availability\n\n`;
   
   const toolsA = data.configA.availableTools ? 
     (Array.isArray(data.configA.availableTools) ? data.configA.availableTools.join(', ') : String(data.configA.availableTools)) : 
@@ -321,6 +300,51 @@ function generateToolUsageSection(data: {
   
   section += `- **${data.configA.name}** had access to: ${toolsA}\n`;
   section += `- **${data.configB.name}** had access to: ${toolsB}\n\n`;
+  
+  // Add tool usage comparison table
+  section += `### Tool Usage Frequency\n\n`;
+  section += generateToolUsageComparisonTable(
+    toolUsageA,
+    toolUsageB,
+    data.configA.name,
+    data.configB.name
+  );
+  
+  // Add tool patterns section
+  section += `\n`;
+  section += generateToolPatternsSection(
+    toolUsageA,
+    toolUsageB,
+    data.configA.name,
+    data.configB.name
+  );
+  
+  // Generate additional insights
+  section += `\n### Tool Usage Insights\n\n`;
+  
+  // Generate insights based on the tool usage patterns
+  const uniqueToolsA = new Set(Object.keys(toolUsageA.avgCounts));
+  const uniqueToolsB = new Set(Object.keys(toolUsageB.avgCounts));
+  
+  // Tools exclusive to each configuration
+  const exclusiveToA = [...uniqueToolsA].filter(tool => !uniqueToolsB.has(tool));
+  const exclusiveToB = [...uniqueToolsB].filter(tool => !uniqueToolsA.has(tool));
+  
+  if (exclusiveToA.length > 0) {
+    section += `- Tools used exclusively by **${data.configA.name}**: ${exclusiveToA.map(getToolFriendlyName).join(', ')}\n`;
+  }
+  
+  if (exclusiveToB.length > 0) {
+    section += `- Tools used exclusively by **${data.configB.name}**: ${exclusiveToB.map(getToolFriendlyName).join(', ')}\n`;
+  }
+  
+  // Compare total tool usage
+  const totalDiff = toolUsageB.avgTotal - toolUsageA.avgTotal;
+  if (Math.abs(totalDiff) > 0.5) {
+    const moreTools = totalDiff > 0 ? data.configB.name : data.configA.name;
+    const lessTools = totalDiff > 0 ? data.configA.name : data.configB.name;
+    section += `- **${moreTools}** used more tools on average (${Math.abs(totalDiff).toFixed(1)} more per run) than **${lessTools}**\n`;
+  }
   
   return section;
 }
@@ -346,42 +370,6 @@ function getToolFriendlyName(toolId: string): string {
     .join(' ');
 }
 
-/**
- * Analyze tool usage across test runs
- * 
- * @param runs Test runs to analyze
- * @returns Record mapping tool IDs to average usage count
- */
-function analyzeToolUsage(runs: ABTestRunWithHistory[]): Record<string, number> {
-  const toolCounts: Record<string, number> = {};
-  
-  // Skip if no runs
-  if (!runs || runs.length === 0) {
-    return {};
-  }
-  
-  // Count total tool uses by tool ID
-  for (const run of runs) {
-    // Skip if no execution history
-    if (!run.executionHistory || !run.executionHistory.toolCalls) {
-      continue;
-    }
-    
-    // Count tool uses in this run
-    for (const toolCall of run.executionHistory.toolCalls) {
-      const toolId = toolCall.tool;
-      toolCounts[toolId] = (toolCounts[toolId] || 0) + 1;
-    }
-  }
-  
-  // Calculate average uses per tool
-  const avgToolUses: Record<string, number> = {};
-  for (const [toolId, count] of Object.entries(toolCounts)) {
-    avgToolUses[toolId] = count / runs.length;
-  }
-  
-  return avgToolUses;
-}
 
 /**
  * Format configuration details for the report

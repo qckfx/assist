@@ -4,6 +4,7 @@
 
 import { TestCase, JudgmentResult, AgentExecutionHistory, MetricsData } from './types';
 import { StorageService } from '../utils/storage';
+import { AggregateToolUsage } from '../utils/tool-analysis';
 
 /**
  * Represents a complete agent configuration for evaluation
@@ -105,6 +106,11 @@ export interface ABEvaluationResult {
         total: number;
       };
     };
+  };
+  
+  /** Tool usage analysis by configuration */
+  toolUsageAnalysis?: {
+    [configId: string]: AggregateToolUsage;
   };
   
   /** Average judgment scores by configuration */
