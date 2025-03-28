@@ -40,6 +40,10 @@ You will be evaluating the agent's performance across multiple dimensions includ
 - Tool Usage - Did the agent use appropriate tools effectively? Did it use the right tools for the job?
 - Problem Solving - Did the agent take a logical approach to solving the problem? Did it demonstrate good reasoning?
 
+IMPORTANT FOR TOOL USAGE EVALUATION: 
+When evaluating the "Tool Usage" dimension, only consider the tools that were actually available to the agent as specified in the prompt. 
+Do not penalize the agent for not using tools it didn't have access to. You will be informed about which tools the agent had access to in the prompt.
+
 Your evaluation must be evidence-based. Use the agent's final response, any code it wrote, and its execution history to verify claims.
 Be strict, critical, and fair in your assessment, focusing on the actual outputs produced.
 
@@ -110,7 +114,28 @@ I need you to evaluate an AI agent's performance on a software engineering task.
 
 ## TASK DESCRIPTION
 ${task}
+`;
 
+  // Add tool availability information if present in the metadata
+  if (executionHistory.metadata?.configInfo?.availableTools) {
+    const tools = executionHistory.metadata.configInfo.availableTools;
+    let toolInfo: string;
+    
+    if (Array.isArray(tools)) {
+      toolInfo = tools.join(", ");
+    } else {
+      toolInfo = String(tools); // Convert to string in case it's not a string
+    }
+    
+    prompt += `
+## AVAILABLE TOOLS
+The agent had access to these tools: ${toolInfo}.
+
+When evaluating the agent's performance, particularly its tool usage, please consider whether it effectively utilized the available tools and only judge it based on tools it had access to.
+`;
+  }
+
+  prompt += `
 ## AGENT EXECUTION HISTORY
 ${formatExecutionHistoryForJudge(executionHistory)}
 `;
@@ -192,7 +217,7 @@ Dimensions to evaluate:
 3. Efficiency: Is the solution efficient? Was the agent's workflow logical and direct in reaching the final response? Did it use resources optimally?
 4. Code Quality: Is any generated code in the final response clean, readable, and follows best practices? Is it maintainable?
 5. Explanations: Are the explanations in the final response clear, helpful, and accurate? Do they help the user understand the solution?
-6. Tool Usage: Did the agent select appropriate tools and use them effectively to reach its final response? Were tools used optimally?
+6. Tool Usage: Did the agent select appropriate tools and use them effectively to reach its final response? Were tools used optimally? IMPORTANT: Only judge based on tools the agent had access to.
 7. Problem Solving: Did the agent demonstrate good problem decomposition and a systematic approach in arriving at its final response? Did it show good reasoning?
 
 IMPORTANT SCORING GUIDELINES:
@@ -200,6 +225,7 @@ IMPORTANT SCORING GUIDELINES:
 - If an agent tries but fails to complete the task in its final response, scores should not exceed 5
 - Humorous or nonsensical final responses should receive very low scores (1-2)
 - Deliberately misleading final responses should receive the lowest scores (1)
+- When evaluating tool usage, only consider the tools the agent had access to; do not penalize it for not using tools it didn't have available
 
 After evaluating each dimension, provide:
 - An overall assessment summarizing the agent's performance

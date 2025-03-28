@@ -68,6 +68,9 @@ export async function generateABReport(
   markdown += `| ${configA.name} | ${(configA.averageMetrics.success * 100).toFixed(1)}% | ${configA.averageMetrics.duration.toFixed(2)} | ${configA.averageMetrics.toolCalls.toFixed(1)} | ${configA.averageMetrics.tokenUsage.total.toFixed(0)} |\n`;
   markdown += `| ${configB.name} | ${(configB.averageMetrics.success * 100).toFixed(1)}% | ${configB.averageMetrics.duration.toFixed(2)} | ${configB.averageMetrics.toolCalls.toFixed(1)} | ${configB.averageMetrics.tokenUsage.total.toFixed(0)} |\n\n`;
   
+  // Add tool usage section
+  markdown += generateToolUsageSection(data);
+  
   // Add judgment scores if available
   if (configA.averageJudgment && configB.averageJudgment) {
     markdown += `### AI Judge Evaluation\n\n`;
@@ -244,6 +247,143 @@ export async function generateABReport(
 }
 
 /**
+ * Generate a tool usage comparison section for the report
+ * 
+ * @param data Report data containing runs from both configurations
+ * @returns Markdown section for tool usage comparison
+ */
+function generateToolUsageSection(data: {
+  configA: {
+    id: string;
+    name: string;
+    runs: ABTestRunWithHistory[];
+    availableTools?: string[] | string;
+  };
+  configB: {
+    id: string;
+    name: string;
+    runs: ABTestRunWithHistory[];
+    availableTools?: string[] | string;
+  };
+}): string {
+  // Extract runs from configurations
+  const runsA = data.configA.runs || [];
+  const runsB = data.configB.runs || [];
+  
+  // Analyze tool usage
+  const toolUsageA = analyzeToolUsage(runsA);
+  const toolUsageB = analyzeToolUsage(runsB);
+  
+  // Combine all tool IDs
+  const allTools = new Set([
+    ...Object.keys(toolUsageA),
+    ...Object.keys(toolUsageB)
+  ]);
+  
+  // Skip if no tools were used
+  if (allTools.size === 0) {
+    return '';
+  }
+  
+  let section = `### Tool Usage Comparison\n\n`;
+  section += `This section compares how the two configurations used available tools. The numbers represent the average number of times each tool was used per test run.\n\n`;
+  
+  section += `| Tool | ${data.configA.name} | ${data.configB.name} | Difference |\n`;
+  section += `|------|-----------------|-----------------|------------|\n`;
+  
+  // Add rows for each tool
+  for (const tool of Array.from(allTools).sort()) {
+    const usageA = toolUsageA[tool] || 0;
+    const usageB = toolUsageB[tool] || 0;
+    const rawDiff = usageB - usageA;
+    const diff = rawDiff.toFixed(2);
+    
+    // Calculate percentage change, handling division by zero
+    let percentChange = '';
+    if (usageA > 0) {
+      const percent = (rawDiff / usageA) * 100;
+      percentChange = ` (${percent > 0 ? '+' : ''}${percent.toFixed(1)}%)`;
+    }
+    
+    section += `| ${getToolFriendlyName(tool)} | ${usageA.toFixed(2)} | ${usageB.toFixed(2)} | ${diff}${percentChange} |\n`;
+  }
+  
+  // Add tool availability information
+  section += `\n#### Tool Availability\n\n`;
+  
+  const toolsA = data.configA.availableTools ? 
+    (Array.isArray(data.configA.availableTools) ? data.configA.availableTools.join(', ') : String(data.configA.availableTools)) : 
+    'all tools';
+    
+  const toolsB = data.configB.availableTools ? 
+    (Array.isArray(data.configB.availableTools) ? data.configB.availableTools.join(', ') : String(data.configB.availableTools)) : 
+    'all tools';
+  
+  section += `- **${data.configA.name}** had access to: ${toolsA}\n`;
+  section += `- **${data.configB.name}** had access to: ${toolsB}\n\n`;
+  
+  return section;
+}
+
+/**
+ * Get a more readable name for a tool ID
+ * 
+ * @param toolId The tool ID to format
+ * @returns A friendly name for the tool
+ */
+function getToolFriendlyName(toolId: string): string {
+  // Remove common prefixes/suffixes and capitalize
+  const name = toolId
+    .replace(/Tool$/, '')
+    .replace(/^tool/i, '')
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ');
+  
+  // Capitalize first letter of each word
+  return name
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
+ * Analyze tool usage across test runs
+ * 
+ * @param runs Test runs to analyze
+ * @returns Record mapping tool IDs to average usage count
+ */
+function analyzeToolUsage(runs: ABTestRunWithHistory[]): Record<string, number> {
+  const toolCounts: Record<string, number> = {};
+  
+  // Skip if no runs
+  if (!runs || runs.length === 0) {
+    return {};
+  }
+  
+  // Count total tool uses by tool ID
+  for (const run of runs) {
+    // Skip if no execution history
+    if (!run.executionHistory || !run.executionHistory.toolCalls) {
+      continue;
+    }
+    
+    // Count tool uses in this run
+    for (const toolCall of run.executionHistory.toolCalls) {
+      const toolId = toolCall.tool;
+      toolCounts[toolId] = (toolCounts[toolId] || 0) + 1;
+    }
+  }
+  
+  // Calculate average uses per tool
+  const avgToolUses: Record<string, number> = {};
+  for (const [toolId, count] of Object.entries(toolCounts)) {
+    avgToolUses[toolId] = count / runs.length;
+  }
+  
+  return avgToolUses;
+}
+
+/**
  * Format configuration details for the report
  */
 function formatConfigDetails(config: any): string {
@@ -330,13 +470,40 @@ function getCommonItems(runs: ABTestRunWithHistory[], property: 'strengths' | 'w
 }
 
 /**
- * Create a summary of judgment results using an LLM
+ * Format a duration in seconds to a human-readable string
  * 
- * @param runs The test runs with judgments to summarize
- * @param property The property to summarize (strengths, weaknesses, etc.)
- * @param modelProvider The model provider to use for summarization
- * @returns A promise that resolves to the summary text
+ * @param seconds Duration in seconds
+ * @returns Formatted duration string
  */
+function formatDuration(seconds: number): string {
+  return `${seconds.toFixed(2)}s`;
+}
+
+/**
+ * Format a duration difference in seconds to a human-readable string
+ * 
+ * @param diffSeconds Duration difference in seconds
+ * @returns Formatted duration difference string
+ */
+function formatDurationDiff(diffSeconds: number): string {
+  const prefix = diffSeconds > 0 ? '+' : '';
+  return `${prefix}${diffSeconds.toFixed(2)}s`;
+}
+
+/**
+ * Format a dimension name to be more readable
+ * 
+ * @param dimension Dimension name
+ * @returns Formatted dimension name
+ */
+function formatDimension(dimension: string): string {
+  // Add spaces between camelCase
+  return dimension
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .trim();
+}
+
 async function summarizeJudgmentProperty(
   runs: ABTestRunWithHistory[], 
   property: 'strengths' | 'weaknesses' | 'suggestions',

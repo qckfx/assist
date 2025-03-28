@@ -32,6 +32,44 @@ export async function compareConfigurations(
   try {
     logger.info(`Comparing configurations: ${configA.name} vs ${configB.name}`);
     
+    // Create a tool difference description if tool sets differ
+    let toolDifference = '';
+    let hasToolDifferences = false;
+    
+    if (configA.availableTools || configB.availableTools) {
+      const toolsA = configA.availableTools ? 
+        (Array.isArray(configA.availableTools) ? configA.availableTools.join(', ') : String(configA.availableTools)) : 
+        'all tools';
+      
+      const toolsB = configB.availableTools ? 
+        (Array.isArray(configB.availableTools) ? configB.availableTools.join(', ') : String(configB.availableTools)) : 
+        'all tools';
+      
+      // Check if tool sets are different
+      if (toolsA !== toolsB) {
+        hasToolDifferences = true;
+        
+        toolDifference = `
+## Tool Availability
+Configuration A tools: ${toolsA}
+Configuration B tools: ${toolsB}
+`;
+        
+        // Identify specific tool differences if arrays are provided
+        if (Array.isArray(configA.availableTools) && Array.isArray(configB.availableTools)) {
+          const uniqueToB = configB.availableTools.filter(tool => !configA.availableTools!.includes(tool));
+          if (uniqueToB.length > 0) {
+            toolDifference += `\nTools unique to Configuration B: ${uniqueToB.join(', ')}`;
+          }
+          
+          const uniqueToA = configA.availableTools.filter(tool => !configB.availableTools!.includes(tool));
+          if (uniqueToA.length > 0) {
+            toolDifference += `\nTools unique to Configuration A: ${uniqueToA.join(', ')}`;
+          }
+        }
+      }
+    }
+
     // Create a comparison prompt
     const comparisonPrompt = `
 # Configuration Comparison
@@ -47,13 +85,17 @@ ${JSON.stringify(scoresA, null, 2)}
 \`\`\`json
 ${JSON.stringify(scoresB, null, 2)}
 \`\`\`
+${toolDifference}
 
 Please analyze these scores and determine which configuration performed better overall.
 Consider the following in your analysis:
 1. Compare scores for each dimension
 2. Calculate the overall difference and percentage improvement
 3. Identify dimensions where the difference is most significant
-4. Provide a clear assessment of which configuration is superior and by how much
+${hasToolDifferences ? '4. Consider how tool availability differences might have affected the results' : ''}
+${hasToolDifferences ? '5' : '4'}. Provide a clear assessment of which configuration is superior and by how much
+
+${hasToolDifferences ? 'When analyzing the "Tool Usage" dimension, pay special attention to the different tool sets available to each configuration.' : ''}
 
 Format your response as a JSON object with the following structure:
 \`\`\`json
