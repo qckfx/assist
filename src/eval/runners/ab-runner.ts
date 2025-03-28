@@ -25,6 +25,8 @@ import { compareConfigurations } from '../utils/comparison';
 import { generateABReport } from '../utils/reporting';
 import { createJudgeModelProvider } from '../utils/model-provider';
 import { createPromptManager } from '../../core/PromptManager';
+import { createFilteredToolRegistry } from '../utils/tools';
+import { analyzeAggregateToolUsage } from '../utils/tool-analysis';
 
 // Create a logger for the A/B testing runner
 const logger = createLogger({
@@ -58,21 +60,28 @@ async function runTestWithConfiguration(
     testName: testCase.name
   });
   
+  // Create tool registry with filtered tools based on configuration
+  const toolRegistry = createFilteredToolRegistry(config.availableTools, config.name);
+  
   // Run the test case and collect execution history
   const run = await runTestCaseWithHistory(
     testCase,
     sandboxAdapter,
     modelProvider,
-    promptManager
+    promptManager,
+    toolRegistry
   );
   
   // Add configuration details to the execution history metadata if available
   if (run.executionHistory.metadata) {
+    // Set configuration info with properly typed object
     run.executionHistory.metadata.configInfo = {
       configId: config.id,
       configName: config.name,
       modelName: (modelProvider as any).model || config.model || 'unknown-model',
-      promptName: config.name
+      promptName: config.name,
+      // Add information about available tools if specified in the configuration
+      ...(config.availableTools && { availableTools: config.availableTools })
     };
     
     // Ensure runInfo includes the AB test run ID
@@ -268,6 +277,7 @@ export async function runABEvaluation(
     // Calculate average metrics for each configuration
     const averageMetrics: Record<string, any> = {};
     const averageJudgment: Record<string, any> = {};
+    const toolUsageAnalysis: Record<string, any> = {};
     
     for (const configId in runsByConfig) {
       const configRuns = runsByConfig[configId];
@@ -283,6 +293,9 @@ export async function runABEvaluation(
           total: configRuns.reduce((sum, run) => sum + (run.metrics.tokenUsage?.total || 0), 0) / configRuns.length
         }
       };
+      
+      // Add tool usage analysis
+      toolUsageAnalysis[configId] = analyzeAggregateToolUsage(configRuns);
       
       // Calculate average judgment scores if available
       const runsWithJudgment = configRuns.filter(run => run.judgment);
@@ -387,6 +400,7 @@ export async function runABEvaluation(
       runs: allRuns,
       runsByConfig,
       averageMetrics,
+      toolUsageAnalysis,
       averageJudgment,
       comparison,
       outputDir: evalOutputDir

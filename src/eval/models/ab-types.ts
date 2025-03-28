@@ -4,6 +4,7 @@
 
 import { TestCase, JudgmentResult, AgentExecutionHistory, MetricsData } from './types';
 import { StorageService } from '../utils/storage';
+import { AggregateToolUsage } from '../utils/tool-analysis';
 
 /**
  * Represents a complete agent configuration for evaluation
@@ -28,6 +29,13 @@ export interface AgentConfiguration {
     maxTokens?: number;
     [key: string]: any;
   };
+  
+  /**
+   * Optional array of tool IDs that this agent configuration has access to.
+   * If not provided, the agent will have access to all registered tools.
+   * Example: ["bash", "glob", "grep", "ls", "view", "edit"]
+   */
+  availableTools?: string[];
   
   /** Additional metadata about this configuration */
   metadata?: Record<string, any>;
@@ -98,6 +106,11 @@ export interface ABEvaluationResult {
         total: number;
       };
     };
+  };
+  
+  /** Tool usage analysis by configuration */
+  toolUsageAnalysis?: {
+    [configId: string]: AggregateToolUsage;
   };
   
   /** Average judgment scores by configuration */

@@ -8,6 +8,7 @@
 import { createAnthropicProvider } from '../../providers/AnthropicProvider';
 import { createModelClient } from '../../core/ModelClient';
 import { createPromptManager } from '../../core/PromptManager';
+import { createFilteredToolRegistry } from './tools';
 import { AgentConfiguration } from '../models/ab-types';
 import { createLogger, LogLevel } from '../../utils/logger';
 
@@ -35,10 +36,10 @@ export function createProviderFromConfig(config: AgentConfiguration) {
 
 /**
  * Create a model client configured with a PromptManager 
- * from an agent configuration
+ * and filtered tools from an agent configuration
  * 
  * @param config Agent configuration to use
- * @returns A model client configured with the appropriate PromptManager
+ * @returns A model client configured with the appropriate PromptManager and tools
  */
 export function createAgentFromConfig(config: AgentConfiguration) {
   try {
@@ -51,13 +52,14 @@ export function createAgentFromConfig(config: AgentConfiguration) {
       config.parameters?.temperature || 0.2
     );
     
-    // Log the configuration
-    logger.info(`Creating agent with prompt manager for ${config.name}`);
+    // Create a tool registry with filtered tools based on configuration
+    const toolRegistry = createFilteredToolRegistry(config.availableTools, config.name);
     
-    // Create and return the model client
+    // Create and return the model client with the configured tools
     return createModelClient({
       modelProvider,
-      promptManager
+      promptManager,
+      toolRegistry
     });
   } catch (error) {
     logger.error('Error creating agent from config', error);

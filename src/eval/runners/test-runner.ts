@@ -20,6 +20,7 @@ import { createFileEditTool } from '../../tools/FileEditTool';
 import { createFileWriteTool } from '../../tools/FileWriteTool';
 import { extractExecutionHistory } from '../utils/execution-history';
 import { ModelProvider } from '../../types';
+import { ToolRegistry } from '../../types/registry';
 
 /**
  * Run a single test case with the given system prompt
@@ -192,7 +193,8 @@ export async function runTestCase(
  * @param testCase The test case to run
  * @param sandbox E2B sandbox instance for execution
  * @param modelProvider Model provider to use (typically Anthropic)
- * @param options Additional options for the test run
+ * @param promptManager Prompt manager to use
+ * @param toolRegistry Optional tool registry (will create a default if not provided)
  * @returns Test run results with metrics and execution history
  */
 export async function runTestCaseWithHistory(
@@ -200,6 +202,7 @@ export async function runTestCaseWithHistory(
   sandbox: E2BExecutionAdapter,
   modelProvider: ModelProvider,
   promptManager: PromptManager,
+  toolRegistry?: ToolRegistry
 ): Promise<TestRunWithHistory> {
   console.log(`Running test case with history: ${testCase.name}`);
   
@@ -216,21 +219,23 @@ export async function runTestCaseWithHistory(
     modelName: (modelProvider as any).model || 'unknown-model'
   });
   
-  // Initialize the tool registry
-  const toolRegistry = createToolRegistry();
-  
-  // Register default tools
-  const tools = [
-    createBashTool(),
-    createGlobTool(),
-    createGrepTool(),
-    createLSTool(),
-    createFileReadTool(),
-    createFileEditTool(),
-    createFileWriteTool()
-  ];
-  
-  tools.forEach(tool => toolRegistry.registerTool(tool));
+  // Initialize the tool registry if not provided
+  if (!toolRegistry) {
+    toolRegistry = createToolRegistry();
+    
+    // Register default tools
+    const tools = [
+      createBashTool(),
+      createGlobTool(),
+      createGrepTool(),
+      createLSTool(),
+      createFileReadTool(),
+      createFileEditTool(),
+      createFileWriteTool()
+    ];
+    
+    tools.forEach(tool => toolRegistry!.registerTool(tool));
+  }
   
   // Create the permission manager with DANGER_MODE enabled
   const permissionManager = createPermissionManager(toolRegistry, {

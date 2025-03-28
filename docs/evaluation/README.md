@@ -22,7 +22,7 @@ The evaluation system provides a framework for conducting A/B tests comparing di
 4. **Metrics Collection**: The system gathers quantitative data such as:
    - Success/failure rate
    - Execution time
-   - Tool usage counts
+   - Tool usage counts and patterns
    - Token consumption
 5. **AI Judge**: After execution, an AI judge reviews the agent's performance against predefined criteria
 6. **Report Generation**: A comprehensive report comparing the configurations is produced
@@ -75,9 +75,10 @@ The evaluation system generates a detailed markdown report comparing the configu
 
 1. **Configuration Summaries**: Details about each configuration being tested
 2. **Overall Metrics**: Success rates, execution times, token usage, etc.
-3. **Judge Evaluations**: Scores across various dimensions (correctness, efficiency, etc.)
-4. **Strengths & Weaknesses**: AI-generated analysis of each configuration's performance
-5. **Per-Test Results**: Detailed breakdown of performance on each test case
+3. **Tool Usage Analysis**: Detailed comparison of tool usage patterns and frequencies
+4. **Judge Evaluations**: Scores across various dimensions (correctness, efficiency, etc.)
+5. **Strengths & Weaknesses**: AI-generated analysis of each configuration's performance
+6. **Per-Test Results**: Detailed breakdown of performance on each test case
 
 ## Running Your Own Evaluations
 
@@ -93,6 +94,23 @@ npm run eval:custom <path-to-config>
 # List available test cases
 npm run eval:list
 ```
+
+## Tool Ablation Testing
+
+One of the key features of the evaluation system is the ability to compare agent performance with different tool configurations. This enables:
+
+1. **Tool Set Comparisons**: Test how different available tool sets affect agent performance
+2. **Tool Usage Analysis**: Track which tools are used and in what patterns
+3. **Efficacy Measurement**: Determine which tools provide the most value for specific task types
+4. **Sequence Pattern Analysis**: Identify common tool usage sequences that indicate effective or inefficient strategies
+
+For tool ablation testing, use the A/B testing feature with different tool configurations:
+
+```bash
+npm run eval:ab <path-to-ab-config>
+```
+
+See `src/eval/examples/ab-config-example.json` for a sample configuration that compares agents with and without specific tools.
 
 ## Future Improvements
 

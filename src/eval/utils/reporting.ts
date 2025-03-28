@@ -6,6 +6,11 @@ import fs from 'fs';
 import path from 'path';
 import { ABTestRunWithHistory, ConfigurationComparison } from '../models/ab-types';
 import { createJudgeModelProvider } from './model-provider';
+import { 
+  analyzeAggregateToolUsage, 
+  generateToolUsageComparisonTable,
+  generateToolPatternsSection
+} from './tool-analysis';
 
 /**
  * Generate a comprehensive A/B testing report
@@ -67,6 +72,9 @@ export async function generateABReport(
   markdown += `|---------------|--------------|------------------|----------------|----------------|\n`;
   markdown += `| ${configA.name} | ${(configA.averageMetrics.success * 100).toFixed(1)}% | ${configA.averageMetrics.duration.toFixed(2)} | ${configA.averageMetrics.toolCalls.toFixed(1)} | ${configA.averageMetrics.tokenUsage.total.toFixed(0)} |\n`;
   markdown += `| ${configB.name} | ${(configB.averageMetrics.success * 100).toFixed(1)}% | ${configB.averageMetrics.duration.toFixed(2)} | ${configB.averageMetrics.toolCalls.toFixed(1)} | ${configB.averageMetrics.tokenUsage.total.toFixed(0)} |\n\n`;
+  
+  // Add tool usage section
+  markdown += generateToolUsageSection(data);
   
   // Add judgment scores if available
   if (configA.averageJudgment && configB.averageJudgment) {
@@ -244,6 +252,126 @@ export async function generateABReport(
 }
 
 /**
+ * Generate a tool usage comparison section for the report
+ * 
+ * @param data Report data containing runs from both configurations
+ * @returns Markdown section for tool usage comparison
+ */
+function generateToolUsageSection(data: {
+  configA: {
+    id: string;
+    name: string;
+    runs: ABTestRunWithHistory[];
+    availableTools?: string[] | string;
+  };
+  configB: {
+    id: string;
+    name: string;
+    runs: ABTestRunWithHistory[];
+    availableTools?: string[] | string;
+  };
+}): string {
+  // Extract runs from configurations
+  const runsA = data.configA.runs || [];
+  const runsB = data.configB.runs || [];
+  
+  // Analyze tool usage for each configuration
+  const toolUsageA = analyzeAggregateToolUsage(runsA);
+  const toolUsageB = analyzeAggregateToolUsage(runsB);
+  
+  // Skip if no tools were used
+  if (Object.keys(toolUsageA.avgCounts).length === 0 && Object.keys(toolUsageB.avgCounts).length === 0) {
+    return '';
+  }
+  
+  let section = `\n## Tool Usage Analysis\n\n`;
+  section += `This section analyzes how the two configurations used tools during task execution.\n\n`;
+  
+  // Add tool availability information
+  section += `### Tool Availability\n\n`;
+  
+  const toolsA = data.configA.availableTools ? 
+    (Array.isArray(data.configA.availableTools) ? data.configA.availableTools.join(', ') : String(data.configA.availableTools)) : 
+    'all tools';
+    
+  const toolsB = data.configB.availableTools ? 
+    (Array.isArray(data.configB.availableTools) ? data.configB.availableTools.join(', ') : String(data.configB.availableTools)) : 
+    'all tools';
+  
+  section += `- **${data.configA.name}** had access to: ${toolsA}\n`;
+  section += `- **${data.configB.name}** had access to: ${toolsB}\n\n`;
+  
+  // Add tool usage comparison table
+  section += `### Tool Usage Frequency\n\n`;
+  section += generateToolUsageComparisonTable(
+    toolUsageA,
+    toolUsageB,
+    data.configA.name,
+    data.configB.name
+  );
+  
+  // Add tool patterns section
+  section += `\n`;
+  section += generateToolPatternsSection(
+    toolUsageA,
+    toolUsageB,
+    data.configA.name,
+    data.configB.name
+  );
+  
+  // Generate additional insights
+  section += `\n### Tool Usage Insights\n\n`;
+  
+  // Generate insights based on the tool usage patterns
+  const uniqueToolsA = new Set(Object.keys(toolUsageA.avgCounts));
+  const uniqueToolsB = new Set(Object.keys(toolUsageB.avgCounts));
+  
+  // Tools exclusive to each configuration
+  const exclusiveToA = [...uniqueToolsA].filter(tool => !uniqueToolsB.has(tool));
+  const exclusiveToB = [...uniqueToolsB].filter(tool => !uniqueToolsA.has(tool));
+  
+  if (exclusiveToA.length > 0) {
+    section += `- Tools used exclusively by **${data.configA.name}**: ${exclusiveToA.map(getToolFriendlyName).join(', ')}\n`;
+  }
+  
+  if (exclusiveToB.length > 0) {
+    section += `- Tools used exclusively by **${data.configB.name}**: ${exclusiveToB.map(getToolFriendlyName).join(', ')}\n`;
+  }
+  
+  // Compare total tool usage
+  const totalDiff = toolUsageB.avgTotal - toolUsageA.avgTotal;
+  if (Math.abs(totalDiff) > 0.5) {
+    const moreTools = totalDiff > 0 ? data.configB.name : data.configA.name;
+    const lessTools = totalDiff > 0 ? data.configA.name : data.configB.name;
+    section += `- **${moreTools}** used more tools on average (${Math.abs(totalDiff).toFixed(1)} more per run) than **${lessTools}**\n`;
+  }
+  
+  return section;
+}
+
+/**
+ * Get a more readable name for a tool ID
+ * 
+ * @param toolId The tool ID to format
+ * @returns A friendly name for the tool
+ */
+function getToolFriendlyName(toolId: string): string {
+  // Remove common prefixes/suffixes and capitalize
+  const name = toolId
+    .replace(/Tool$/, '')
+    .replace(/^tool/i, '')
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ');
+  
+  // Capitalize first letter of each word
+  return name
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+
+/**
  * Format configuration details for the report
  */
 function formatConfigDetails(config: any): string {
@@ -330,13 +458,40 @@ function getCommonItems(runs: ABTestRunWithHistory[], property: 'strengths' | 'w
 }
 
 /**
- * Create a summary of judgment results using an LLM
+ * Format a duration in seconds to a human-readable string
  * 
- * @param runs The test runs with judgments to summarize
- * @param property The property to summarize (strengths, weaknesses, etc.)
- * @param modelProvider The model provider to use for summarization
- * @returns A promise that resolves to the summary text
+ * @param seconds Duration in seconds
+ * @returns Formatted duration string
  */
+function formatDuration(seconds: number): string {
+  return `${seconds.toFixed(2)}s`;
+}
+
+/**
+ * Format a duration difference in seconds to a human-readable string
+ * 
+ * @param diffSeconds Duration difference in seconds
+ * @returns Formatted duration difference string
+ */
+function formatDurationDiff(diffSeconds: number): string {
+  const prefix = diffSeconds > 0 ? '+' : '';
+  return `${prefix}${diffSeconds.toFixed(2)}s`;
+}
+
+/**
+ * Format a dimension name to be more readable
+ * 
+ * @param dimension Dimension name
+ * @returns Formatted dimension name
+ */
+function formatDimension(dimension: string): string {
+  // Add spaces between camelCase
+  return dimension
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .trim();
+}
+
 async function summarizeJudgmentProperty(
   runs: ABTestRunWithHistory[], 
   property: 'strengths' | 'weaknesses' | 'suggestions',
