@@ -3,7 +3,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { ToolDescription } from './registry';
+import { ToolDescription, ToolRegistry } from './registry';
 import { PromptManager } from '../core/PromptManager';
 import { Logger } from '../utils/logger';
 
@@ -68,6 +68,7 @@ export type ModelProvider = (request: ModelProviderRequest) => Promise<Anthropic
 export interface ModelClientConfig {
   modelProvider: ModelProvider;
   promptManager?: PromptManager;
+  toolRegistry?: ToolRegistry;
 }
 
 export interface ModelClient {

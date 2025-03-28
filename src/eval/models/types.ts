@@ -183,6 +183,9 @@ export interface ExecutionMetadata {
     
     /** Prompt name */
     promptName?: string;
+    
+    /** Available tools for this configuration */
+    availableTools?: string[];
   };
 }
 

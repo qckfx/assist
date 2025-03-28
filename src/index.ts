@@ -24,7 +24,7 @@ import { createLSTool } from './tools/LSTool';
 import { createFileReadTool } from './tools/FileReadTool';
 import { createFileEditTool } from './tools/FileEditTool';
 import { createFileWriteTool } from './tools/FileWriteTool';
-import { createScratchpadTool } from './tools/ScratchpadTool';
+import { createThinkTool } from './tools/ThinkTool';
 
 // Utils
 import { createLogger, LogLevel, LogCategory } from './utils/logger';
@@ -74,7 +74,7 @@ const createAgent = (config: AgentConfig): Agent => {
     createFileReadTool(),
     createFileEditTool(),
     createFileWriteTool(),
-    createScratchpadTool()
+    createThinkTool()
   ];
   
   tools.forEach(tool => toolRegistry.registerTool(tool));
@@ -145,6 +145,7 @@ export {
   createFileReadTool,
   createFileEditTool,
   createFileWriteTool,
+  createThinkTool,
   
   // Utils
   createLogger,
