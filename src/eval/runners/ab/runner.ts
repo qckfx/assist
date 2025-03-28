@@ -21,9 +21,11 @@ import { extendStorageService } from '../../utils/storage-extensions';
 import { createLogger, LogLevel } from '../../../utils/logger';
 import { runTestCaseWithHistory } from '../test-runner';
 import { runJudge } from '../judge-runner';
-import { createModelProvider, createJudgeModelProvider } from './model-provider';
+import { createJudgeModelProvider } from './model-provider';
+import { createProviderFromConfig, createAgentFromConfig } from './agent-factory';
 import { compareConfigurations } from './comparison';
 import { generateABReport } from './reporting';
+import { createPromptManager } from '../../../core/PromptManager';
 
 // Create a logger for the A/B testing runner
 const logger = createLogger({
@@ -42,21 +44,46 @@ const logger = createLogger({
 async function runTestWithConfiguration(
   testCase: TestCase,
   config: AgentConfiguration,
-  sandboxAdapter: any
+  sandboxAdapter: any,
+  iteration: number
 ): Promise<ABTestRunWithHistory> {
-  // Create a model provider for this configuration
-  const modelProvider = createModelProvider(config);
+  // Create a model provider from the configuration 
+  const modelProvider = createProviderFromConfig(config);
+  const promptManager = createPromptManager(config.systemPrompt, config.parameters?.temperature || 0.2);
+  
+  // Set context information about this test run for logging
+  logger.setContext({
+    configId: config.id,
+    configName: config.name + ` (iteration ${iteration})`,
+    testId: testCase.id,
+    testName: testCase.name
+  });
   
   // Run the test case and collect execution history
   const run = await runTestCaseWithHistory(
     testCase,
     sandboxAdapter,
     modelProvider,
-    {
-      systemPrompt: config.systemPrompt,
-      model: config.model
-    }
+    promptManager
   );
+  
+  // Add configuration details to the execution history metadata if available
+  if (run.executionHistory.metadata) {
+    run.executionHistory.metadata.configInfo = {
+      configId: config.id,
+      configName: config.name,
+      modelName: (modelProvider as any).model || config.model || 'unknown-model',
+      promptName: config.name
+    };
+    
+    // Ensure runInfo includes the AB test run ID
+    if (!run.executionHistory.metadata.runInfo) {
+      run.executionHistory.metadata.runInfo = {};
+    }
+    
+    // Add test run information from the A/B eval
+    run.executionHistory.metadata.runInfo.runId = `ab-run-${config.id}-${testCase.id}`;
+  }
   
   // Add configuration metadata to the run
   return {
@@ -139,12 +166,13 @@ export async function runABEvaluation(
         logger.info(`Running test "${testName}" with config "${config.name}" (run ${runIndex + 1}/${runsPerTest})`);
         
         // Run the test case with the specific configuration
-        const run = await runTestWithConfiguration(testCase, config, sandboxInfo.executionAdapter);
+        const run = await runTestWithConfiguration(testCase, config, sandboxInfo.executionAdapter, runIndex + 1);
         
         // Store the execution history
         const executionId = storageService.storeExecutionHistory(run.executionHistory, {
           runId,
-          testName
+          testName,
+          executionId: `${config.name}-${testName}-${runIndex + 1}`
         });
         
         // Return a function to run the judge on the same sandbox

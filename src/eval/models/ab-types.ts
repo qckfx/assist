@@ -23,7 +23,7 @@ export interface AgentConfiguration {
   
   /** Model parameters */
   parameters?: {
-    temperature?: number;
+    temperature: number;
     topP?: number;
     maxTokens?: number;
     [key: string]: any;

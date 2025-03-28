@@ -66,7 +66,7 @@ export function setupABCommand(program: Command): void {
           evaluationTestCases = options.quick ? getQuickTestCases() : testCases;
           console.log(chalk.yellow(`No test cases in config, using ${options.quick ? 'quick' : 'all'} built-in test cases`));
         }
-        
+
         // Set default values
         const abOptions: ABEvaluationOptions = {
           configA: config.configA,
@@ -75,7 +75,7 @@ export function setupABCommand(program: Command): void {
           runsPerTest: options.runs ? parseInt(options.runs, 10) : 3,
           enableJudge: options.judge !== false,
           concurrency: options.concurrency ? parseInt(options.concurrency, 10) : 2,
-          outputDir: options.output || path.join(process.cwd(), 'evaluation-results')
+          outputDir: options.output || path.join(process.cwd(), 'evaluation-results'),
         };
         
         console.log(chalk.blue(`Starting A/B evaluation with ${abOptions.testCases.length} test cases`));
