@@ -5,10 +5,11 @@
 
 import { program } from 'commander';
 import { createAgent, createAnthropicProvider, createLogger, LogLevel, LogCategory, startServer, createServerConfig } from './index';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import { SessionState, ToolResultEntry } from './types';
 import chalk from 'chalk';
 import prompts from 'prompts';
+import setupEvalCLI from './eval/cli';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -321,6 +322,11 @@ const startChat = async (options: {
       cliLogger.info('  --no-web          Disable web UI', LogCategory.USER_INTERACTION);
       cliLogger.info('  --port <port>     Port for web UI (default: 3000)', LogCategory.USER_INTERACTION);
       cliLogger.info('  --dev             Run in development mode with additional logging', LogCategory.USER_INTERACTION);
+      cliLogger.info('\nEvaluation Commands:', LogCategory.USER_INTERACTION);
+      cliLogger.info('  qckfx eval run    Run evaluation test cases', LogCategory.USER_INTERACTION);
+      cliLogger.info('  qckfx eval list   List available test cases', LogCategory.USER_INTERACTION);
+      cliLogger.info('  qckfx eval judge  Run AI judge on execution histories', LogCategory.USER_INTERACTION);
+      cliLogger.info('  qckfx eval report Generate reports from evaluation results', LogCategory.USER_INTERACTION);
       cliLogger.info('\nWeb UI Development:', LogCategory.USER_INTERACTION);
       cliLogger.info('  npm run dev:ui     Start the Vite development server for UI development', LogCategory.USER_INTERACTION);
       cliLogger.info('  npm run dev        Start both backend and frontend in development mode', LogCategory.USER_INTERACTION);
@@ -421,8 +427,28 @@ const startChat = async (options: {
 // Setup command line interface
 program
   .name('qckfx')
-  .description('AI Agent CLI')
-  .version('0.1.0');
+  .description('AI Agent CLI with evaluation capabilities')
+  .version('0.1.0')
+  .addHelpText('after', `
+Examples:
+  # Start a chat session with the AI agent
+  qckfx
+
+  # Run evaluation with default settings
+  qckfx eval run
+  
+  # List available test cases
+  qckfx eval list
+  
+  # Run quick evaluation (subset of tests)
+  qckfx eval run --quick
+  
+  # Generate a report from evaluation results
+  qckfx eval report ./evaluation-results
+  
+Documentation:
+  For more information, see the documentation or run 'qckfx <command> --help'
+`);
 
 // Chat command 
 program
@@ -450,5 +476,9 @@ program
   .option('--dev', 'Run in development mode with additional logging and features')
   .action(startChat);
 
+// Setup evaluation commands
+setupEvalCLI();
+
 // Parse command line arguments
 program.parse();
+

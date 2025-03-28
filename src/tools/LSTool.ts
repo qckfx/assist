@@ -2,6 +2,7 @@
  * LSTool - Lists directory contents
  */
 
+import path from 'path';
 import { createTool } from './createTool';
 import { Tool, ToolContext, ValidationResult, ToolCategory } from '../types/tool';
 
@@ -84,6 +85,21 @@ export const createLSTool = (): Tool => {
         showHidden = false,
         details = false
       } = args;
+      
+      // Check if we're running in a sandbox (E2B)
+      const isSandbox = !!process.env.SANDBOX_ROOT;
+      
+      if (isSandbox && path.isAbsolute(dirPath)) {
+        // In sandbox mode, log warnings about absolute paths that don't match expected pattern
+        const sandboxRoot = process.env.SANDBOX_ROOT || '/home/user/app';
+        
+        // If the path doesn't start with sandbox root, log a warning
+        if (!dirPath.startsWith(sandboxRoot)) {
+          context.logger?.warn(`Warning: LSTool: Using absolute path outside sandbox: ${dirPath}. This may fail.`);
+        }
+        
+        // Keep the original path - no remapping
+      }
       
       const executionAdapter = context.executionAdapter;
       const result = await executionAdapter.ls(dirPath, showHidden, details);

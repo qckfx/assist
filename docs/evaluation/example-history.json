@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "task": "When I try to read a file with the FileReadTool, I get an error saying 'path must be absolute'. How do I fix this?",
+    "runInfo": {
+      "testId": "debug-1",
+      "testName": "Debug File Read Error",
+      "runId": "ab-run-baseline-debug-1"
+    },
+    "configInfo": {
+      "configId": "baseline",
+      "configName": "Baseline Agent",
+      "modelName": "claude-3-7-sonnet-20250219",
+      "promptName": "Baseline Agent"
+    }
+  },
+  "toolCalls": [
+    {
+      "tool": "bash",
+      "args": {
+        "command": "pwd"
+      },
+      "result": "[object Object]",
+      "startTime": "",
+      "endTime": ""
+    },
+    {
+      "tool": "ls",
+      "args": {
+        "path": ".",
+        "details": true
+      },
+      "result": "[object Object]",
+      "startTime": "",
+      "endTime": ""
+    }
+  ],
+  "response": "The error you're encountering with FileReadTool is likely due to how you're specifying the file path. Let me explain how to fix this:\n\n## How to Fix the 'path must be absolute' Error\n\nWhen using the FileReadTool, you can provide the file path in two ways:\n\n1. **Relative path**: Like 'app/config.json', './data.txt', or '../README.md'\n2. **Absolute path**: Like '/home/user/app/config.json'\n\nBased on the error message, it seems the tool is expecting an absolute path, but you might be providing a path in a format it doesn't recognize as valid.\n\n## Solutions:\n\n1. **Use a complete relative path**: Make sure your relative path includes all necessary directories from your current working directory (which is `/home/user`)\n\n2. **Use an absolute path**: Prefix your path with your current working directory\n   - For example: `/home/user/app/yourfile.txt`\n\n3. **Check file existence first**: Before reading, use the `glob` or `ls` tool to verify the file exists\n\n## Example of correct usage:\n\n```\nfile_read(path: \"app/yourfile.txt\")  // Relative path\nfile_read(path: \"/home/user/app/yourfile.txt\")  // Absolute path\n```\n\nWould you like to share the exact command you're trying to use? I can help you format it correctly."
+}

@@ -46,7 +46,7 @@ export const createGlobTool = (): Tool => {
   return createTool({
     id: 'glob',
     name: 'GlobTool',
-    description: '- Fast file pattern matching tool that works across the codebase\n- Searches for files based on name patterns (not content)\n- Supports powerful glob patterns for flexible matching\n- Provides options to filter results by type and attributes\n- Use this tool when you need to find files by name patterns\n- For searching file contents, use GrepTool instead\n\nUsage notes:\n- Glob patterns use wildcards to match filenames\n- Common patterns: \'**/*.js\' (all JS files), \'src/**/*.ts\' (all TS files in src)\n- Use the dot option to include hidden files (starting with \'.\')\n- Use nodir to exclude directories from results\n- Results are limited by maxResults to prevent overwhelming output\n- For complex multi-step file searches, consider using multiple tool calls',
+    description: '- Fast file pattern matching tool that works across the codebase\n- Searches for files based on name patterns (not content)\n- Supports powerful glob patterns for flexible matching\n- Provides options to filter results by type and attributes\n- Use this tool when you need to find files by name patterns\n- For searching file contents, use GrepTool instead\n\nUsage notes:\n- Glob patterns use wildcards to match filenames\n- Common patterns: \'**/*.js\' (all JS files), \'src/**/*.ts\' (all TS files in src)\n- Use the dot option to include hidden files (starting with \'.\')\n- Use nodir to exclude directories from results\n- Results are LIMITED TO MAX 100 FILES regardless of maxResults parameter\n- For large codebases, use more specific patterns to limit results\n- If you need to search comprehensively, make multiple targeted tool calls',
     requiresPermission: false, // Finding files is generally safe
     category: ToolCategory.READONLY,
     
@@ -94,28 +94,38 @@ export const createGlobTool = (): Tool => {
       const maxResults = args.maxResults as number || 1000;
       
       try {
-        // Resolve the base path
-        const resolvedCwd = path.resolve(cwd);
+        // Check if we're running in a sandbox (E2B)
+        const isSandbox = !!process.env.SANDBOX_ROOT;
+        
+        if (isSandbox && path.isAbsolute(cwd)) {
+          // In sandbox mode, log warnings about absolute paths that don't match expected pattern
+          const sandboxRoot = process.env.SANDBOX_ROOT || '/home/user/app';
+          
+          // If the path doesn't start with sandbox root, log a warning
+          if (!cwd.startsWith(sandboxRoot)) {
+            context.logger?.warn(`Warning: GlobTool: Using absolute path outside sandbox: ${cwd}. This may fail.`);
+          }
+        } 
         
         // Set up glob options
         const options = {
-          cwd: resolvedCwd,
+          cwd: cwd,
           dot: dot, // Include .dot files if true
           nodir: nodir, // Only return files (not directories) if true
           absolute: true, // Return absolute paths
           nosort: false, // Sort the results
           silent: true, // Don't throw on permission errors etc.
-          limit: maxResults // Limit number of results
+          limit: Math.min(maxResults, 100) // Hard cap at 100 results to prevent context overflow
         };
         
         // Execute the glob
-        context.logger?.debug(`Executing glob: ${pattern} in ${resolvedCwd}`);
+        context.logger?.debug(`Executing glob: ${pattern} in ${cwd}`);
         const matches = await globAsync(pattern, options);
         
         return {
           success: true,
           pattern,
-          cwd: resolvedCwd,
+          cwd: cwd,
           matches,
           count: matches.length,
           hasMore: matches.length >= maxResults

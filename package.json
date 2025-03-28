@@ -37,7 +37,13 @@
     "start:dev": "npm run build:complete && npm run start:dist -- --dev --port 3000",
     "prepublishOnly": "npm run build:complete",
     "postinstall": "[ -f ./dist/cli.js ] && chmod +x ./dist/cli.js || echo 'dist/cli.js not found, skipping chmod'",
-    "prepack": "chmod +x ./dist/cli.js"
+    "prepack": "chmod +x ./dist/cli.js",
+    "eval": "ts-node src/eval/index.ts",
+    "eval:quick": "ts-node src/eval/index.ts run --quick --concurrency 4",
+    "eval:custom": "ts-node src/eval/index.ts run --config",
+    "eval:list": "ts-node src/eval/index.ts list",
+    "eval:build": "npm run build && node dist/eval/index.js",
+    "eval:setup": "echo 'Set ANTHROPIC_API_KEY and E2B_API_KEY in your environment variables'"
   },
   "keywords": [
     "ai",
@@ -60,6 +66,7 @@
     "@types/prompts": "^2.4.9",
     "@types/uuid": "^10.0.0",
     "body-parser": "^1.20.3",
+    "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "connect-history-api-fallback": "^2.0.0",
     "cors": "^2.8.5",

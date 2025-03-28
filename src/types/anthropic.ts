@@ -3,20 +3,15 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { ModelProviderRequest } from './model';
-import { LogCategory } from '../utils/logger';
-
+import { ModelProviderRequest, TokenManager } from './model';
+import { Logger } from '../utils/logger';
 
 export interface AnthropicConfig {
   apiKey: string;
   model?: string;
   maxTokens?: number;
-  logger?: {
-    debug: (message: string, category: LogCategory, data?: Record<string, unknown>) => void;
-    info: (message: string, category: LogCategory, data?: Record<string, unknown>) => void;
-    warn: (message: string, category: LogCategory, data?: Record<string, unknown>) => void;
-    error: (message: string, category: LogCategory, error?: unknown) => void;
-  };
+  logger?: Logger;
+  tokenManager?: TokenManager;
 }
 
 export interface AnthropicResponse {

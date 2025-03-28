@@ -2,16 +2,9 @@
  * FileWriteTool - Creates new files
  */
 
-import fs from 'fs';
 import path from 'path';
-import { promisify } from 'util';
 import { createTool } from './createTool';
 import { Tool, ToolContext, ValidationResult, ToolCategory } from '../types/tool';
-
-// Promisify fs functions for async/await usage
-const writeFileAsync = promisify(fs.writeFile);
-const mkdirAsync = promisify(fs.mkdir);
-const statAsync = promisify(fs.stat);
 
 // Removed unused interface
 // interface FileWriteToolArgs {
@@ -100,17 +93,33 @@ export const createFileWriteTool = (): Tool => {
       const encoding = args.encoding as string || 'utf8';
       const overwrite = args.overwrite as boolean || false;
       const createDir = args.createDir as boolean ?? true;
+
+      // Check if we're using LocalExecutionAdapter
+      if (context.executionAdapter.constructor.name === 'LocalExecutionAdapter') {
+        context.logger?.error(`Using LocalExecutionAdapter for file write to: ${filePath}`);
+      }
       
       try {
-        // Resolve the path
-        const resolvedPath = path.resolve(filePath);
-        const dirPath = path.dirname(resolvedPath);
+        // Check if we're running in a sandbox (E2B)
+        const isSandbox = !!process.env.SANDBOX_ROOT;
         
-        // Check if file already exists
-        try {
-          const stats = await statAsync(resolvedPath);
+        if (isSandbox && path.isAbsolute(filePath)) {
+          // In sandbox mode, log warnings about absolute paths that don't match expected pattern
+          const sandboxRoot = process.env.SANDBOX_ROOT || '/home/user/app';
           
-          if (stats.isFile() && !overwrite) {
+          // If the path doesn't start with sandbox root, log a warning
+          if (!filePath.startsWith(sandboxRoot)) {
+            context.logger?.warn(`Warning: FileWriteTool: Using absolute path outside sandbox: ${filePath}. This may fail.`);
+          }
+        }
+        
+        const dirPath = path.dirname(filePath);
+        
+        // Check if file already exists using the execution adapter
+        try {
+          const readResult = await context.executionAdapter.readFile(filePath);
+          
+          if (readResult.success && !overwrite) {
             return {
               success: false,
               path: filePath,
@@ -119,31 +128,27 @@ export const createFileWriteTool = (): Tool => {
           }
         } catch (error: unknown) {
           // File doesn't exist, which is what we want
-          const err = error as Error & { code?: string };
-          if (err.code !== 'ENOENT') {
-            throw error; // Re-throw unexpected errors
-          }
+          // Or there was an error that will be handled during write
         }
         
         // Create directory if it doesn't exist
         if (createDir) {
           try {
-            await mkdirAsync(dirPath, { recursive: true });
+            // Use bash command through execution adapter to create directory
+            await context.executionAdapter.executeCommand(`mkdir -p ${dirPath}`);
           } catch (error: unknown) {
-            const err = error as Error & { code?: string };
-            if (err.code !== 'EEXIST') {
-              throw error;
-            }
+            // If directory creation fails, the writeFile will also fail
+            context.logger?.warn(`Failed to create directory: ${dirPath}`, error);
           }
         }
         
-        // Write the file
-        context.logger?.debug(`Creating file: ${resolvedPath}`);
-        await writeFileAsync(resolvedPath, content, encoding as BufferEncoding);
+        // Write the file using the execution adapter
+        context.logger?.debug(`Creating file: ${filePath}`);
+        await context.executionAdapter.writeFile(filePath, content);
         
         return {
           success: true,
-          path: resolvedPath,
+          path: filePath,
           content,
           encoding
         };

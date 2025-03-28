@@ -10,8 +10,7 @@ import {
   ToolResultEntry 
 } from '../types/agent';
 import { ToolCall, ConversationMessage, SessionState } from '../types/model';
-import { manageConversationSize } from '../utils/TokenManager';
-import { LogCategory } from '../utils/logger';
+import { LogCategory, createLogger, LogLevel } from '../utils/logger';
 
 /**
  * Helper function to create a concise summary of tool arguments
@@ -79,7 +78,10 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
   const toolRegistry = config.toolRegistry;
   const permissionManager = config.permissionManager;
   const executionAdapter = config.executionAdapter;
-  const logger = config.logger || console;
+  const logger = config.logger || createLogger({
+    level: LogLevel.INFO,
+    prefix: 'AgentRunner'
+  });
   
   // Return the public interface
   return {
@@ -98,19 +100,13 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         let currentQuery = query;
         const toolResults: ToolResultEntry[] = [];
         let finalResponse = null;
-        const maxIterations = 15; // Prevent infinite loops
+        // When danger mode is enabled, use a higher iterations limit
+        const maxIterations = permissionManager.isDangerModeEnabled() ? 40 : 15;
         let iterations = 0;
         
         // Initialize conversation history if it doesn't exist
         if (!sessionState.conversationHistory) {
           sessionState.conversationHistory = [];
-        }
-        
-        // Manage conversation size to prevent token limit issues
-        // Do this before adding the new query to avoid trimming it
-        if (sessionState.tokenUsage) {
-          logger.debug('Managing conversation size before processing query', LogCategory.SYSTEM);
-          manageConversationSize(sessionState, 60000, logger);
         }
         
         // Add the user query to conversation history if it's not already there
@@ -370,12 +366,6 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
       const responses: string[] = [];
       
       while (!done) {
-        // Manage conversation size before starting a new loop
-        if (sessionState.tokenUsage) {
-          logger.debug('Managing conversation size before starting new conversation loop', LogCategory.SYSTEM);
-          manageConversationSize(sessionState as SessionState, 60000, logger);
-        }
-        
         const result = await this.processQuery(query, sessionState);
         
         if (result.error) {

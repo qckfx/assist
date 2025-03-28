@@ -2,9 +2,9 @@
  * TokenManager - Manages conversation history token usage
  */
 
-import { SessionState, MessageTokenUsage } from "../types/model";
+import { SessionState, MessageTokenUsage, TokenManager as TokenManagerInterface } from "../types/model";
 import { Anthropic } from "@anthropic-ai/sdk";
-import { LogCategory } from "./logger";
+import { LogCategory, Logger } from "../utils/logger";
 
 /**
  * Tracks token usage from model responses
@@ -48,19 +48,9 @@ const trackTokenUsage = (response: Anthropic.Messages.Message, sessionState: Ses
 const manageConversationSize = (
   sessionState: SessionState, 
   maxTokens: number = 60000,
-  logger?: {
-    debug: (message: string, ...args: unknown[]) => void;
-    info: (message: string, ...args: unknown[]) => void;
-    warn: (message: string, ...args: unknown[]) => void;
-    error: (message: string, ...args: unknown[]) => void;
-  }
+  logger?: Logger
 ): void => {
   if (!sessionState.tokenUsage || !sessionState.conversationHistory) {
-    return;
-  }
-  
-  // If we're under the limit, do nothing
-  if (sessionState.tokenUsage.totalTokens <= maxTokens) {
     return;
   }
   
@@ -282,7 +272,13 @@ const manageConversationSize = (
   }
 };
 
+// Create a default TokenManager object
+const tokenManager: TokenManagerInterface = {
+  manageConversationSize
+};
+
 export {
   trackTokenUsage,
-  manageConversationSize
+  manageConversationSize,
+  tokenManager
 };

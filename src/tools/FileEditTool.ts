@@ -2,8 +2,12 @@
  * FileEditTool - Modifies the contents of existing files
  */
 
+import path from 'path';
 import { createTool } from './createTool';
 import { Tool, ToolContext, ValidationResult, ToolCategory } from '../types/tool';
+import { LogLevel } from '../utils/logger';
+import { LogCategory } from '../utils/logger';
+import { createLogger } from '../utils/logger';
 
 // Interface for the arguments accepted by the FileEditTool
 // Used for type checking and documentation
@@ -94,12 +98,26 @@ export const createFileEditTool = (): Tool => {
       const searchCode = args.searchCode as string;
       const replaceCode = args.replaceCode as string;
       const encoding = args.encoding as string || 'utf8';
+      
+      // Check if we're running in a sandbox (E2B)
+      const isSandbox = !!process.env.SANDBOX_ROOT;
+      
+      if (isSandbox && path.isAbsolute(filePath)) {
+        // In sandbox mode, log warnings about absolute paths that don't match expected pattern
+        const sandboxRoot = process.env.SANDBOX_ROOT || '/home/user/app';
+        
+        // If the path doesn't start with sandbox root, log a warning
+        if (!filePath.startsWith(sandboxRoot)) {
+          context.logger?.warn(`Warning: FileEditTool: Using absolute path outside sandbox: ${filePath}. This may fail.`);
+        }
+        
+        // Keep the original path
+      }
 
       const executionAdapter = context.executionAdapter;
-      const { editFile } = executionAdapter;
-
+      
       try {
-        return await editFile(filePath, searchCode, replaceCode, encoding);
+        return await executionAdapter.editFile(filePath, searchCode, replaceCode, encoding);
       } catch (error: unknown) {
         const err = error as Error;
         context.logger?.error(`Error editing file: ${err.message}`);

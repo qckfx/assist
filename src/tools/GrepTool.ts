@@ -106,9 +106,6 @@ export const createGrepTool = (): Tool => {
       const maxResults = args.maxResults as number || 100;
       
       try {
-        // Resolve the path
-        const resolvedPath = path.resolve(searchPath);
-        
         // Build the grep command
         // Using grep directly is more efficient than implementing in JS
         let command = 'grep';
@@ -124,9 +121,9 @@ export const createGrepTool = (): Tool => {
         // Add path and file pattern
         if (filePattern !== '*') {
           // Use find to filter files first
-          command = `find ${resolvedPath} -type f -name "${filePattern}" -exec ${command} {} \\;`;
+          command = `find ${searchPath} -type f -name "${filePattern}" -exec ${command} {} \\;`;
         } else {
-          command += ` ${resolvedPath}`;
+          command += ` ${searchPath}`;
         }
         
         // Add result limiting
@@ -157,7 +154,7 @@ export const createGrepTool = (): Tool => {
         return {
           success: true,
           pattern,
-          path: resolvedPath,
+          path: searchPath,
           results,
           count: results.length,
           hasMore: results.length >= maxResults
