@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ABTestRunWithHistory, ConfigurationComparison } from '../../models/ab-types';
+import { createJudgeModelProvider } from './model-provider';
 
 /**
  * Generate a comprehensive A/B testing report
@@ -35,6 +36,9 @@ export async function generateABReport(
   outputPath: string
 ): Promise<string> {
   const { configA, configB, runsByTest, comparison } = data;
+  
+  // Create a model provider for summarizing results
+  const judgeModelProvider = createJudgeModelProvider();
   
   // Ensure the output directory exists
   const outputDir = path.dirname(outputPath);
@@ -105,6 +109,28 @@ export async function generateABReport(
       : overallDiff;
     
     markdown += `| **Overall** | **${typeof overallA === 'number' ? overallA.toFixed(2) : overallA}** | **${typeof overallB === 'number' ? overallB.toFixed(2) : overallB}** | **${overallDiffText}** |\n\n`;
+    
+    // Get summaries of overall strengths and weaknesses
+    const allRunsA = configA.runs.filter(r => r.judgment);
+    const allRunsB = configB.runs.filter(r => r.judgment);
+    
+    if (allRunsA.length > 0 && allRunsB.length > 0) {
+      // Summarize overall strengths and weaknesses
+      const strengthSummaryA = await summarizeJudgmentProperty(allRunsA, 'strengths', judgeModelProvider, configA.name);
+      const strengthSummaryB = await summarizeJudgmentProperty(allRunsB, 'strengths', judgeModelProvider, configB.name);
+      const weaknessSummaryA = await summarizeJudgmentProperty(allRunsA, 'weaknesses', judgeModelProvider, configA.name);
+      const weaknessSummaryB = await summarizeJudgmentProperty(allRunsB, 'weaknesses', judgeModelProvider, configB.name);
+      
+      markdown += `### Overall Agent Characteristics\n\n`;
+      
+      markdown += `**Key Strengths:**\n\n`;
+      markdown += `- ${configA.name}: ${strengthSummaryA}\n\n`;
+      markdown += `- ${configB.name}: ${strengthSummaryB}\n\n`;
+      
+      markdown += `**Key Weaknesses:**\n\n`;
+      markdown += `- ${configA.name}: ${weaknessSummaryA}\n\n`;
+      markdown += `- ${configB.name}: ${weaknessSummaryB}\n\n`;
+    }
   }
   
   // Add comparison results if available
@@ -193,23 +219,19 @@ export async function generateABReport(
       
       markdown += '\n';
       
-      // Add common strengths/weaknesses
-      const strengthsA = getCommonItems(judgedRunsA, 'strengths');
-      const strengthsB = getCommonItems(judgedRunsB, 'strengths');
-      const weaknessesA = getCommonItems(judgedRunsA, 'weaknesses');
-      const weaknessesB = getCommonItems(judgedRunsB, 'weaknesses');
+      // Get AI-generated summaries for strengths and weaknesses
+      const strengthSummaryA = await summarizeJudgmentProperty(judgedRunsA, 'strengths', judgeModelProvider, configA.name);
+      const strengthSummaryB = await summarizeJudgmentProperty(judgedRunsB, 'strengths', judgeModelProvider, configB.name);
+      const weaknessSummaryA = await summarizeJudgmentProperty(judgedRunsA, 'weaknesses', judgeModelProvider, configA.name);
+      const weaknessSummaryB = await summarizeJudgmentProperty(judgedRunsB, 'weaknesses', judgeModelProvider, configB.name);
       
-      if (strengthsA.length > 0 || strengthsB.length > 0) {
-        markdown += `**Common Strengths:**\n\n`;
-        markdown += `- ${configA.name}: ${strengthsA.join(', ') || 'None identified'}\n`;
-        markdown += `- ${configB.name}: ${strengthsB.join(', ') || 'None identified'}\n\n`;
-      }
+      markdown += `**Strengths:**\n\n`;
+      markdown += `- ${configA.name}: ${strengthSummaryA}\n\n`;
+      markdown += `- ${configB.name}: ${strengthSummaryB}\n\n`;
       
-      if (weaknessesA.length > 0 || weaknessesB.length > 0) {
-        markdown += `**Common Weaknesses:**\n\n`;
-        markdown += `- ${configA.name}: ${weaknessesA.join(', ') || 'None identified'}\n`;
-        markdown += `- ${configB.name}: ${weaknessesB.join(', ') || 'None identified'}\n\n`;
-      }
+      markdown += `**Weaknesses:**\n\n`;
+      markdown += `- ${configA.name}: ${weaknessSummaryA}\n\n`;
+      markdown += `- ${configB.name}: ${weaknessSummaryB}\n\n`;
     }
     
     // Add separator between test cases
@@ -284,7 +306,7 @@ function calculateAverageScores(runs: ABTestRunWithHistory[]): Record<string, nu
 }
 
 /**
- * Get common items from judgment results
+ * Get common items from judgment results (original method - uses frequency counting)
  */
 function getCommonItems(runs: ABTestRunWithHistory[], property: 'strengths' | 'weaknesses' | 'suggestions'): string[] {
   const items = runs
@@ -305,4 +327,75 @@ function getCommonItems(runs: ABTestRunWithHistory[], property: 'strengths' | 'w
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([item, count]) => `${item} (${count})`);
+}
+
+/**
+ * Create a summary of judgment results using an LLM
+ * 
+ * @param runs The test runs with judgments to summarize
+ * @param property The property to summarize (strengths, weaknesses, etc.)
+ * @param modelProvider The model provider to use for summarization
+ * @returns A promise that resolves to the summary text
+ */
+async function summarizeJudgmentProperty(
+  runs: ABTestRunWithHistory[], 
+  property: 'strengths' | 'weaknesses' | 'suggestions',
+  modelProvider: any,
+  configName: string
+): Promise<string> {
+  // Skip if there are no judgments
+  const runsWithJudgment = runs.filter(r => r.judgment && r.judgment[property] && Array.isArray(r.judgment[property]));
+  if (runsWithJudgment.length === 0) {
+    return 'None identified';
+  }
+
+  // Extract all items with their execution context
+  const allItems: Record<string, string[]> = {};
+  runsWithJudgment.forEach((run, index) => {
+    if (run.judgment && run.judgment[property]) {
+      const items = run.judgment[property] as string[];
+      allItems[`Run ${index + 1}`] = items;
+    }
+  });
+  
+  // Create a prompt for the LLM to analyze and summarize
+  const prompt = `
+  I need you to synthesize and summarize the key ${property} identified across multiple judging runs for configuration "${configName}".
+  
+  Here are the ${property} identified in each run:
+  ${Object.entries(allItems).map(([run, items]) => `
+  ${run}:
+  ${items.map(item => `- ${item}`).join('\n')}
+  `).join('\n')}
+  
+  Please provide a concise, insightful summary of the key ${property} across all runs. 
+  Focus on identifying patterns and themes rather than just listing the most common items.
+  Look for deeper insights about what makes this configuration perform the way it does.
+  
+  Your summary should:
+  1. Be 2-4 sentences long
+  2. Capture the most important patterns
+  3. Be specific to this configuration's behavior
+  4. Avoid generic observations that could apply to any agent
+  5. Focus on what makes this configuration's ${property} distinctive
+  
+  Only return the summary text without any preamble, explanation, or additional formatting.
+  `;
+  
+  try {
+    // Process with the model
+    const result = await modelProvider.processQuery(prompt, {
+      temperature: 0.3,
+      maxTokens: 300
+    });
+    
+    if (result.response) {
+      return result.response.trim();
+    }
+  } catch (error) {
+    console.error(`Error summarizing ${property}`, error);
+  }
+  
+  // Fallback to the original method if summarization fails
+  return getCommonItems(runs, property).join(', ') || 'None identified';
 }
