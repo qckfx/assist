@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { AgentExecutionHistory, JudgmentResult } from '../models/types';
+import { AgentConfiguration, ConfigurationComparison } from '../models/ab-types';
 import { createLogger, LogLevel } from '../../utils/logger';
 
 // Create a logger for storage operations
@@ -443,6 +444,72 @@ export class StorageService {
       }
     } catch (error) {
       logger.error('Failed to clean up old evaluation data', error);
+    }
+  }
+
+  /**
+   * Store an agent configuration
+   */
+  storeConfiguration(
+    config: AgentConfiguration,
+    options: {
+      runId?: string;
+    } = {}
+  ): void {
+    try {
+      const runId = options.runId || this.formatDateForFilename();
+      const evalDir = this.getEvaluationStorageDir({ runId });
+      const configsDir = path.join(evalDir, 'configurations');
+      this.ensureDirectoryExists(configsDir);
+      
+      const filePath = path.join(configsDir, `config-${config.id}.json`);
+      this.fileSystem.writeFileSync(
+        filePath, 
+        JSON.stringify(config, null, 2), 
+        { encoding: 'utf8' }
+      );
+      
+      logger.debug(`Stored configuration to ${filePath}`);
+    } catch (error) {
+      logger.error('Failed to store configuration', error);
+    }
+  }
+
+  /**
+   * Store a comparison between two configurations
+   */
+  storeConfigurationComparison(
+    comparison: ConfigurationComparison,
+    configAId: string,
+    configBId: string,
+    options: {
+      runId?: string;
+      comparisonId?: string;
+    } = {}
+  ): string {
+    try {
+      const { comparisonId = this.generateUniqueId() } = options;
+      const runId = options.runId || this.formatDateForFilename();
+      const evalDir = this.getEvaluationStorageDir({ runId });
+      const comparisonsDir = path.join(evalDir, 'config-comparisons');
+      this.ensureDirectoryExists(comparisonsDir);
+      
+      const filePath = path.join(
+        comparisonsDir, 
+        `config-comparison-${configAId}-${configBId}-${comparisonId}.json`
+      );
+      
+      this.fileSystem.writeFileSync(
+        filePath, 
+        JSON.stringify(comparison, null, 2), 
+        { encoding: 'utf8' }
+      );
+      
+      logger.debug(`Stored configuration comparison to ${filePath}`);
+      return comparisonId;
+    } catch (error) {
+      logger.error('Failed to store configuration comparison', error);
+      throw error;
     }
   }
 }

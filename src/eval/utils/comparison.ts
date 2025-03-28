@@ -2,9 +2,9 @@
  * Configuration comparison utilities for A/B testing
  */
 
-import { AgentConfiguration, ConfigurationComparison } from '../../models/ab-types';
-import { ModelProvider } from '../judge-runner';
-import { createLogger, LogLevel } from '../../../utils/logger';
+import { AgentConfiguration, ConfigurationComparison } from '../models/ab-types';
+import { ModelProvider } from '../runners/judge';
+import { createLogger, LogLevel } from '../../utils/logger';
 
 // Create a logger for comparison operations
 const logger = createLogger({

@@ -75,7 +75,7 @@ CRITICAL GUIDELINES FOR SCORING:
 /**
  * Options for creating judging prompts
  */
-export interface CreateJudgingPromptOptions {
+export interface JudgingPromptOptions {
   /** The task the agent was given */
   task: string;
   
@@ -95,7 +95,7 @@ export interface CreateJudgingPromptOptions {
 /**
  * Create a judging prompt with execution history and examples
  */
-export function createJudgingPrompt(options: CreateJudgingPromptOptions): string {
+export function createJudgingPrompt(options: JudgingPromptOptions): string {
   const {
     task,
     executionHistory,

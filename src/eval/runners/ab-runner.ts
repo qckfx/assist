@@ -7,25 +7,24 @@
 
 import path from 'path';
 import fs from 'fs';
-import { TestCase } from '../../models/types';
+import { TestCase } from '../models/types';
 import { 
   AgentConfiguration, 
   ABEvaluationOptions, 
   ABEvaluationResult,
   ABTestRunWithHistory,
   ConfigurationComparison
-} from '../../models/ab-types';
-import { SandboxPool } from '../../utils/sandbox-pool';
-import { StorageService, NodeFileSystem } from '../../utils/storage';
-import { extendStorageService } from '../../utils/storage-extensions';
-import { createLogger, LogLevel } from '../../../utils/logger';
-import { runTestCaseWithHistory } from '../test-runner';
-import { runJudge } from '../judge-runner';
-import { createJudgeModelProvider } from './model-provider';
-import { createProviderFromConfig, createAgentFromConfig } from './agent-factory';
-import { compareConfigurations } from './comparison';
-import { generateABReport } from './reporting';
-import { createPromptManager } from '../../../core/PromptManager';
+} from '../models/ab-types';
+import { SandboxPool } from '../utils/sandbox-pool';
+import { StorageService, NodeFileSystem } from '../utils/storage';
+import { createLogger, LogLevel } from '../../utils/logger';
+import { runTestCaseWithHistory } from './test-runner';
+import { runJudge } from './judge';
+import { createProviderFromConfig } from '../utils/agent-factory';
+import { compareConfigurations } from '../utils/comparison';
+import { generateABReport } from '../utils/reporting';
+import { createJudgeModelProvider } from '../utils/model-provider';
+import { createPromptManager } from '../../core/PromptManager';
 
 // Create a logger for the A/B testing runner
 const logger = createLogger({
@@ -112,11 +111,8 @@ export async function runABEvaluation(
     outputDir = path.join(process.cwd(), 'evaluation-results'),
     judgeSystemPrompt,
     useExamples = true,
-    storageService: baseStorageService = new StorageService(new NodeFileSystem())
+    storageService = new StorageService(new NodeFileSystem())
   } = options;
-  
-  // Extend the storage service with A/B testing specific methods
-  const storageService = extendStorageService(baseStorageService);
   
   // Create a model provider adapter for the judge
   const judgeModelProvider = createJudgeModelProvider();

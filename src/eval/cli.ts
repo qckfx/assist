@@ -1,24 +1,32 @@
 /**
- * CLI command for A/B testing
+ * A/B Testing CLI
+ * 
+ * A simplified CLI interface for running A/B prompt evaluations
  */
 
 import fs from 'fs';
 import path from 'path';
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { ABEvaluationOptions } from '../../models/ab-types';
-import { runABEvaluation } from './runner';
-import { testCases, getQuickTestCases } from '../../models/test-cases';
+import { ABEvaluationOptions } from './models/ab-types';
+import { runABEvaluation } from './runners/ab-runner';
+import { testCases, getQuickTestCases } from './models/test-cases';
 
 /**
- * Setup command for A/B testing
- * 
- * @param program Commander program instance to add the command to
+ * Setup the evaluation CLI
  */
-export function setupABCommand(program: Command): void {
-  // Add a command that runs the A/B evaluation with the provided config or uses the default config
+export function setupEvalCLI(): Command {
+  // Create a command line interface
+  const program = new Command();
+  
   program
-    .command('eval')
+    .name('eval')
+    .description('qckfx Agent Evaluation CLI')
+    .version('1.0.0');
+  
+  // Add the eval command for A/B testing
+  program
+    .command('run')
     .description('Run A/B testing evaluation')
     .option('-c, --config <path>', 'Path to a custom A/B test configuration file')
     .option('-o, --output <dir>', 'Directory to save results (default: ./evaluation-results)')
@@ -42,7 +50,7 @@ export function setupABCommand(program: Command): void {
           config = JSON.parse(fs.readFileSync(options.config, 'utf8'));
         } else {
           // Use the default config
-          const defaultConfigPath = path.join(__dirname, '../../examples/ab-config-example.json');
+          const defaultConfigPath = path.join(__dirname, './examples/ab-config-example.json');
           console.log(chalk.blue(`Loading default configuration from ${defaultConfigPath}`));
           
           if (!fs.existsSync(defaultConfigPath)) {
@@ -127,4 +135,28 @@ export function setupABCommand(program: Command): void {
         process.exit(1);
       }
     });
+
+  // Add a list command to show available test cases
+  program
+    .command('list')
+    .description('List available test cases')
+    .option('--quiet', 'Display only test IDs and names without details')
+    .action((options) => {
+      console.log(chalk.yellow('Available test cases:'));
+      
+      testCases.forEach((testCase, index) => {
+        console.log(`${index + 1}. ${chalk.cyan(testCase.name)} (${chalk.gray(testCase.id)})`);
+        
+        if (!options.quiet) {
+          console.log(`   Type: ${testCase.type || 'unspecified'}`);
+          console.log(`   Instructions: ${testCase.instructions.slice(0, 100) + '...'}`);
+          console.log();
+        }
+      });
+    });
+
+  return program;
 }
+
+// Export the setup function as the default export
+export default setupEvalCLI;

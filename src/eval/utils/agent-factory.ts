@@ -5,11 +5,11 @@
  * leveraging the PromptManager for consistent prompt handling.
  */
 
-import { createAnthropicProvider } from '../../../providers/AnthropicProvider';
-import { createModelClient } from '../../../core/ModelClient';
-import { createPromptManager } from '../../../core/PromptManager';
-import { AgentConfiguration } from '../../models/ab-types';
-import { createLogger, LogLevel } from '../../../utils/logger';
+import { createAnthropicProvider } from '../../providers/AnthropicProvider';
+import { createModelClient } from '../../core/ModelClient';
+import { createPromptManager } from '../../core/PromptManager';
+import { AgentConfiguration } from '../models/ab-types';
+import { createLogger, LogLevel } from '../../utils/logger';
 
 // Create a logger for the agent factory
 const logger = createLogger({

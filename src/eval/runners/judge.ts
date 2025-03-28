@@ -3,7 +3,7 @@
  */
 
 import { JudgmentResult, AgentExecutionHistory } from '../models/types';
-import { createJudgingPrompt } from '../utils/judge-prompts';
+import { createJudgingPrompt } from '../utils/prompts';
 import { createLogger, LogLevel } from '../../utils/logger';
 
 // Create a logger for the judge runner

@@ -9,7 +9,7 @@ import * as dotenv from 'dotenv';
 import { SessionState, ToolResultEntry } from './types';
 import chalk from 'chalk';
 import prompts from 'prompts';
-import { setupEvaluationCommands } from './eval/cli';
+import setupEvalCLI from './eval/cli';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -477,7 +477,7 @@ program
   .action(startChat);
 
 // Setup evaluation commands
-setupEvaluationCommands(program);
+setupEvalCLI();
 
 // Parse command line arguments
 program.parse();

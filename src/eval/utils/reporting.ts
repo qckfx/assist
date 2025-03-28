@@ -4,7 +4,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { ABTestRunWithHistory, ConfigurationComparison } from '../../models/ab-types';
+import { ABTestRunWithHistory, ConfigurationComparison } from '../models/ab-types';
 import { createJudgeModelProvider } from './model-provider';
 
 /**
