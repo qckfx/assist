@@ -94,12 +94,22 @@ export const createGlobTool = (): Tool => {
       const maxResults = args.maxResults as number || 1000;
       
       try {
-        // Resolve the base path
-        const resolvedCwd = path.resolve(cwd);
+        // Check if we're running in a sandbox (E2B)
+        const isSandbox = !!process.env.SANDBOX_ROOT;
+        
+        if (isSandbox && path.isAbsolute(cwd)) {
+          // In sandbox mode, log warnings about absolute paths that don't match expected pattern
+          const sandboxRoot = process.env.SANDBOX_ROOT || '/home/user/app';
+          
+          // If the path doesn't start with sandbox root, log a warning
+          if (!cwd.startsWith(sandboxRoot)) {
+            context.logger?.warn(`Warning: GlobTool: Using absolute path outside sandbox: ${cwd}. This may fail.`);
+          }
+        } 
         
         // Set up glob options
         const options = {
-          cwd: resolvedCwd,
+          cwd: cwd,
           dot: dot, // Include .dot files if true
           nodir: nodir, // Only return files (not directories) if true
           absolute: true, // Return absolute paths
@@ -109,13 +119,13 @@ export const createGlobTool = (): Tool => {
         };
         
         // Execute the glob
-        context.logger?.debug(`Executing glob: ${pattern} in ${resolvedCwd}`);
+        context.logger?.debug(`Executing glob: ${pattern} in ${cwd}`);
         const matches = await globAsync(pattern, options);
         
         return {
           success: true,
           pattern,
-          cwd: resolvedCwd,
+          cwd: cwd,
           matches,
           count: matches.length,
           hasMore: matches.length >= maxResults

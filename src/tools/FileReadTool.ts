@@ -2,6 +2,7 @@
  * FileReadTool - Reads the contents of files
  */
 
+import path from 'path';
 import { createTool } from './createTool';
 import { Tool, ToolContext, ValidationResult, ToolCategory } from '../types/tool';
 
@@ -95,6 +96,21 @@ export const createFileReadTool = (): Tool => {
       // Hard cap the lineCount at 1000 to prevent context overflow
       const requestedLineCount = args.lineCount !== undefined ? args.lineCount as number : undefined;
       const lineCount = requestedLineCount ? Math.min(requestedLineCount, 1000) : 1000;
+
+      // Check if we're running in a sandbox (E2B)
+      const isSandbox = !!process.env.SANDBOX_ROOT;
+      
+      if (isSandbox && path.isAbsolute(filePath)) {
+        // In sandbox mode, log warnings about absolute paths that don't match expected pattern
+        const sandboxRoot = process.env.SANDBOX_ROOT || '/home/user/app';
+        
+        // If the path doesn't start with sandbox root, log a warning
+        if (!filePath.startsWith(sandboxRoot)) {
+          context.logger?.warn(`Warning: FileReadTool: Using absolute path outside sandbox: ${filePath}. This may fail.`);
+        }
+        
+        // Keep the original path
+      }
 
       const executionAdapter = context.executionAdapter;
       
