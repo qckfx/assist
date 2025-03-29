@@ -154,6 +154,12 @@ export class AgentService extends EventEmitter {
     }
 
     try {
+      // Reset abort status if it was previously set - this allows new messages to be processed after an abort
+      if (session.state && session.state.__aborted === true) {
+        session.state.__aborted = false;
+        delete session.state.__abortTimestamp;
+      }
+      
       // Mark the session as processing
       this.activeProcessingSessionIds.add(sessionId);
       sessionManager.updateSession(sessionId, { isProcessing: true });

@@ -165,12 +165,13 @@ export function ToolVisualization({
   return (
     <div 
       className={cn(
-        'tool-visualization border-l-4 px-2 py-1 my-1 rounded',
-        'transition-colors duration-300',
+        'tool-visualization border-l-4 px-1 py-0.5 my-0.5 rounded',
+        'transition-colors duration-300 inline-block',
         statusStyles,
-        compact ? 'text-sm' : '', // Smaller text for compact view
+        'text-xs', // Always use smaller text
         className
       )}
+      style={{ maxWidth: '30%', width: '300px' }} // Direct width constraint
       data-testid="tool-visualization"
       data-tool-id={tool.tool}
       data-tool-status={toolState}
@@ -178,73 +179,62 @@ export function ToolVisualization({
       aria-live={toolState === ToolState.RUNNING ? 'polite' : 'off'}
       aria-label={`Tool ${tool.toolName} ${toolState}: ${getToolDescription(tool)}`}
     >
-      {/* Header with tool name - simpler display */}
+      {/* Simplified layout with tool name, description and status in a more compact form */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center">
-          <span className="font-semibold text-xs">{tool.toolName}</span>
+        <div className="flex items-center gap-1">
+          {/* Status indicator inline with name */}
+          <span 
+            className={statusIndicator.className}
+            aria-label={statusIndicator.ariaLabel}
+            role="status"
+          >
+            {statusIndicator.icon}
+          </span>
+          
+          <span className="font-semibold">{tool.toolName}</span>
+          
+          {/* Execution time inline if available and enabled */}
+          {showExecutionTime && tool.executionTime && (
+            <span className="text-gray-500 dark:text-gray-400 ml-1">
+              ({formattedTime})
+            </span>
+          )}
         </div>
-        
-        {showExecutionTime && tool.executionTime && (
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {formattedTime}
-          </div>
-        )}
       </div>
       
-      {/* Parameters - simplified display that always shows what the tool is doing */}
+      {/* Parameters on same line when possible, with clear description */}
       <div 
         className={cn(
-          'mt-1',
-          'text-xs',
+          'truncate',
           showExpandedParams ? 'whitespace-pre-wrap' : 'truncate'
         )}
         onClick={onToggleExpand}
         style={{ cursor: onToggleExpand ? 'pointer' : 'default' }}
       >
-        {/* Always show a meaningful description of what the tool is doing */}
         {getToolDescription(tool)}
       </div>
       
-      {/* Error message if status is error */}
+      {/* Error message if status is error - keep this visible */}
       {toolState === ToolState.ERROR && tool.error && (
-        <div className="mt-1 text-sm text-red-600 dark:text-red-400">
+        <div className="text-red-600 dark:text-red-400">
           {tool.error.message}
         </div>
       )}
       
-      {/* Aborted message if status is aborted */}
+      {/* Aborted message if status is aborted - keep this visible too */}
       {toolState === ToolState.ABORTED && (
-        <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        <div className="text-gray-600 dark:text-gray-400">
           Operation aborted
         </div>
       )}
       
-      {/* Footer with timestamp */}
-      {!compact && (
-        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {timestamp}
-        </div>
-      )}
-      
-      {/* Unified status indicator display */}
-      <div className="flex justify-end mt-1">
-        <span 
-          className={`text-base ${statusIndicator.className}`}
-          aria-label={statusIndicator.ariaLabel}
-          role="status"
-        >
-          {statusIndicator.icon}
-        </span>
-      </div>
-      
-      {/* Permission request banner - added for permission-required tools */}
+      {/* Permission request banner - more compact version */}
       {tool.status === 'awaiting-permission' && tool.requiresPermission && toolState !== ToolState.ABORTED && (
         <div 
-          className="mt-2 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100 px-3 py-2 rounded-md text-sm border border-amber-300 dark:border-amber-700"
+          className="mt-1 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100 px-2 py-1 rounded-md text-xs border border-amber-300 dark:border-amber-700"
           data-testid="permission-banner"
         >
-          <div className="font-semibold">Permission Required</div>
-          <div className="text-xs mt-1">Type 'y' to allow, anything else to deny</div>
+          <div className="font-semibold">Permission Required - Type 'y' to allow</div>
         </div>
       )}
       

@@ -135,7 +135,7 @@ export function WebSocketTerminalProvider({
     try {
       // Update UI state
       setProcessing(true);
-      addSystemMessage('Creating new session...');
+      // Don't add a system message when creating a session - handled by the initialization process
       
       console.log('[WebSocketTerminalContext] Requesting new session from API...');
       
@@ -171,7 +171,7 @@ export function WebSocketTerminalProvider({
           connectToSession(newSessionId);
         }
         
-        addSystemMessage(`Session created: ${newSessionId}`);
+        // Don't show session ID to users - they don't need to see this
         return newSessionId;
       } else {
         console.error('[WebSocketTerminalContext] Failed to create session - invalid response:', response);
