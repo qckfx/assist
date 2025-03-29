@@ -13,7 +13,7 @@ import { createGlobTool } from '../../tools/GlobTool';
 import { createGrepTool } from '../../tools/GrepTool';
 import { createLSTool } from '../../tools/LSTool';
 import { createThinkTool } from '../../tools/ThinkTool';
-import { Logger, createLogger, LogLevel } from '../../utils/logger';
+import { createLogger, LogLevel } from '../../utils/logger';
 
 // Create a logger for tool operations
 const logger = createLogger({

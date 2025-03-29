@@ -4,7 +4,6 @@
 
 import { createAgentFromConfig } from '../agent-factory';
 import { AgentConfiguration } from '../../models/ab-types';
-import { createAllTools, createFilteredToolRegistry } from '../tools';
 
 // Mock dependencies
 jest.mock('../../../providers/AnthropicProvider', () => ({
@@ -69,7 +68,7 @@ jest.mock('../tools', () => {
   
   return {
     createAllTools: jest.fn(() => mockTools),
-    createFilteredToolRegistry: jest.fn((availableTools, configName) => {
+    createFilteredToolRegistry: jest.fn((availableTools, _configName) => {
       // Simulate the filtering behavior
       if (availableTools && availableTools.length > 0) {
         mockToolRegistry.getAllTools.mockReturnValue(
@@ -103,19 +102,14 @@ describe('Agent Factory', () => {
   
   test('createAgentFromConfig creates an agent with all tools when availableTools is not specified', () => {
     // Call the function
-    const result = createAgentFromConfig(sampleConfig);
-    
-    // Get the mocked dependencies
-    const { createToolRegistry } = require('../../../core/ToolRegistry');
-    const { createAllTools } = require('../tools');
-    const mockRegistry = createToolRegistry();
+    createAgentFromConfig(sampleConfig);
     
     // Verify that createFilteredToolRegistry was called with undefined availableTools
-    const { createFilteredToolRegistry } = require('../tools');
+    const createFilteredToolRegistry = jest.requireMock('../tools').createFilteredToolRegistry;
     expect(createFilteredToolRegistry).toHaveBeenCalledWith(undefined, sampleConfig.name);
     
     // Verify that the toolRegistry was passed to createModelClient
-    const { createModelClient } = require('../../../core/ModelClient');
+    const createModelClient = jest.requireMock('../../../core/ModelClient').createModelClient;
     expect(createModelClient).toHaveBeenCalledWith(
       expect.objectContaining({
         toolRegistry: expect.any(Object)
@@ -131,22 +125,17 @@ describe('Agent Factory', () => {
     };
     
     // Call the function
-    const result = createAgentFromConfig(configWithTools);
-    
-    // Get the mocked dependencies
-    const { createToolRegistry } = require('../../../core/ToolRegistry');
-    const { createAllTools } = require('../tools');
-    const mockRegistry = createToolRegistry();
+    createAgentFromConfig(configWithTools);
     
     // Verify that createFilteredToolRegistry was called with the right tools
-    const { createFilteredToolRegistry } = require('../tools');
+    const createFilteredToolRegistry = jest.requireMock('../tools').createFilteredToolRegistry;
     expect(createFilteredToolRegistry).toHaveBeenCalledWith(
       configWithTools.availableTools,
       configWithTools.name
     );
     
     // Verify that the toolRegistry was passed to createModelClient
-    const { createModelClient } = require('../../../core/ModelClient');
+    const createModelClient = jest.requireMock('../../../core/ModelClient').createModelClient;
     expect(createModelClient).toHaveBeenCalledWith(
       expect.objectContaining({
         toolRegistry: expect.any(Object)
@@ -162,22 +151,17 @@ describe('Agent Factory', () => {
     };
     
     // Call the function
-    const result = createAgentFromConfig(configWithEmptyTools);
-    
-    // Get the mocked dependencies
-    const { createToolRegistry } = require('../../../core/ToolRegistry');
-    const { createAllTools } = require('../tools');
-    const mockRegistry = createToolRegistry();
+    createAgentFromConfig(configWithEmptyTools);
     
     // Verify that createFilteredToolRegistry was called with empty array
-    const { createFilteredToolRegistry } = require('../tools');
+    const createFilteredToolRegistry = jest.requireMock('../tools').createFilteredToolRegistry;
     expect(createFilteredToolRegistry).toHaveBeenCalledWith(
       configWithEmptyTools.availableTools,
       configWithEmptyTools.name
     );
     
     // Verify that the toolRegistry was passed to createModelClient
-    const { createModelClient } = require('../../../core/ModelClient');
+    const createModelClient = jest.requireMock('../../../core/ModelClient').createModelClient;
     expect(createModelClient).toHaveBeenCalledWith(
       expect.objectContaining({
         toolRegistry: expect.any(Object)

@@ -43,27 +43,47 @@ jest.mock('../../services/SessionManager', () => {
   };
 });
 
-// Mock agent service
+// Mock with proper structure - this needs to be before any imports
+// The simplest solution is to mock just what's needed
 jest.mock('../../services/AgentService', () => {
-  const eventEmitter = new (require('events')).EventEmitter();
+  // Create the shared EventEmitter
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const EventEmitter = require('events').EventEmitter;
+  const eventEmitter = new EventEmitter();
+  
+  // Create a mock agent service class that extends EventEmitter
+  class MockAgentService extends EventEmitter {
+    constructor() {
+      super();
+      // Copy the eventEmitter methods for our test
+      this.on = eventEmitter.on.bind(eventEmitter);
+      this.emit = eventEmitter.emit.bind(eventEmitter);
+    }
+    
+    abortOperation(sessionId: string): boolean {
+      if (sessionId === '123e4567-e89b-12d3-a456-426614174000') {
+        // Emit abort event for this session
+        this.emit('processing:aborted', { sessionId });
+        return true;
+      }
+      return false;
+    }
+    
+    startSession(): Record<string, never> {
+      return {};
+    }
+  }
+  
+  // Create singleton instance
+  const instance = new MockAgentService();
   
   return {
-    getAgentService: jest.fn(() => ({
-      abortOperation: jest.fn().mockImplementation((sessionId) => {
-        if (sessionId === '123e4567-e89b-12d3-a456-426614174000') {
-          // Emit abort event for this session
-          eventEmitter.emit('processing:aborted', { sessionId });
-          return true;
-        }
-        return false;
-      }),
-      on: eventEmitter.on.bind(eventEmitter),
-      emit: eventEmitter.emit.bind(eventEmitter),
-      startSession: jest.fn(),
-    })),
+    // Export the event constants
     AgentServiceEvent: {
       PROCESSING_ABORTED: 'processing:aborted',
     },
+    // Export the factory function
+    getAgentService: () => instance
   };
 });
 
@@ -75,6 +95,7 @@ describe('Abort API Integration Tests', () => {
   });
 
   beforeAll(() => {
+    // Set up the express app
     app = express();
     app.use(json());
     app.use('/api', apiRoutes);

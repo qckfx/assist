@@ -126,7 +126,7 @@ export const createFileWriteTool = (): Tool => {
               error: `File already exists: ${filePath}. Set overwrite to true to replace it.`
             };
           }
-        } catch (error: unknown) {
+        } catch {
           // File doesn't exist, which is what we want
           // Or there was an error that will be handled during write
         }

@@ -34,7 +34,7 @@ export interface ProcessQueryOptions {
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;
-  [key: string]: any;
+  [key: string]: string | number | boolean | undefined;
 }
 
 /**
@@ -80,7 +80,7 @@ export function extractJsonFromString(output: string): string | null {
  * @param result Object to validate
  * @returns Whether the object is a valid judgment result
  */
-export function isValidJudgmentResult(result: any): boolean {
+export function isValidJudgmentResult(result: Record<string, unknown>): boolean {
   if (!result) return false;
   if (typeof result !== 'object') return false;
   if (!result.scores || typeof result.scores !== 'object') return false;

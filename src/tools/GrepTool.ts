@@ -2,7 +2,7 @@
  * GrepTool - Searches file contents for patterns
  */
 
-import path from 'path';
+// path import removed as it's unused
 import { promisify } from 'util';
 import { exec } from 'child_process';
 import { createTool } from './createTool';

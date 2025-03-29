@@ -395,7 +395,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 lastMessage.content &&
                 Array.isArray(lastMessage.content) &&
                 lastMessage.content.some(
-                  (item: any) => item.type === 'tool_result' && item.tool_use_id === toolCall.toolUseId
+                  (item: {type: string; tool_use_id?: string}) => item.type === 'tool_result' && item.tool_use_id === toolCall.toolUseId
                 );
               
               // If for some reason the tool result wasn't added, add it now

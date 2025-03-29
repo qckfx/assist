@@ -6,9 +6,9 @@
  */
 
 import { Sandbox } from 'e2b';
-import { createLogger, LogLevel, LogCategory, Logger } from '../../utils/logger';
+import { createLogger, LogLevel, Logger } from '../../utils/logger';
 import { E2BExecutionAdapter } from '../../utils/E2BExecutionAdapter';
-import { initializeSandbox } from './sandbox';
+import { initializeSandbox, resetSandbox, cleanupSandbox } from './sandbox';
 
 // Create a logger for the sandbox pool
 const logger: Logger = createLogger({
@@ -184,8 +184,7 @@ export class SandboxPool {
       // If requested, reset the sandbox to its original state
       if (resetBeforeRelease) {
         try {
-          // Import the reset function to avoid circular dependencies
-          const { resetSandbox } = require('./sandbox');
+          // Reset the sandbox using the imported function
           
           // Reset the sandbox to the baseline state
           logger.info(`Resetting sandbox ${sandboxId} before releasing back to pool`);
@@ -234,8 +233,7 @@ export class SandboxPool {
     
     logger.info('Shutting down sandbox pool');
     
-    // Import the cleanup function to avoid circular dependencies
-    const { cleanupSandbox } = require('./sandbox');
+    // Clean up all sandboxes using the imported function
     
     // Close all available sandboxes
     const availableClosingPromises = this.availableSandboxes.map(async sandboxInfo => {
@@ -323,7 +321,7 @@ export class SandboxPool {
    * @param timeoutMs Optional timeout for acquiring a sandbox
    * @returns The result of both function executions
    */
-  async withConsecutiveOperations<T, U>(
+  async withConsecutiveOperations<T>(
     fn: (sandboxInfo: {
       sandbox: Sandbox;
       sandboxId: string;
@@ -332,9 +330,9 @@ export class SandboxPool {
       sandbox: Sandbox;
       sandboxId: string;
       executionAdapter: E2BExecutionAdapter;
-    }) => Promise<U>>,
+    }) => Promise<T>>,
     timeoutMs?: number
-  ): Promise<U> {
+  ): Promise<T> {
     const sandboxInfo = await this.acquireSandbox(timeoutMs);
     
     if (!sandboxInfo) {
