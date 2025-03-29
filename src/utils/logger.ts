@@ -4,7 +4,7 @@
 
 import { LogCategory, LogLevel, LoggerOptions } from '../types/logger';
 
-export { LogCategory, LogLevel, LoggerOptions };
+export type { LogCategory, LogLevel, LoggerOptions };
 
 /**
  * Logger class for application logging
