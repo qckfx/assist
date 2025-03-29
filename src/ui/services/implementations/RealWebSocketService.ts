@@ -253,8 +253,8 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
           // Change the state to aborted
           tool.state = 'aborted';
           
-          // Create an abort result
-          const abortResult = {
+          // Create an abort result (for future use, currently emitting directly)
+          const _abortResult = {
             aborted: true,
             abortTimestamp
           };

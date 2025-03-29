@@ -123,11 +123,11 @@ export interface ToolVisualizationProps {
 export function ToolVisualization({
   tool,
   className,
-  compact = false,
+  compact: _compact = false, // Prefix with underscore to indicate unused
   showExecutionTime = true,
   showExpandedParams = false,
   onToggleExpand,
-  sessionId,
+  sessionId: _sessionId, // Prefix with underscore to indicate unused
   isDarkTheme = false, // Default to light theme
 }: ToolVisualizationProps) {
   // Directly convert tool status to ToolState without using internal state
@@ -171,8 +171,8 @@ export function ToolVisualization({
     ? `${(tool.executionTime / 1000).toFixed(2)}s` 
     : 'In progress...';
   
-  // Format timestamp
-  const timestamp = new Date(tool.startTime).toLocaleTimeString();
+  // Format timestamp - unused for now but keeping for future reference
+  const _timestamp = new Date(tool.startTime).toLocaleTimeString();
   
   return (
     <div 

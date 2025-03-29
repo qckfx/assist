@@ -933,7 +933,7 @@ export function useToolStream() {
         // Return a no-op function
         return () => {};
       }
-    };
+    }
     
     // For non-typed events, use the original pattern
     subscribe(WebSocketEvent.TOOL_EXECUTION_BATCH, (data) => handleToolExecutionBatch(data as ToolExecutionBatch));

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { useAbortShortcuts } from '../useAbortShortcuts';
-import { WebSocketTerminalProvider, useWebSocketTerminal } from '../../context/WebSocketTerminalContext';
+import { WebSocketTerminalProvider } from '../../context/WebSocketTerminalContext';
 
 // Mock the WebSocketTerminalContext
 const abortProcessingMock = vi.fn();

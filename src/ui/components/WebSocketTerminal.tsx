@@ -34,9 +34,9 @@ export function WebSocketTerminal({
     handleCommand,
     connectionStatus,
     isConnected,
-    isProcessing,
-    isStreaming,
-    abortProcessing,
+    isProcessing: _isProcessing,
+    isStreaming: _isStreaming,
+    abortProcessing: _abortProcessing,
     sessionId
   } = useWebSocketTerminal();
   

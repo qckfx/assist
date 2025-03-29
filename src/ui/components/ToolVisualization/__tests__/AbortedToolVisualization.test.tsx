@@ -2,7 +2,6 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ToolVisualization } from '../ToolVisualization';
-import { ToolState } from '../../../types/terminal';
 
 // Mock the WebSocketTerminalContext functions
 vi.mock('../../../context/WebSocketTerminalContext', () => ({
