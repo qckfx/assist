@@ -125,8 +125,8 @@ export function Terminal({
     '--terminal-user-msg-text': '#e2e8f0',
     '--terminal-assistant-msg-bg': '#1f2937',
     '--terminal-assistant-msg-text': '#e2e8f0',
-    '--terminal-system-msg-bg': '#3b4252',
-    '--terminal-system-msg-text': '#d8dee9',
+    '--terminal-system-msg-bg': 'transparent',
+    '--terminal-system-msg-text': '#8ebbff',
     '--terminal-error-msg-bg': '#7f1d1d',
     '--terminal-error-msg-text': '#fecaca',
   } : {
@@ -139,7 +139,7 @@ export function Terminal({
     '--terminal-user-msg-text': '#1e3a8a',
     '--terminal-assistant-msg-bg': '#f3f4f6',
     '--terminal-assistant-msg-text': '#111827',
-    '--terminal-system-msg-bg': '#e5e7eb',
+    '--terminal-system-msg-bg': 'transparent',
     '--terminal-system-msg-text': '#374151',
     '--terminal-error-msg-bg': '#fee2e2',
     '--terminal-error-msg-text': '#7f1d1d',
@@ -327,6 +327,7 @@ export function Terminal({
         aria-live="polite"
         id={ids.output}
       >
+        {/* Main scrollable content area */}
         <div className="flex-grow overflow-y-auto">
           {/* Recalculate tools on each render to ensure updates */}
           {(() => {
@@ -351,19 +352,30 @@ export function Terminal({
               />
             );
           })()}
-          
-          {/* Add typing indicator */}
-          {showTypingIndicator && terminalContext.typingIndicator && (
-            <TypingIndicator className="mx-4 my-2" />
-          )}
-          
-          {/* Fast Edit Mode Indicator - positioned inside the terminal */}
-          <FastEditModeIndicator 
-            sessionId={sessionId} 
-            className="mx-4 mb-2"
-          />
         </div>
         
+        {/* Fixed indicators area */}
+        <div className="flex-shrink-0 border-t border-gray-700/30">
+          {/* Status indicators container - fixed at bottom above input */}
+          <div className="flex justify-between items-center py-1">
+            {/* Typing indicator (left-aligned) */}
+            <div className="flex-1">
+              {showTypingIndicator && terminalContext.typingIndicator && (
+                <TypingIndicator className="mx-4" />
+              )}
+            </div>
+            
+            {/* Fast Edit Mode Indicator (right-aligned) */}
+            <div className="flex-shrink-0">
+              <FastEditModeIndicator 
+                sessionId={sessionId} 
+                className="mx-4" 
+              />
+            </div>
+          </div>
+        </div>
+        
+        {/* Input field area */}
         <div className="flex-shrink-0" style={{ height: '40px', maxHeight: '40px', minHeight: '40px' }}>
           <InputField 
             ref={inputRef}
