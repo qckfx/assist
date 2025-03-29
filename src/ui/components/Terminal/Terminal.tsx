@@ -191,6 +191,18 @@ export function Terminal({
       action: () => setShowSettings(!showSettings),
       description: `${isMac ? 'Cmd' : 'Ctrl'}+,: Open settings`,
     },
+    // Add abort shortcuts
+    {
+      key: 'c',
+      ctrlKey: true,
+      action: () => {},
+      description: 'Abort current operation',
+    },
+    {
+      key: 'Escape',
+      action: () => {},
+      description: 'Abort current operation',
+    },
   ];
 
   // Register keyboard shortcuts - note: we no longer use targetRef since we want global shortcuts

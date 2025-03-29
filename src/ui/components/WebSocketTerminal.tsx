@@ -10,6 +10,7 @@ import { TypingIndicator as _TypingIndicator } from './TypingIndicator';
 import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTerminal } from '@/context/TerminalContext';
 import { usePermissionKeyboardHandler } from '@/hooks/usePermissionKeyboardHandler';
+import { useAbortShortcuts } from '@/hooks/useAbortShortcuts';
 
 interface WebSocketTerminalProps {
   className?: string;
@@ -45,6 +46,9 @@ export function WebSocketTerminal({
   
   // Add keyboard handler for permission requests
   usePermissionKeyboardHandler({ sessionId });
+  
+  // Add keyboard handler for abort operations
+  useAbortShortcuts(isConnected);
   
   // Check if we've ever connected and store the sessionId
   useEffect(() => {
@@ -92,10 +96,15 @@ export function WebSocketTerminal({
         <div className="absolute bottom-14 right-4">
           <button
             onClick={() => abortProcessing()}
-            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-            aria-label="Abort processing"
+            className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm flex items-center"
+            aria-label="Abort processing (Ctrl+C or Esc)"
+            title="Abort processing (Ctrl+C or Esc in empty fields)"
+            data-testid="abort-button"
           >
-            Abort
+            <span>Abort</span>
+            <span className="ml-2 text-xs opacity-80 hidden sm:inline-block" aria-hidden="true">
+              (Ctrl+C/Esc)
+            </span>
           </button>
         </div>
       )}
