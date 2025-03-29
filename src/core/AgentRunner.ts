@@ -131,9 +131,19 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           sessionState.conversationHistory = [];
         }
         
-        // Add the user query to conversation history if it's not already there
-        if (sessionState.conversationHistory.length === 0 || 
+        // Always add the user query to conversation history after an abort
+        // or if it's the first message or if the last message wasn't from the user
+        if (sessionState.__aborted === true || 
+            sessionState.conversationHistory.length === 0 || 
             sessionState.conversationHistory[sessionState.conversationHistory.length - 1].role !== 'user') {
+          
+          // Reset abort status if it was previously set
+          if (sessionState.__aborted === true) {
+            logger.info("Clearing abort status as new user message received", LogCategory.SYSTEM);
+            sessionState.__aborted = false;
+            delete sessionState.__abortTimestamp;
+          }
+          
           sessionState.conversationHistory.push({
             role: 'user',
             content: [{ type: 'text', text: query }]
@@ -174,6 +184,41 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             // Check if the operation was aborted during the model call
             if (toolCallChat.aborted || isSessionAborted(sessionState)) {
               logger.info("Operation aborted during or after LLM response - stopping processing", LogCategory.SYSTEM);
+              
+              // Add an aborted tool result to the conversation if a tool was chosen but not executed
+              if (toolCallChat.toolChosen && toolCallChat.toolCall) {
+                const toolCall = toolCallChat.toolCall as ToolCall;
+                
+                // Create an aborted tool result message for the chosen tool
+                if (sessionState.conversationHistory && toolCall.toolUseId) {
+                  sessionState.conversationHistory.push({
+                    role: "user",
+                    content: [
+                      {
+                        type: "tool_result",
+                        tool_use_id: toolCall.toolUseId,
+                        content: JSON.stringify({
+                          aborted: true,
+                          message: "Operation aborted by user"
+                        })
+                      } 
+                    ]
+                  });
+                  
+                  // Add to the list of tool results
+                  toolResults.push({
+                    toolId: toolCall.toolId,
+                    args: toolCall.args as Record<string, unknown>,
+                    result: {
+                      aborted: true,
+                      message: "Operation aborted by user"
+                    },
+                    toolUseId: toolCall.toolUseId,
+                    aborted: true
+                  });
+                }
+              }
+              
               return createAbortResponse(toolResults, iterations, sessionState);
             }
             
@@ -216,6 +261,23 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 toolUseId: toolCall.toolUseId,
                 aborted: true
               });
+              
+              // Always add a tool_result message to the conversation history for this tool call
+              if (sessionState.conversationHistory && toolCall.toolUseId) {
+                sessionState.conversationHistory.push({
+                  role: "user",
+                  content: [
+                    {
+                      type: "tool_result",
+                      tool_use_id: toolCall.toolUseId,
+                      content: JSON.stringify({
+                        aborted: true,
+                        message: "Operation aborted by user"
+                      })
+                    } 
+                  ]
+                });
+              }
               
               return createAbortResponse(toolResults, iterations, sessionState);
             }
@@ -319,6 +381,37 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             // After tool execution, check for abort again
             if (isSessionAborted(sessionState)) {
               logger.info("Operation aborted after tool execution - stopping processing", LogCategory.SYSTEM);
+              
+              // In this case, we've already executed the tool and have its result
+              // We should have already added the tool_result to the conversation history
+              // But let's ensure it was done by checking if the last message has our tool_use_id
+              
+              const lastMessage = sessionState.conversationHistory && 
+                sessionState.conversationHistory.length > 0 ?
+                sessionState.conversationHistory[sessionState.conversationHistory.length - 1] : null;
+                
+              const hasToolResultMessage = lastMessage &&
+                lastMessage.role === 'user' &&
+                lastMessage.content &&
+                Array.isArray(lastMessage.content) &&
+                lastMessage.content.some(
+                  (item: any) => item.type === 'tool_result' && item.tool_use_id === toolCall.toolUseId
+                );
+              
+              // If for some reason the tool result wasn't added, add it now
+              if (!hasToolResultMessage && sessionState.conversationHistory && toolCall.toolUseId) {
+                sessionState.conversationHistory.push({
+                  role: "user",
+                  content: [
+                    {
+                      type: "tool_result",
+                      tool_use_id: toolCall.toolUseId,
+                      content: JSON.stringify(result)
+                    } 
+                  ]
+                });
+              }
+              
               return createAbortResponse(toolResults, iterations, sessionState);
             }
             

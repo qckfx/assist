@@ -131,7 +131,9 @@ export function useTerminalWebSocket(sessionId?: string) {
         break;
         
       case ConnectionStatus.RECONNECTING:
-        addSystemMessage('Reconnecting WebSocket...');
+        // Don't show reconnection messages in the UI
+        // Just log to console instead
+        console.log('Reconnecting WebSocket...');
         break;
         
       case ConnectionStatus.ERROR:
