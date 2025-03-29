@@ -3,8 +3,11 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { WebSocketEvent } from '../types/api';
+import { WebSocketEvent, WebSocketEventMap } from '../types/api';
 import { throttle } from '@/utils/performance';
+
+// Type helper for event handlers to properly map WebSocketEvent enum to WebSocketEventMap
+type EventData<E extends WebSocketEvent> = WebSocketEventMap[E];
 
 /**
  * Interface for tool execution event data
@@ -445,13 +448,10 @@ export function useToolStream() {
   }, []);
   
   // Handler for tool execution started
-  const handleToolExecutionStarted = useCallback((data: Record<string, unknown>) => {
-    const tool = data.tool as Record<string, unknown>;
-    const args = data.args as Record<string, unknown>;
-    const paramSummary = data.paramSummary as string;
-    const timestamp = data.timestamp as string;
-    const toolId = tool.id as string;
-    const toolName = tool.name as string;
+  const handleToolExecutionStarted = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_STARTED>) => {
+    const { tool, args, paramSummary, timestamp } = data;
+    const toolId = tool.id;
+    const toolName = tool.name;
     
     setState(prev => {
       // Generate a consistent ID based on the tool ID so we can update it later
@@ -497,7 +497,7 @@ export function useToolStream() {
   }, []);
   
   // Handler for tool execution completed with improved synchronization
-  const handleToolExecutionCompleted = useCallback((data: WebSocketEventMap[WebSocketEvent.TOOL_EXECUTION_COMPLETED]) => {
+  const handleToolExecutionCompleted = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_COMPLETED>) => {
     const { tool, result, paramSummary, executionTime, timestamp, startTime } = data;
     const toolId = tool.id;
     
@@ -594,7 +594,7 @@ export function useToolStream() {
   }, []);
   
   // Handler for tool execution aborted
-  const handleToolExecutionAborted = useCallback((data: WebSocketEventMap[WebSocketEvent.TOOL_EXECUTION_ABORTED]) => {
+  const handleToolExecutionAborted = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_ABORTED>) => {
     const { tool, timestamp, startTime, abortTimestamp } = data;
     const toolId = tool.id;
     
@@ -679,7 +679,7 @@ export function useToolStream() {
   }, []);
   
   // Handler for tool execution error
-  const handleToolExecutionError = useCallback((data: WebSocketEventMap[WebSocketEvent.TOOL_EXECUTION_ERROR]) => {
+  const handleToolExecutionError = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_ERROR>) => {
     const { tool, error, paramSummary, timestamp, startTime } = data;
     const toolId = tool.id;
     
@@ -918,17 +918,14 @@ export function useToolStream() {
     // Create an array to track all unsubscribe functions
     const unsubscribers: Array<() => void> = [];
     
-    // Helper function to safely subscribe and track unsubscribe function
-    const safeSubscribe = (
-      event: WebSocketEvent, 
-      handler: (data: unknown) => void
-    ) => {
+    // Helper function to safely subscribe and track unsubscribe function with proper typing
+    function safeSubscribe<E extends WebSocketEvent>(
+      event: E, 
+      handler: (data: EventData<E>) => void
+    ) {
       try {
-        // We need to use `as any` here to bridge TypeScript's validation gap
-        // This is necessary because the types for WebSocketEvent and the handlers have a mismatch
-        // that would be too complex to fully type correctly in this context
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const unsubscribe = subscribe(event, handler as any);
+        // The cast is necessary because WebSocket subscriber doesn't have proper type parameters
+        const unsubscribe = subscribe(event, handler as (data: unknown) => void);
         unsubscribers.push(unsubscribe);
         return unsubscribe;
       } catch (error) {
@@ -938,27 +935,21 @@ export function useToolStream() {
       }
     };
     
-    // Subscribe to batched tool executions (still needed for performance)
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_BATCH, (data: unknown) => handleToolExecutionBatch(data as ToolExecutionBatch));
+    // For non-typed events, use the original pattern
+    subscribe(WebSocketEvent.TOOL_EXECUTION_BATCH, (data) => handleToolExecutionBatch(data as ToolExecutionBatch));
+    subscribe(WebSocketEvent.PROCESSING_COMPLETED, handleProcessingCompleted);
+    subscribe(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted);
+    subscribe(WebSocketEvent.PROCESSING_ERROR, handleProcessingError);
     
-    // Subscribe to processing events
-    safeSubscribe(WebSocketEvent.PROCESSING_COMPLETED, handleProcessingCompleted);
-    safeSubscribe(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted);
-    safeSubscribe(WebSocketEvent.PROCESSING_ERROR, handleProcessingError);
+    // Use properly typed subscription for tool events
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_STARTED, handleToolExecutionStarted);
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_COMPLETED, handleToolExecutionCompleted);
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_ERROR, handleToolExecutionError);
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_ABORTED, handleToolExecutionAborted);
     
-    // Subscribe to tool visualization events - these are the primary events we use now
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_STARTED, (data: unknown) => 
-      handleToolExecutionStarted(data as WebSocketEventMap[WebSocketEvent.TOOL_EXECUTION_STARTED]));
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_COMPLETED, (data: unknown) => 
-      handleToolExecutionCompleted(data as WebSocketEventMap[WebSocketEvent.TOOL_EXECUTION_COMPLETED]));
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_ERROR, (data: unknown) => 
-      handleToolExecutionError(data as WebSocketEventMap[WebSocketEvent.TOOL_EXECUTION_ERROR]));
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_ABORTED, (data: unknown) => 
-      handleToolExecutionAborted(data as WebSocketEventMap[WebSocketEvent.TOOL_EXECUTION_ABORTED]));
-    
-    // Subscribe to permission events
-    safeSubscribe(WebSocketEvent.PERMISSION_REQUESTED, (data: unknown) => handlePermissionRequested(data as Record<string, unknown>));
-    safeSubscribe(WebSocketEvent.PERMISSION_RESOLVED, (data: unknown) => handlePermissionResolved(data as Record<string, unknown>));
+    // For non-typed events, use the original pattern
+    subscribe(WebSocketEvent.PERMISSION_REQUESTED, (data) => handlePermissionRequested(data as Record<string, unknown>));
+    subscribe(WebSocketEvent.PERMISSION_RESOLVED, (data) => handlePermissionResolved(data as Record<string, unknown>));
     
     // Clean up subscriptions
     return () => {

@@ -22,16 +22,15 @@ describe('ToolVisualization Abort State', () => {
       <ToolVisualization
         tool={{
           id: 'aborted-tool-id',
-          name: 'TestTool',
-          state: ToolState.ABORTED,
+          tool: 'TestTool', // Required property 
+          toolName: 'TestTool',
+          status: 'aborted',
           args: { test: 'arg' },
           result: {
             aborted: true,
             message: 'Operation aborted by user'
           },
-          timestamp: new Date().toISOString(),
-          toolName: 'TestTool',
-          status: 'aborted'
+          startTime: Date.now() // Required property
         }}
         sessionId="test-session-id"
       />
@@ -49,11 +48,10 @@ describe('ToolVisualization Abort State', () => {
       <ToolVisualization
         tool={{
           id: 'aborted-tool-id',
-          name: 'TestTool',
-          state: ToolState.RUNNING,
-          args: { test: 'arg' },
-          timestamp: new Date().toISOString(),
+          tool: 'TestTool', // Required property
           toolName: 'TestTool',
+          args: { test: 'arg' },
+          startTime: Date.now(), // Required property
           status: 'aborted' // Change the status to aborted to match our updated component
         }}
         sessionId="test-session-id"
@@ -69,11 +67,10 @@ describe('ToolVisualization Abort State', () => {
       <ToolVisualization
         tool={{
           id: 'normal-tool-id', // Note: not in the mocked aborted tools set
-          name: 'TestTool',
-          state: ToolState.RUNNING,
-          args: { test: 'arg' },
-          timestamp: new Date().toISOString(),
+          tool: 'TestTool', // Required property
           toolName: 'TestTool',
+          args: { test: 'arg' },
+          startTime: Date.now(), // Required property
           status: 'running'
         }}
         sessionId="test-session-id"

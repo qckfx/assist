@@ -238,7 +238,7 @@ describe('WebSocketTerminal Component', () => {
           <button data-testid="clear-terminal" onClick={() => onClear()}>Clear</button>
         </div>
       ))
-    }), { virtual: true });
+    }));
     
     render(<WebSocketTerminal />);
     

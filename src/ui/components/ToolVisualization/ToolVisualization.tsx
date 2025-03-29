@@ -136,7 +136,7 @@ export function ToolVisualization({
     tool.status === 'completed' ? ToolState.COMPLETED :
     tool.status === 'error' ? ToolState.ERROR :
     tool.status === 'aborted' ? ToolState.ABORTED :
-    tool.status === 'awaiting-permission' ? 'awaiting-permission' as any :
+    tool.status === 'awaiting-permission' ? 'awaiting-permission' as ToolState :
     ToolState.PENDING;
   // Use the toolState and isDarkTheme to determine styling
   const getStatusStyles = () => {
@@ -152,7 +152,7 @@ export function ToolVisualization({
       ? (tool.status === 'awaiting-permission' ? 'awaiting-permission' : ToolState.RUNNING) 
       : toolState;
       
-    return baseStyle[currentState];
+    return baseStyle[currentState as keyof typeof baseStyle];
   };
   
   const statusStyles = getStatusStyles();

@@ -102,38 +102,38 @@ describe('useFastEditMode', () => {
   });
 
   it('should initialize with fast edit mode disabled', async () => {
-    // Simplify the test to focus on initialization
-    let result;
+    // Create the hook first, then wait for it to update
+    const { result } = renderHook(() => useFastEditMode('test-session'));
     
+    // Wait for API call to settle
     await act(async () => {
-      result = renderHook(() => useFastEditMode('test-session'));
-      // Wait for any API calls to settle
       await new Promise(resolve => setTimeout(resolve, 0));
     });
     
     // Verify initial state
-    expect(result.result.current.fastEditMode).toBe(false);
+    expect(result.current.fastEditMode).toBe(false);
     
     // Verify API was called
     expect(apiClient.getFastEditMode).toHaveBeenCalledWith('test-session');
   });
   
   it('should provide functions to enable and disable fast edit mode', async () => {
-    let result;
+    // Create the hook first
+    const { result } = renderHook(() => useFastEditMode('test-session'));
     
+    // Wait for API call to settle
     await act(async () => {
-      result = renderHook(() => useFastEditMode('test-session'));
       await new Promise(resolve => setTimeout(resolve, 0));
     });
     
     // Verify the hook provides the expected functions
-    expect(typeof result.result.current.enableFastEditMode).toBe('function');
-    expect(typeof result.result.current.disableFastEditMode).toBe('function');
-    expect(typeof result.result.current.toggleFastEditMode).toBe('function');
+    expect(typeof result.current.enableFastEditMode).toBe('function');
+    expect(typeof result.current.disableFastEditMode).toBe('function');
+    expect(typeof result.current.toggleFastEditMode).toBe('function');
     
     // Test the toggle function
     await act(async () => {
-      await result.result.current.toggleFastEditMode(true);
+      await result.current.toggleFastEditMode();
     });
     
     expect(apiClient.toggleFastEditMode).toHaveBeenCalledWith('test-session', true);
