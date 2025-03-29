@@ -2,16 +2,34 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Terminal } from '@/components/Terminal/Terminal';
 import { TerminalProvider, useTerminal } from '@/context/TerminalContext';
+import { WebSocketTerminalProvider } from '@/context/WebSocketTerminalContext';
+import { WebSocketProvider } from '@/context/WebSocketContext';
 import { vi } from 'vitest';
+
+// Mock the WebSocketTerminalContext
+vi.mock('@/context/WebSocketTerminalContext', () => ({
+  useWebSocketTerminal: () => ({
+    abortProcessing: vi.fn(),
+    hasJoined: true,
+    sessionId: 'test-session-id',
+    getAbortedTools: () => new Set([]),
+    isEventAfterAbort: () => false,
+  }),
+  WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
 
 // Test App component for integration testing
 const TestApp = () => {
   return (
-    <TerminalProvider>
-      <div className="app-container">
-        <TerminalContainer />
-      </div>
-    </TerminalProvider>
+    <WebSocketProvider testMode={true}>
+      <WebSocketTerminalProvider>
+        <TerminalProvider>
+          <div className="app-container">
+            <TerminalContainer />
+          </div>
+        </TerminalProvider>
+      </WebSocketTerminalProvider>
+    </WebSocketProvider>
   );
 };
 

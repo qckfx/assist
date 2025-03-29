@@ -12,6 +12,7 @@ vi.mock('@/hooks/useToolStream', () => ({
 // Mock the contexts
 const mockJoinSession = vi.fn();
 const mockLeaveSession = vi.fn();
+const mockAbortProcessing = vi.fn();
 
 vi.mock('@/context/TerminalContext', () => ({
   useTerminal: () => ({
@@ -30,6 +31,17 @@ vi.mock('@/context/TerminalContext', () => ({
     leaveSession: mockLeaveSession,
   }),
   TerminalProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
+}));
+
+vi.mock('@/context/WebSocketTerminalContext', () => ({
+  useWebSocketTerminal: () => ({
+    abortProcessing: mockAbortProcessing,
+    hasJoined: true,
+    sessionId: 'test-session-id',
+    getAbortedTools: () => new Set([]),
+    isEventAfterAbort: () => false,
+  }),
+  WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }));
 
 vi.mock('@/components/ThemeProvider', () => ({
