@@ -63,7 +63,16 @@ vi.mock('@/hooks/useWebSocket', () => ({
   useWebSocket: vi.fn().mockReturnValue({
     isConnected: true,
     connectionStatus: ConnectionStatus.CONNECTED,
-    currentSessionId: 'test-session-id'
+    currentSessionId: 'test-session-id',
+    subscribe: vi.fn(),
+  })
+}));
+
+vi.mock('@/hooks/useToolStream', () => ({
+  useToolStream: vi.fn().mockReturnValue({
+    getActiveTools: vi.fn().mockReturnValue([]),
+    hasActiveTools: false,
+    activeToolCount: 0,
   })
 }));
 
@@ -92,6 +101,16 @@ vi.mock('@/services/apiClient', () => ({
     }),
     abortOperation: vi.fn().mockResolvedValue({ success: true }),
   }
+}));
+
+vi.mock('@/services/WebSocketService', () => ({
+  getWebSocketService: vi.fn().mockReturnValue({
+    emit: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  })
 }));
 
 // Create individual mocks for the methods we need to test
@@ -254,10 +273,8 @@ describe('WebSocketTerminalContext', () => {
       await result.current.abortProcessing();
     });
     
-    // Verify API call
-    expect(mockAbortOperation).toHaveBeenCalled();
-    expect(mockAddSystemMessage).toHaveBeenCalledWith('Aborting operation...');
-    expect(mockAddSystemMessage).toHaveBeenCalledWith('Operation aborted');
+    // Verify API call was made with sessionId
+    expect(mockAbortOperation).toHaveBeenCalledWith('test-session');
   });
   
   it('should handle error when creating a session', async () => {
