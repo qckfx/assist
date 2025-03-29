@@ -7,17 +7,19 @@ import { EventEmitter } from 'events';
 
 // Mock the imports
 jest.mock('../AgentService', () => {
-  // Create a mock agent service class that extends EventEmitter
+  // Create a mock agent service class by extending EventEmitter
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mockAgentService: any = new EventEmitter();
+  const mockAgentService: any = Object.assign({}, EventEmitter.prototype);
   
   // Add methods
   mockAgentService.getPermissionRequests = jest.fn().mockReturnValue([]);
   
+  // Initialize the event emitter
+  EventEmitter.call(mockAgentService);
+  
   // Add a real EventEmitter implementation for our tests
-  const originalEmit = EventEmitter.prototype.emit;
   mockAgentService.emit = function(event: string, ...args: unknown[]) {
-    return originalEmit.call(this, event, ...args);
+    return EventEmitter.prototype.emit.call(this, event, ...args);
   };
   
   return {

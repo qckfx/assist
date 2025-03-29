@@ -249,14 +249,11 @@ describe('AgentService', () => {
         // Abort the operation
         const result = agentService.abortOperation('mock-session-id');
 
-        // Verify session was updated with the aborted flag and timestamp
+        // Verify session was updated with isProcessing: false
+        // Note: The __aborted flag is now set directly on the session.state object
+        // instead of being passed to updateSession
         expect(sessionManager.updateSession).toHaveBeenCalledWith('mock-session-id', {
           isProcessing: false,
-          state: {
-            conversationHistory: [],
-            __aborted: true,
-            __abortTimestamp: mockTimestamp
-          }
         });
 
         // Verify event was emitted with timestamp
