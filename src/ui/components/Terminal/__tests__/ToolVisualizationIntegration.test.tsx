@@ -44,6 +44,23 @@ vi.mock('@/context/WebSocketTerminalContext', () => ({
   WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }));
 
+// Mock the useFastEditMode hook to prevent API calls
+vi.mock('@/hooks/useFastEditMode', () => ({
+  useFastEditMode: () => ({
+    fastEditMode: false,
+    enableFastEditMode: vi.fn(),
+    disableFastEditMode: vi.fn(),
+    toggleFastEditMode: vi.fn(),
+  }),
+  __esModule: true,
+  default: () => ({
+    fastEditMode: false,
+    enableFastEditMode: vi.fn(),
+    disableFastEditMode: vi.fn(),
+    toggleFastEditMode: vi.fn(),
+  })
+}));
+
 vi.mock('@/components/ThemeProvider', () => ({
   useTheme: () => ({
     theme: 'dark',

@@ -5,6 +5,57 @@ import { Terminal } from '../Terminal';
 import { TerminalProvider } from '@/context/TerminalContext';
 import { TerminalMessage } from '@/types/terminal';
 
+// Mock the WebSocketTerminalContext
+const mockAbortProcessing = vi.fn();
+vi.mock('@/context/WebSocketTerminalContext', () => ({
+  useWebSocketTerminal: () => ({
+    abortProcessing: mockAbortProcessing,
+    hasJoined: true,
+    sessionId: 'test-session-id',
+    getAbortedTools: () => new Set([]),
+    isEventAfterAbort: () => false,
+    connectionStatus: 'connected',
+    isProcessing: false,
+    isConnected: true,
+  }),
+  WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
+
+// Mock the useFastEditMode hook to prevent API calls
+vi.mock('@/hooks/useFastEditMode', () => ({
+  useFastEditMode: () => ({
+    fastEditMode: false,
+    enableFastEditMode: vi.fn(),
+    disableFastEditMode: vi.fn(),
+    toggleFastEditMode: vi.fn(),
+  }),
+  __esModule: true,
+  default: () => ({
+    fastEditMode: false,
+    enableFastEditMode: vi.fn(),
+    disableFastEditMode: vi.fn(),
+    toggleFastEditMode: vi.fn(),
+  })
+}));
+
+// Mock the useToolStream hook
+vi.mock('@/hooks/useToolStream', () => ({
+  useToolStream: () => ({
+    getActiveTools: () => [],
+    getRecentTools: () => [],
+    hasActiveTools: false,
+    activeToolCount: 0,
+    toolHistory: []
+  })
+}));
+
+// Mock the ThemeProvider
+vi.mock('@/components/ThemeProvider', () => ({
+  useTheme: () => ({
+    theme: 'dark',
+  }),
+}));
+
 // Wrap component in providers
 const renderWithProviders = (ui: React.ReactElement) => {
   return render(

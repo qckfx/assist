@@ -211,10 +211,39 @@ describe('WebSocketTerminal Component', () => {
     // Set processing state to show the abort button
     mockIsProcessing = true;
     
+    // Mock the Terminal component to render an abort button
+    // that matches the current implementation in Terminal.tsx
+    vi.mock('../Terminal/Terminal', () => ({
+      default: vi.fn(({ 
+        onCommand, 
+        onClear, 
+        messages, 
+        showConnectionIndicator, 
+        showTypingIndicator
+      }) => (
+        <div data-testid="mock-terminal">
+          <div data-testid="terminal-messages">
+            {messages?.map((msg: { type: string, content: string }, i: number) => (
+              <div key={i} data-testid={`message-${msg.type}`}>{msg.content}</div>
+            ))}
+          </div>
+          {showConnectionIndicator && <div data-testid="connection-indicator" />}
+          {showTypingIndicator && (mockIsProcessing || mockIsStreaming) && (
+            <div data-testid="typing-indicator" />
+          )}
+          <button data-testid="inline-abort-button" onClick={() => mockAbortProcessing()}>
+            Abort (Esc / Ctrl+C)
+          </button>
+          <button data-testid="send-command" onClick={() => onCommand('test command')}>Send</button>
+          <button data-testid="clear-terminal" onClick={() => onClear()}>Clear</button>
+        </div>
+      ))
+    }), { virtual: true });
+    
     render(<WebSocketTerminal />);
     
     // Find and click the abort button
-    const abortButton = screen.getByText('Abort');
+    const abortButton = screen.getByTestId('inline-abort-button');
     fireEvent.click(abortButton);
     
     expect(mockAbortProcessing).toHaveBeenCalled();

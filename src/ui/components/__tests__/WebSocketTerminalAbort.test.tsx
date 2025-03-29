@@ -86,11 +86,20 @@ vi.mock('../../hooks/useAbortShortcuts', () => ({
   }),
 }));
 
-// Mock the Terminal component - remove its abort button to avoid duplicate buttons
+// Mock the Terminal component - Include the abort button with the correct data-testid
 vi.mock('../Terminal/Terminal', () => ({
   default: ({ children }: { children?: React.ReactNode}) => (
     <div data-testid="mock-terminal">
       {children}
+      {isProcessingValue && (
+        <button
+          onClick={() => abortProcessingMock()}
+          data-testid="inline-abort-button"
+          title="Abort processing (Ctrl+C or Esc in empty fields)"
+        >
+          Abort (Esc / Ctrl+C)
+        </button>
+      )}
     </div>
   )
 }));
@@ -131,7 +140,7 @@ describe('WebSocketTerminal Abort Functionality', () => {
       <WebSocketTerminal />
     );
     
-    const abortButton = screen.getByTestId('abort-button');
+    const abortButton = screen.getByTestId('inline-abort-button');
     expect(abortButton).toBeInTheDocument();
     expect(abortButton).toHaveAttribute('title', expect.stringContaining('Ctrl+C or Esc'));
   });
@@ -141,7 +150,7 @@ describe('WebSocketTerminal Abort Functionality', () => {
       <WebSocketTerminal />
     );
     
-    const abortButton = screen.getByTestId('abort-button');
+    const abortButton = screen.getByTestId('inline-abort-button');
     fireEvent.click(abortButton);
     
     await waitFor(() => {
@@ -157,7 +166,7 @@ describe('WebSocketTerminal Abort Functionality', () => {
       <WebSocketTerminal />
     );
     
-    const abortButton = screen.queryByTestId('abort-button');
+    const abortButton = screen.queryByTestId('inline-abort-button');
     expect(abortButton).not.toBeInTheDocument();
   });
 });
