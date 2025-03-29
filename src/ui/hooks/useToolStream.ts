@@ -13,7 +13,7 @@ export interface ToolExecution {
   id: string;
   tool: string;
   toolName: string;
-  status: 'running' | 'completed' | 'error' | 'awaiting-permission';
+  status: 'running' | 'completed' | 'error' | 'awaiting-permission' | 'aborted';
   args?: Record<string, unknown>;
   paramSummary?: string;
   result?: unknown;
@@ -381,7 +381,7 @@ export function useToolStream() {
       // Get current timestamp
       const now = Date.now();
       
-      // Update any running tools to error state
+      // Update any running tools to aborted state
       const updatedToolExecutions = { ...prev.toolExecutions };
       
       for (const toolId in updatedToolExecutions) {
@@ -389,7 +389,7 @@ export function useToolStream() {
         if (tool.status === 'running' || tool.status === 'awaiting-permission') {
           updatedToolExecutions[toolId] = {
             ...tool,
-            status: 'error',
+            status: 'aborted',
             error: { message: 'Processing aborted' },
             endTime: now,
             executionTime: tool.executionTime || (now - tool.startTime),

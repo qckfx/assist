@@ -150,6 +150,27 @@
   border-radius: 3px;
 }
 
+/* Add these styles to handle the aborted state */
+.tool-aborted {
+  @apply border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/20 opacity-75;
+  animation: tool-shake 0.5s ease-in-out;
+}
+
+.tool-aborted .tool-header {
+  @apply text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700;
+}
+
+.tool-aborted .tool-body {
+  @apply bg-gray-100/50 dark:bg-gray-800/10 opacity-60;
+}
+
+/* Add shake animation for aborted tools */
+@keyframes tool-shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
 /* Screen reader only class */
 .sr-only {
   position: absolute;

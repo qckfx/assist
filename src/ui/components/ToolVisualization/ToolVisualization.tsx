@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { cn } from '../../lib/utils';
 import { ToolExecution } from '../../hooks/useToolStream';
+import { ToolState } from '../../types/terminal';
+import { getAbortedTools } from '@/context/WebSocketTerminalContext';
 
 // Helper function to truncate strings
 const truncateString = (str: string, maxLength: number): string => {
@@ -115,6 +117,7 @@ export interface ToolVisualizationProps {
   showExecutionTime?: boolean;
   showExpandedParams?: boolean;
   onToggleExpand?: () => void;
+  sessionId?: string;
 }
 
 export function ToolVisualization({
@@ -124,22 +127,43 @@ export function ToolVisualization({
   showExecutionTime = true,
   showExpandedParams = false,
   onToggleExpand,
+  sessionId,
 }: ToolVisualizationProps) {
-  // Use the status to determine styling - subtle background colors with clear status indication
+  const [toolState, setToolState] = useState<ToolState>(
+    tool.status === 'running' ? ToolState.RUNNING :
+    tool.status === 'completed' ? ToolState.COMPLETED :
+    tool.status === 'error' ? ToolState.ERROR :
+    tool.status === 'aborted' ? ToolState.ABORTED :
+    ToolState.PENDING
+  );
+  
+  // Check if this tool was aborted
+  useEffect(() => {
+    if (sessionId && tool.id) {
+      const abortedTools = getAbortedTools(sessionId);
+      if (abortedTools.has(tool.id) && toolState !== ToolState.ABORTED) {
+        // Force the state to ABORTED if it's in the aborted tools list
+        setToolState(ToolState.ABORTED);
+      }
+    }
+  }, [sessionId, tool.id, toolState]);
+  // Use the toolState to determine styling - subtle background colors with clear status indication
   const statusStyles = {
-    running: 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-sm',
-    completed: 'border-green-500 bg-green-50 dark:bg-green-900/30 shadow-sm',
-    error: 'border-red-500 bg-red-50 dark:bg-red-900/30 shadow-sm',
+    [ToolState.RUNNING]: 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-sm',
+    [ToolState.COMPLETED]: 'border-green-500 bg-green-50 dark:bg-green-900/30 shadow-sm',
+    [ToolState.ERROR]: 'border-red-500 bg-red-50 dark:bg-red-900/30 shadow-sm',
+    [ToolState.ABORTED]: 'border-gray-500 bg-gray-50 dark:bg-gray-800/20 opacity-75 tool-aborted',
     'awaiting-permission': 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 shadow-sm',
-  }[tool.status];
+  }[toolState === ToolState.PENDING ? (tool.status === 'awaiting-permission' ? 'awaiting-permission' : ToolState.RUNNING) : toolState];
   
   // Determine the status indicator text and style
   const statusIndicator = {
-    running: { icon: '●', ariaLabel: 'Running', className: 'text-blue-500 animate-pulse' },
-    completed: { icon: '✓', ariaLabel: 'Completed', className: 'text-green-500' },
-    error: { icon: '✗', ariaLabel: 'Error', className: 'text-red-500' },
+    [ToolState.RUNNING]: { icon: '●', ariaLabel: 'Running', className: 'text-blue-500 animate-pulse' },
+    [ToolState.COMPLETED]: { icon: '✓', ariaLabel: 'Completed', className: 'text-green-500' },
+    [ToolState.ERROR]: { icon: '✗', ariaLabel: 'Error', className: 'text-red-500' },
+    [ToolState.ABORTED]: { icon: '■', ariaLabel: 'Aborted', className: 'text-gray-500' },
     'awaiting-permission': { icon: '?', ariaLabel: 'Waiting for permission', className: 'text-amber-500 animate-pulse' },
-  }[tool.status];
+  }[toolState === ToolState.PENDING ? (tool.status === 'awaiting-permission' ? 'awaiting-permission' : ToolState.RUNNING) : toolState];
   
   // Format execution time if available
   const formattedTime = tool.executionTime 
@@ -160,10 +184,10 @@ export function ToolVisualization({
       )}
       data-testid="tool-visualization"
       data-tool-id={tool.tool}
-      data-tool-status={tool.status}
+      data-tool-status={toolState}
       role="status"
-      aria-live={tool.status === 'running' ? 'polite' : 'off'}
-      aria-label={`Tool ${tool.toolName} ${tool.status}: ${getToolDescription(tool)}`}
+      aria-live={toolState === ToolState.RUNNING ? 'polite' : 'off'}
+      aria-label={`Tool ${tool.toolName} ${toolState}: ${getToolDescription(tool)}`}
     >
       {/* Header with tool name - simpler display */}
       <div className="flex items-center justify-between">
@@ -193,9 +217,16 @@ export function ToolVisualization({
       </div>
       
       {/* Error message if status is error */}
-      {tool.status === 'error' && tool.error && (
+      {toolState === ToolState.ERROR && tool.error && (
         <div className="mt-1 text-sm text-red-600 dark:text-red-400">
           {tool.error.message}
+        </div>
+      )}
+      
+      {/* Aborted message if status is aborted */}
+      {toolState === ToolState.ABORTED && (
+        <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Operation aborted
         </div>
       )}
       
@@ -218,7 +249,7 @@ export function ToolVisualization({
       </div>
       
       {/* Permission request banner - added for permission-required tools */}
-      {tool.status === 'awaiting-permission' && tool.requiresPermission && (
+      {tool.status === 'awaiting-permission' && tool.requiresPermission && toolState !== ToolState.ABORTED && (
         <div 
           className="mt-2 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100 px-3 py-2 rounded-md text-sm border border-amber-300 dark:border-amber-700"
           data-testid="permission-banner"
