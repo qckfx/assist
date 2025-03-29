@@ -180,7 +180,8 @@ export function ToolVisualization({
         'tool-visualization border-l-4 px-1 py-0.5 my-0.5 rounded',
         'transition-colors duration-300 inline-block',
         statusStyles,
-        'text-xs', // Always use smaller text
+        // Use terminal's font size classes for relative sizing instead of fixed size
+        'text-[0.8em]', // Make text slightly smaller than terminal text but scale with it
         className
       )}
       style={{ maxWidth: '30%', width: '300px' }} // Direct width constraint
