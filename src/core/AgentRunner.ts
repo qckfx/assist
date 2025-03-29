@@ -12,13 +12,26 @@ import {
 import { ToolCall, ConversationMessage, SessionState } from '../types/model';
 import { LogCategory, createLogger, LogLevel } from '../utils/logger';
 
+import { isSessionAborted } from '../utils/sessionUtils';
+
 /**
- * Helper to check if a session has been aborted
- * @param sessionState The session state object
- * @returns Whether the session has been aborted
+ * Creates a standard response for aborted operations
+ * @param toolResults Any tool results collected before abort
+ * @param iterations Number of iterations completed before abort
+ * @param sessionState The session state
+ * @returns A standardized abort result
  */
-function isSessionAborted(sessionState: SessionState): boolean {
-  return sessionState.__aborted === true;
+function createAbortResponse(toolResults: ToolResultEntry[], iterations: number, sessionState: SessionState): ProcessQueryResult {
+  return {
+    result: {
+      toolResults,
+      iterations
+    },
+    response: "Operation aborted by user",
+    sessionState,
+    done: true,
+    aborted: true
+  };
 }
 
 /**
@@ -142,16 +155,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           // Add this check at the beginning of each iteration
           if (isSessionAborted(sessionState)) {
             logger.info("Operation aborted - stopping processing", LogCategory.SYSTEM);
-            return {
-              result: {
-                toolResults,
-                iterations
-              },
-              response: "Operation aborted by user",
-              sessionState,
-              done: true,
-              aborted: true
-            };
+            return createAbortResponse(toolResults, iterations, sessionState);
           }
           
           iterations++;
@@ -167,19 +171,10 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               sessionState
             );
             
-            // Check for abort after the LLM call
-            if (isSessionAborted(sessionState)) {
-              logger.info("Operation aborted after LLM response - stopping processing", LogCategory.SYSTEM);
-              return {
-                result: {
-                  toolResults,
-                  iterations
-                },
-                response: "Operation aborted by user",
-                sessionState,
-                done: true,
-                aborted: true
-              };
+            // Check if the operation was aborted during the model call
+            if (toolCallChat.aborted || isSessionAborted(sessionState)) {
+              logger.info("Operation aborted during or after LLM response - stopping processing", LogCategory.SYSTEM);
+              return createAbortResponse(toolResults, iterations, sessionState);
             }
             
             // If the model doesn't want to use a tool, it's ready to respond
@@ -222,16 +217,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 aborted: true
               });
               
-              return {
-                result: {
-                  toolResults,
-                  iterations
-                },
-                response: "Operation aborted by user",
-                sessionState,
-                done: true,
-                aborted: true
-              };
+              return createAbortResponse(toolResults, iterations, sessionState);
             }
             
             // 3. Execute the tool
@@ -333,16 +319,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             // After tool execution, check for abort again
             if (isSessionAborted(sessionState)) {
               logger.info("Operation aborted after tool execution - stopping processing", LogCategory.SYSTEM);
-              return {
-                result: {
-                  toolResults,
-                  iterations
-                },
-                response: "Operation aborted by user",
-                sessionState,
-                done: true,
-                aborted: true
-              };
+              return createAbortResponse(toolResults, iterations, sessionState);
             }
             
             // Add tool result to conversation history if it exists
@@ -393,16 +370,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         // Before generating final response, check for abort
         if (isSessionAborted(sessionState)) {
           logger.info("Operation aborted before final response - stopping processing", LogCategory.SYSTEM);
-          return {
-            result: {
-              toolResults,
-              iterations
-            },
-            response: "Operation aborted by user",
-            sessionState,
-            done: true,
-            aborted: true
-          };
+          return createAbortResponse(toolResults, iterations, sessionState);
         }
         
         // If we reached max iterations without a response, generate one
@@ -414,6 +382,12 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             toolRegistry.getToolDescriptions(),
             sessionState
           );
+          
+          // Check for abort after final response generation
+          if (isSessionAborted(sessionState)) {
+            logger.info("Operation aborted during final response generation - stopping processing", LogCategory.SYSTEM);
+            return createAbortResponse(toolResults, iterations, sessionState);
+          }
         }
 
         // Add the assistant's response to conversation history
