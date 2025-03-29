@@ -117,6 +117,7 @@ export interface ToolVisualizationProps {
   showExpandedParams?: boolean;
   onToggleExpand?: () => void;
   sessionId?: string;
+  isDarkTheme?: boolean; // Add property to receive theme from parent
 }
 
 export function ToolVisualization({
@@ -127,6 +128,7 @@ export function ToolVisualization({
   showExpandedParams = false,
   onToggleExpand,
   sessionId,
+  isDarkTheme = false, // Default to light theme
 }: ToolVisualizationProps) {
   // Directly convert tool status to ToolState without using internal state
   const toolState = 
@@ -136,14 +138,24 @@ export function ToolVisualization({
     tool.status === 'aborted' ? ToolState.ABORTED :
     tool.status === 'awaiting-permission' ? 'awaiting-permission' as any :
     ToolState.PENDING;
-  // Use the toolState to determine styling - subtle background colors with clear status indication
-  const statusStyles = {
-    [ToolState.RUNNING]: 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-sm',
-    [ToolState.COMPLETED]: 'border-green-500 bg-green-50 dark:bg-green-900/30 shadow-sm',
-    [ToolState.ERROR]: 'border-red-500 bg-red-50 dark:bg-red-900/30 shadow-sm',
-    [ToolState.ABORTED]: 'border-gray-500 bg-gray-50 dark:bg-gray-800/20 opacity-75 tool-aborted',
-    'awaiting-permission': 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 shadow-sm',
-  }[toolState === ToolState.PENDING ? (tool.status === 'awaiting-permission' ? 'awaiting-permission' : ToolState.RUNNING) : toolState];
+  // Use the toolState and isDarkTheme to determine styling
+  const getStatusStyles = () => {
+    const baseStyle = {
+      [ToolState.RUNNING]: `border-blue-500 ${isDarkTheme ? 'bg-blue-900/30' : 'bg-blue-50'} shadow-sm`,
+      [ToolState.COMPLETED]: `border-green-500 ${isDarkTheme ? 'bg-green-900/30' : 'bg-green-50'} shadow-sm`,
+      [ToolState.ERROR]: `border-red-500 ${isDarkTheme ? 'bg-red-900/30' : 'bg-red-50'} shadow-sm`,
+      [ToolState.ABORTED]: `border-gray-500 ${isDarkTheme ? 'bg-gray-800/20' : 'bg-gray-50'} opacity-75 tool-aborted`,
+      'awaiting-permission': `border-amber-500 ${isDarkTheme ? 'bg-amber-900/30' : 'bg-amber-50'} shadow-sm`,
+    };
+    
+    const currentState = toolState === ToolState.PENDING 
+      ? (tool.status === 'awaiting-permission' ? 'awaiting-permission' : ToolState.RUNNING) 
+      : toolState;
+      
+    return baseStyle[currentState];
+  };
+  
+  const statusStyles = getStatusStyles();
   
   // Determine the status indicator text and style
   const statusIndicator = {
@@ -195,7 +207,7 @@ export function ToolVisualization({
           
           {/* Execution time inline if available and enabled */}
           {showExecutionTime && tool.executionTime && (
-            <span className="text-gray-500 dark:text-gray-400 ml-1">
+            <span className={`${isDarkTheme ? 'text-gray-400' : 'text-gray-500'} ml-1`}>
               ({formattedTime})
             </span>
           )}
@@ -216,14 +228,14 @@ export function ToolVisualization({
       
       {/* Error message if status is error - keep this visible */}
       {toolState === ToolState.ERROR && tool.error && (
-        <div className="text-red-600 dark:text-red-400">
+        <div className={isDarkTheme ? 'text-red-400' : 'text-red-600'}>
           {tool.error.message}
         </div>
       )}
       
       {/* Aborted message if status is aborted - keep this visible too */}
       {toolState === ToolState.ABORTED && (
-        <div className="text-gray-600 dark:text-gray-400">
+        <div className={isDarkTheme ? 'text-gray-400' : 'text-gray-600'}>
           Operation aborted
         </div>
       )}
@@ -231,7 +243,7 @@ export function ToolVisualization({
       {/* Permission request banner - more compact version */}
       {tool.status === 'awaiting-permission' && tool.requiresPermission && toolState !== ToolState.ABORTED && (
         <div 
-          className="mt-1 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100 px-2 py-1 rounded-md text-xs border border-amber-300 dark:border-amber-700"
+          className={`mt-1 ${isDarkTheme ? 'bg-amber-900 text-amber-100 border-amber-700' : 'bg-amber-100 text-amber-800 border-amber-300'} px-2 py-1 rounded-md text-xs border`}
           data-testid="permission-banner"
         >
           <div className="font-semibold">Permission Required - Type 'y' to allow</div>
@@ -240,7 +252,11 @@ export function ToolVisualization({
       
       {/* Debug output - only visible in development */}
       {process.env.NODE_ENV === 'development' && (
-        <div className="mt-2 bg-gray-100 dark:bg-gray-800 p-2 text-xs border border-gray-300 dark:border-gray-600 rounded font-mono">
+        <div className={`mt-2 p-2 text-xs border rounded font-mono ${
+          isDarkTheme 
+            ? 'bg-gray-800 border-gray-600' 
+            : 'bg-gray-100 border-gray-300'
+        }`}>
           <div>status: {tool.status}</div>
           <div>requiresPermission: {tool.requiresPermission ? 'true' : 'false'}</div>
           <div>permissionId: {tool.permissionId || 'none'}</div>

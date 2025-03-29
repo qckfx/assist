@@ -349,6 +349,7 @@ export function Terminal({
                 ariaLabelledBy={ids.output}
                 toolExecutions={showToolVisualizations ? toolMap : {}}
                 showToolsInline={showToolVisualizations}
+                isDarkTheme={shouldUseDarkTerminal}
               />
             );
           })()}
