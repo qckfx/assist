@@ -13,6 +13,15 @@ import { ToolCall, ConversationMessage, SessionState } from '../types/model';
 import { LogCategory, createLogger, LogLevel } from '../utils/logger';
 
 /**
+ * Helper to check if a session has been aborted
+ * @param sessionState The session state object
+ * @returns Whether the session has been aborted
+ */
+function isSessionAborted(sessionState: SessionState): boolean {
+  return sessionState.__aborted === true;
+}
+
+/**
  * Helper function to create a concise summary of tool arguments
  * @param args The arguments to summarize
  * @returns A concise string representation of the arguments
@@ -130,6 +139,21 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         
         // Loop until we get a final response or reach max iterations
         while (iterations < maxIterations) {
+          // Add this check at the beginning of each iteration
+          if (isSessionAborted(sessionState)) {
+            logger.info("Operation aborted - stopping processing", LogCategory.SYSTEM);
+            return {
+              result: {
+                toolResults,
+                iterations
+              },
+              response: "Operation aborted by user",
+              sessionState,
+              done: true,
+              aborted: true
+            };
+          }
+          
           iterations++;
           logger.debug(`Iteration ${iterations}/${maxIterations}`, LogCategory.SYSTEM);
           
@@ -142,6 +166,22 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               toolRegistry.getToolDescriptions(), 
               sessionState
             );
+            
+            // Check for abort after the LLM call
+            if (isSessionAborted(sessionState)) {
+              logger.info("Operation aborted after LLM response - stopping processing", LogCategory.SYSTEM);
+              return {
+                result: {
+                  toolResults,
+                  iterations
+                },
+                response: "Operation aborted by user",
+                sessionState,
+                done: true,
+                aborted: true
+              };
+            }
+            
             // If the model doesn't want to use a tool, it's ready to respond
             if (!toolCallChat.toolChosen) {
               logger.debug('Model chose not to use a tool, generating final response', LogCategory.MODEL);
@@ -165,6 +205,34 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             sessionState.lastToolUseId = toolCall.toolUseId;
             sessionState.lastArgs = toolCall.args;
             delete sessionState.lastToolError;
+            
+            // Check for abort before executing the tool
+            if (isSessionAborted(sessionState)) {
+              logger.info("Operation aborted before tool execution - stopping processing", LogCategory.SYSTEM);
+              
+              // Add an aborted tool result
+              toolResults.push({
+                toolId: toolCall.toolId,
+                args: toolCall.args as Record<string, unknown>,
+                result: {
+                  aborted: true,
+                  message: "Operation aborted by user"
+                },
+                toolUseId: toolCall.toolUseId,
+                aborted: true
+              });
+              
+              return {
+                result: {
+                  toolResults,
+                  iterations
+                },
+                response: "Operation aborted by user",
+                sessionState,
+                done: true,
+                aborted: true
+              };
+            }
             
             // 3. Execute the tool
             const argSummary = summarizeArgs(toolCall.args as Record<string, unknown>);
@@ -262,6 +330,21 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             // 4. Update state with result
             sessionState.lastResult = result;
             
+            // After tool execution, check for abort again
+            if (isSessionAborted(sessionState)) {
+              logger.info("Operation aborted after tool execution - stopping processing", LogCategory.SYSTEM);
+              return {
+                result: {
+                  toolResults,
+                  iterations
+                },
+                response: "Operation aborted by user",
+                sessionState,
+                done: true,
+                aborted: true
+              };
+            }
+            
             // Add tool result to conversation history if it exists
             if (sessionState.conversationHistory && toolCall.toolUseId) {
               sessionState.conversationHistory.push({
@@ -307,6 +390,21 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           }
         }
         
+        // Before generating final response, check for abort
+        if (isSessionAborted(sessionState)) {
+          logger.info("Operation aborted before final response - stopping processing", LogCategory.SYSTEM);
+          return {
+            result: {
+              toolResults,
+              iterations
+            },
+            response: "Operation aborted by user",
+            sessionState,
+            done: true,
+            aborted: true
+          };
+        }
+        
         // If we reached max iterations without a response, generate one
         if (!finalResponse) {
           logger.debug('Reached maximum iterations, generating response', LogCategory.MODEL);
@@ -342,14 +440,16 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           },
           response: responseText,
           sessionState,
-          done: true
+          done: true,
+          aborted: isSessionAborted(sessionState)
         };
       } catch (error: unknown) {
         logger.error('Error in processQuery:', error, LogCategory.SYSTEM);
         return {
           error: (error as Error).message,
           sessionState,
-          done: true
+          done: true,
+          aborted: isSessionAborted(sessionState)
         };
       }
     },

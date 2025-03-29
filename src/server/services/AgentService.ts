@@ -442,12 +442,25 @@ export class AgentService extends EventEmitter {
       return false;
     }
 
-    // Mark the session as not processing
-    sessionManager.updateSession(sessionId, { isProcessing: false });
+    // Mark the session as not processing and set aborted flag
+    const abortTimestamp = Date.now();
+    sessionManager.updateSession(sessionId, { 
+      isProcessing: false,
+      state: {
+        ...session.state,
+        __aborted: true,  // Add this flag to the session state
+        __abortTimestamp: abortTimestamp  // Add timestamp for abort event
+      }
+    });
+    
     this.activeProcessingSessionIds.delete(sessionId);
 
-    // Emit abort event
-    this.emit(AgentServiceEvent.PROCESSING_ABORTED, { sessionId });
+    // Emit abort event with timestamp
+    this.emit(AgentServiceEvent.PROCESSING_ABORTED, { 
+      sessionId,
+      timestamp: new Date().toISOString(),
+      abortTimestamp
+    });
 
     return true;
   }
