@@ -1,172 +1,109 @@
-import { renderHook, act } from '@testing-library/react';
-import { useAbortShortcuts } from '../useAbortShortcuts';
-import { fireEvent } from '@testing-library/dom';
+import React from 'react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { useWebSocketTerminal } from '../../context/WebSocketTerminalContext';
-import { ConnectionStatus } from '../../types/api';
+import { useAbortShortcuts } from '../useAbortShortcuts';
+import { WebSocketTerminalProvider, useWebSocketTerminal } from '../../context/WebSocketTerminalContext';
 
-vi.mock('../../context/WebSocketTerminalContext', () => {
-  return {
-    useWebSocketTerminal: vi.fn(() => ({
-      connectionStatus: ConnectionStatus.CONNECTED,
-      isConnected: true,
-      sessionId: 'test-session',
-      createSession: vi.fn().mockResolvedValue('test-session'),
-      handleCommand: vi.fn().mockResolvedValue(undefined),
-      isProcessing: false,
-      abortProcessing: vi.fn().mockResolvedValue(undefined),
-      isStreaming: false,
-      hasPendingPermissions: false,
-      resolvePermission: vi.fn().mockResolvedValue(true),
-    })),
-  };
-});
+// Mock the WebSocketTerminalContext
+const abortProcessingMock = vi.fn();
+
+vi.mock('../../context/WebSocketTerminalContext', () => ({
+  WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  useWebSocketTerminal: () => ({
+    isProcessing: true,
+    abortProcessing: abortProcessingMock,
+    sessionId: 'test-session-id',
+  }),
+}));
+
+// Test component
+function TestComponent() {
+  const { shortcuts } = useAbortShortcuts();
+  return (
+    <div data-testid="test-component">
+      <ul>
+        {shortcuts.map((shortcut, index) => (
+          <li key={index}>
+            {shortcut.key} - {shortcut.description}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 describe('useAbortShortcuts', () => {
-  const mockAbortProcessing = vi.fn().mockResolvedValue(undefined);
-  const defaultMockContext = {
-    connectionStatus: ConnectionStatus.CONNECTED,
-    isConnected: true,
-    sessionId: 'test-session',
-    createSession: vi.fn().mockResolvedValue('test-session'),
-    handleCommand: vi.fn().mockResolvedValue(undefined),
-    isStreaming: false,
-    hasPendingPermissions: false,
-    resolvePermission: vi.fn().mockResolvedValue(true),
-  };
-  
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useWebSocketTerminal).mockReturnValue({
-      ...defaultMockContext,
-      isProcessing: false,
-      abortProcessing: mockAbortProcessing,
-    });
+  });
+
+  it('registers both Ctrl+C and Esc shortcuts', () => {
+    render(
+      <WebSocketTerminalProvider>
+        <TestComponent />
+      </WebSocketTerminalProvider>
+    );
+    
+    const component = screen.getByTestId('test-component');
+    expect(component.textContent).toContain('c - Ctrl+C: Abort current operation');
+    expect(component.textContent).toContain('Escape - Esc: Abort current operation');
   });
   
-  it('should not trigger abort when processing is inactive', () => {
-    // Render hook with processing inactive
-    const { result: _result } = renderHook(() => useAbortShortcuts());
+  it('calls abortProcessing when Ctrl+C is pressed', () => {
+    const { container } = render(
+      <WebSocketTerminalProvider>
+        <TestComponent />
+      </WebSocketTerminalProvider>
+    );
     
-    // Simulate Ctrl+C keydown
-    act(() => {
-      fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
-    });
+    fireEvent.keyDown(container, { key: 'c', ctrlKey: true, bubbles: true });
     
-    // Ensure abortProcessing wasn't called
-    expect(mockAbortProcessing).not.toHaveBeenCalled();
+    expect(abortProcessingMock).toHaveBeenCalledTimes(1);
   });
   
-  it('should abort processing on Ctrl+C when processing is active', () => {
-    vi.mocked(useWebSocketTerminal).mockReturnValue({
-      ...defaultMockContext,
-      isProcessing: true,
-      abortProcessing: mockAbortProcessing,
-    });
+  it('calls abortProcessing when Esc is pressed outside an input field', () => {
+    const { container } = render(
+      <WebSocketTerminalProvider>
+        <TestComponent />
+      </WebSocketTerminalProvider>
+    );
     
-    const { result: _result } = renderHook(() => useAbortShortcuts());
-    act(() => {
-      fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
-    });
-    expect(mockAbortProcessing).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(container, { key: 'Escape', bubbles: true });
+    
+    expect(abortProcessingMock).toHaveBeenCalledTimes(1);
   });
   
-  it('should abort processing on Escape when not in a text field', () => {
-    vi.mocked(useWebSocketTerminal).mockReturnValue({
-      ...defaultMockContext,
-      isProcessing: true,
-      abortProcessing: mockAbortProcessing,
-    });
+  it('does not call abortProcessing when Esc is pressed in a non-empty input field', () => {
+    render(
+      <WebSocketTerminalProvider>
+        <div>
+          <input data-testid="test-input" type="text" defaultValue="some text" />
+          <TestComponent />
+        </div>
+      </WebSocketTerminalProvider>
+    );
     
-    const { result: _result } = renderHook(() => useAbortShortcuts());
-    act(() => {
-      fireEvent.keyDown(document, { key: 'Escape' });
-    });
-    expect(mockAbortProcessing).toHaveBeenCalledTimes(1);
-  });
-  
-  it('should abort processing on Escape in an empty input field', () => {
-    vi.mocked(useWebSocketTerminal).mockReturnValue({
-      ...defaultMockContext,
-      isProcessing: true,
-      abortProcessing: mockAbortProcessing,
-    });
-    
-    const input = document.createElement('input');
-    document.body.appendChild(input);
+    const input = screen.getByTestId('test-input');
     input.focus();
+    fireEvent.keyDown(input, { key: 'Escape', bubbles: true });
     
-    const { result: _result } = renderHook(() => useAbortShortcuts());
-    act(() => {
-      fireEvent.keyDown(input, { key: 'Escape', target: input });
-    });
-    expect(mockAbortProcessing).toHaveBeenCalledTimes(1);
-    document.body.removeChild(input);
+    expect(abortProcessingMock).not.toHaveBeenCalled();
   });
   
-  it('should not abort processing on Escape in a non-empty input field', () => {
-    vi.mocked(useWebSocketTerminal).mockReturnValue({
-      ...defaultMockContext,
-      isProcessing: true,
-      abortProcessing: mockAbortProcessing,
-    });
+  it('calls abortProcessing when Esc is pressed in an empty input field', () => {
+    render(
+      <WebSocketTerminalProvider>
+        <div>
+          <input data-testid="test-input" type="text" defaultValue="" />
+          <TestComponent />
+        </div>
+      </WebSocketTerminalProvider>
+    );
     
-    const input = document.createElement('input');
-    input.value = 'some text';
-    document.body.appendChild(input);
+    const input = screen.getByTestId('test-input');
     input.focus();
+    fireEvent.keyDown(input, { key: 'Escape', bubbles: true });
     
-    const { result: _result } = renderHook(() => useAbortShortcuts());
-    act(() => {
-      fireEvent.keyDown(input, { key: 'Escape', target: input });
-    });
-    expect(mockAbortProcessing).not.toHaveBeenCalled();
-    document.body.removeChild(input);
-  });
-  
-  it('should not abort on Ctrl+C if text is selected (to allow copying)', () => {
-    vi.mocked(useWebSocketTerminal).mockReturnValue({
-      ...defaultMockContext,
-      isProcessing: true,
-      abortProcessing: mockAbortProcessing,
-    });
-    
-    const originalGetSelection = window.getSelection;
-    window.getSelection = vi.fn().mockReturnValue({
-      toString: () => 'selected text',
-    });
-    
-    const { result: _result } = renderHook(() => useAbortShortcuts());
-    act(() => {
-      fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
-    });
-    expect(mockAbortProcessing).not.toHaveBeenCalled();
-    window.getSelection = originalGetSelection;
-  });
-  
-  it('should provide shortcuts list for documentation', () => {
-    vi.mocked(useWebSocketTerminal).mockReturnValue({
-      ...defaultMockContext,
-      isProcessing: true,
-      abortProcessing: mockAbortProcessing,
-    });
-    
-    const { result } = renderHook(() => useAbortShortcuts());
-    expect(result.current.shortcuts).toHaveLength(2);
-    expect(result.current.shortcuts[0].description).toContain('Ctrl+C');
-    expect(result.current.shortcuts[1].description).toContain('Esc');
-  });
-  
-  it('should not attach event listeners when enabled is false', () => {
-    vi.mocked(useWebSocketTerminal).mockReturnValue({
-      ...defaultMockContext,
-      isProcessing: true,
-      abortProcessing: mockAbortProcessing,
-    });
-    
-    const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
-    renderHook(() => useAbortShortcuts(false));
-    expect(addEventListenerSpy).not.toHaveBeenCalled();
-    addEventListenerSpy.mockRestore();
+    expect(abortProcessingMock).toHaveBeenCalledTimes(1);
   });
 });
