@@ -7,7 +7,7 @@
 
 import path from 'path';
 import fs from 'fs';
-import { TestCase } from '../models/types';
+import { TestCase, TestCaseWithExamples } from '../models/types';
 import { 
   AgentConfiguration, 
   ABEvaluationOptions, 
@@ -16,7 +16,10 @@ import {
   ConfigurationComparison
 } from '../models/ab-types';
 import { SandboxPool } from '../utils/sandbox-pool';
+import { E2BExecutionAdapter } from '../../utils/E2BExecutionAdapter';
 import { StorageService, NodeFileSystem } from '../utils/storage';
+// Import needed for the Required<ABEvaluationResult> type usage
+import { analyzeAggregateToolUsage } from '../utils/tool-analysis';
 import { createLogger, LogLevel } from '../../utils/logger';
 import { runTestCaseWithHistory } from './test-runner';
 import { runJudge } from './judge';
@@ -26,7 +29,6 @@ import { generateABReport } from '../utils/reporting';
 import { createJudgeModelProvider } from '../utils/model-provider';
 import { createPromptManager } from '../../core/PromptManager';
 import { createFilteredToolRegistry } from '../utils/tools';
-import { analyzeAggregateToolUsage } from '../utils/tool-analysis';
 
 // Create a logger for the A/B testing runner
 const logger = createLogger({
@@ -45,7 +47,7 @@ const logger = createLogger({
 async function runTestWithConfiguration(
   testCase: TestCase,
   config: AgentConfiguration,
-  sandboxAdapter: any,
+  sandboxAdapter: E2BExecutionAdapter,
   iteration: number
 ): Promise<ABTestRunWithHistory> {
   // Create a model provider from the configuration 
@@ -78,7 +80,7 @@ async function runTestWithConfiguration(
     run.executionHistory.metadata.configInfo = {
       configId: config.id,
       configName: config.name,
-      modelName: (modelProvider as any).model || config.model || 'unknown-model',
+      modelName: config.model || 'unknown-model',
       promptName: config.name,
       // Add information about available tools if specified in the configuration
       ...(config.availableTools && { availableTools: config.availableTools })
@@ -117,7 +119,7 @@ export async function runABEvaluation(
     runsPerTest = 3,
     enableJudge = true,
     concurrency = 2,
-    outputDir = path.join(process.cwd(), 'evaluation-results'),
+    _outputDir = path.join(process.cwd(), 'evaluation-results'),
     judgeSystemPrompt,
     useExamples = true,
     storageService = new StorageService(new NodeFileSystem())
@@ -185,7 +187,7 @@ export async function runABEvaluation(
           if (enableJudge) {
             try {
               // Prepare examples if available
-              const testCaseWithExamples = testCase as any;
+              const testCaseWithExamples = testCase as TestCaseWithExamples;
               const examples = useExamples && testCaseWithExamples.examples ? {
                 good: testCaseWithExamples.examples.good?.executionHistory,
                 bad: testCaseWithExamples.examples.bad?.executionHistory,
@@ -275,9 +277,9 @@ export async function runABEvaluation(
     }
     
     // Calculate average metrics for each configuration
-    const averageMetrics: Record<string, any> = {};
-    const averageJudgment: Record<string, any> = {};
-    const toolUsageAnalysis: Record<string, any> = {};
+    const averageMetrics: ABEvaluationResult['averageMetrics'] = {};
+    const averageJudgment: Required<ABEvaluationResult>['averageJudgment'] = {};
+    const toolUsageAnalysis: Required<ABEvaluationResult>['toolUsageAnalysis'] = {};
     
     for (const configId in runsByConfig) {
       const configRuns = runsByConfig[configId];
@@ -395,7 +397,7 @@ export async function runABEvaluation(
     );
     
     // Return the evaluation result
-    return {
+    const result: ABEvaluationResult = {
       runId,
       runs: allRuns,
       runsByConfig,
@@ -405,6 +407,8 @@ export async function runABEvaluation(
       comparison,
       outputDir: evalOutputDir
     };
+    
+    return result;
   } finally {
     // Ensure sandbox pool is properly shut down
     await sandboxPool.shutdown();

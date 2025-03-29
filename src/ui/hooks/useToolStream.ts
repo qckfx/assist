@@ -3,8 +3,11 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { WebSocketEvent } from '../types/api';
+import { WebSocketEvent, WebSocketEventMap } from '../types/api';
 import { throttle } from '@/utils/performance';
+
+// Type helper for event handlers to properly map WebSocketEvent enum to WebSocketEventMap
+type EventData<E extends WebSocketEvent> = WebSocketEventMap[E];
 
 /**
  * Interface for tool execution event data
@@ -13,7 +16,7 @@ export interface ToolExecution {
   id: string;
   tool: string;
   toolName: string;
-  status: 'running' | 'completed' | 'error' | 'awaiting-permission';
+  status: 'running' | 'completed' | 'error' | 'awaiting-permission' | 'aborted';
   args?: Record<string, unknown>;
   paramSummary?: string;
   result?: unknown;
@@ -381,7 +384,7 @@ export function useToolStream() {
       // Get current timestamp
       const now = Date.now();
       
-      // Update any running tools to error state
+      // Update any running tools to aborted state
       const updatedToolExecutions = { ...prev.toolExecutions };
       
       for (const toolId in updatedToolExecutions) {
@@ -389,7 +392,7 @@ export function useToolStream() {
         if (tool.status === 'running' || tool.status === 'awaiting-permission') {
           updatedToolExecutions[toolId] = {
             ...tool,
-            status: 'error',
+            status: 'aborted',
             error: { message: 'Processing aborted' },
             endTime: now,
             executionTime: tool.executionTime || (now - tool.startTime),
@@ -445,13 +448,10 @@ export function useToolStream() {
   }, []);
   
   // Handler for tool execution started
-  const handleToolExecutionStarted = useCallback((data: Record<string, unknown>) => {
-    const tool = data.tool as Record<string, unknown>;
-    const args = data.args as Record<string, unknown>;
-    const paramSummary = data.paramSummary as string;
-    const timestamp = data.timestamp as string;
-    const toolId = tool.id as string;
-    const toolName = tool.name as string;
+  const handleToolExecutionStarted = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_STARTED>) => {
+    const { tool, args, paramSummary, timestamp } = data;
+    const toolId = tool.id;
+    const toolName = tool.name;
     
     setState(prev => {
       // Generate a consistent ID based on the tool ID so we can update it later
@@ -497,14 +497,9 @@ export function useToolStream() {
   }, []);
   
   // Handler for tool execution completed with improved synchronization
-  const handleToolExecutionCompleted = useCallback((data: Record<string, unknown>) => {
-    const tool = data.tool as Record<string, unknown>;
-    const result = data.result as unknown;
-    const paramSummary = data.paramSummary as string;
-    const executionTime = data.executionTime as number | undefined;
-    const timestamp = data.timestamp as string;
-    const startTime = data.startTime as string | undefined;
-    const toolId = tool.id as string;
+  const handleToolExecutionCompleted = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_COMPLETED>) => {
+    const { tool, result, paramSummary, executionTime, timestamp, startTime } = data;
+    const toolId = tool.id;
     
     setState(prev => {
       // Generate the expected execution ID from startTime if available
@@ -598,14 +593,95 @@ export function useToolStream() {
     });
   }, []);
   
+  // Handler for tool execution aborted
+  const handleToolExecutionAborted = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_ABORTED>) => {
+    const { tool, timestamp, startTime, abortTimestamp } = data;
+    const toolId = tool.id;
+    
+    setState(prev => {
+      // Find the existing execution by looking for a matching ID pattern or tool ID
+      let matchingExecution: ToolExecution | null = null;
+      let matchingExecutionId: string | null = null;
+      
+      // First try to find a tool with the same start time
+      if (startTime) {
+        const expectedStartTime = new Date(startTime).getTime();
+        const expectedId = `${toolId}-${expectedStartTime}`;
+        if (prev.toolExecutions[expectedId]) {
+          matchingExecution = prev.toolExecutions[expectedId];
+          matchingExecutionId = expectedId;
+        }
+      }
+      
+      // If no match by start time, look for a running tool with matching tool ID
+      if (!matchingExecution) {
+        const runningTools = Object.entries(prev.toolExecutions)
+          .filter(([, execution]) => execution.tool === toolId && execution.status === 'running')
+          .sort(([, a], [, b]) => b.startTime - a.startTime);
+        
+        if (runningTools.length > 0) {
+          [matchingExecutionId, matchingExecution] = runningTools[0];
+        }
+      }
+      
+      // If still no match, create a fallback ID
+      if (!matchingExecutionId) {
+        matchingExecutionId = `${toolId}-${Date.now()}`;
+      }
+      
+      // Get the existing execution or create a new one if none exists
+      const prevExecution = matchingExecution || {
+        id: matchingExecutionId,
+        tool: toolId,
+        toolName: tool.name,
+        status: 'running',
+        args: {},
+        paramSummary: 'Tool execution (aborted)',
+        startTime: startTime ? new Date(startTime).getTime() : (Date.now() - 1000),
+      };
+      
+      // Update with abort data
+      const execution: ToolExecution = {
+        ...prevExecution,
+        status: 'aborted', // Explicitly mark as aborted
+        result: { aborted: true, abortTimestamp },
+        endTime: new Date(timestamp).getTime(),
+        executionTime: startTime ? 
+          new Date(timestamp).getTime() - new Date(startTime).getTime() : 0,
+      };
+      
+      // Add to history - without limiting size
+      const toolHistory = [...prev.toolHistory, execution];
+      
+      // Update tool executions map
+      const updatedToolExecutions = {
+        ...prev.toolExecutions,
+        [matchingExecutionId]: execution,
+      };
+      
+      // Count active tools after abort
+      const activeTools = Object.values(updatedToolExecutions).filter(
+        t => t.status === 'running' || t.status === 'awaiting-permission'
+      );
+      
+      return {
+        ...prev,
+        toolExecutions: updatedToolExecutions,
+        activeTools: {
+          ...prev.activeTools,
+          [matchingExecutionId]: false,
+        },
+        activeToolCount: activeTools.length,
+        toolHistory,
+        latestExecution: execution,
+      };
+    });
+  }, []);
+  
   // Handler for tool execution error
-  const handleToolExecutionError = useCallback((data: Record<string, unknown>) => {
-    const tool = data.tool as Record<string, unknown>;
-    const error = data.error as { message: string; stack?: string };
-    const paramSummary = data.paramSummary as string;
-    const timestamp = data.timestamp as string;
-    const startTime = data.startTime as string | undefined;
-    const toolId = tool.id as string;
+  const handleToolExecutionError = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_ERROR>) => {
+    const { tool, error, paramSummary, timestamp, startTime } = data;
+    const toolId = tool.id;
     
     setState(prev => {
       // Generate the expected execution ID from startTime if available
@@ -842,17 +918,14 @@ export function useToolStream() {
     // Create an array to track all unsubscribe functions
     const unsubscribers: Array<() => void> = [];
     
-    // Helper function to safely subscribe and track unsubscribe function
-    const safeSubscribe = (
-      event: WebSocketEvent, 
-      handler: (data: unknown) => void
-    ) => {
+    // Helper function to safely subscribe and track unsubscribe function with proper typing
+    function safeSubscribe<E extends WebSocketEvent>(
+      event: E, 
+      handler: (data: EventData<E>) => void
+    ) {
       try {
-        // We need to use `as any` here to bridge TypeScript's validation gap
-        // This is necessary because the types for WebSocketEvent and the handlers have a mismatch
-        // that would be too complex to fully type correctly in this context
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const unsubscribe = subscribe(event, handler as any);
+        // The cast is necessary because WebSocket subscriber doesn't have proper type parameters
+        const unsubscribe = subscribe(event, handler as (data: unknown) => void);
         unsubscribers.push(unsubscribe);
         return unsubscribe;
       } catch (error) {
@@ -860,24 +933,23 @@ export function useToolStream() {
         // Return a no-op function
         return () => {};
       }
-    };
+    }
     
-    // Subscribe to batched tool executions (still needed for performance)
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_BATCH, (data: unknown) => handleToolExecutionBatch(data as ToolExecutionBatch));
+    // For non-typed events, use the original pattern
+    subscribe(WebSocketEvent.TOOL_EXECUTION_BATCH, (data) => handleToolExecutionBatch(data as ToolExecutionBatch));
+    subscribe(WebSocketEvent.PROCESSING_COMPLETED, handleProcessingCompleted);
+    subscribe(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted);
+    subscribe(WebSocketEvent.PROCESSING_ERROR, handleProcessingError);
     
-    // Subscribe to processing events
-    safeSubscribe(WebSocketEvent.PROCESSING_COMPLETED, handleProcessingCompleted);
-    safeSubscribe(WebSocketEvent.PROCESSING_ABORTED, handleProcessingAborted);
-    safeSubscribe(WebSocketEvent.PROCESSING_ERROR, handleProcessingError);
+    // Use properly typed subscription for tool events
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_STARTED, handleToolExecutionStarted);
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_COMPLETED, handleToolExecutionCompleted);
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_ERROR, handleToolExecutionError);
+    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_ABORTED, handleToolExecutionAborted);
     
-    // Subscribe to tool visualization events - these are the primary events we use now
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_STARTED, (data: unknown) => handleToolExecutionStarted(data as Record<string, unknown>));
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_COMPLETED, (data: unknown) => handleToolExecutionCompleted(data as Record<string, unknown>));
-    safeSubscribe(WebSocketEvent.TOOL_EXECUTION_ERROR, (data: unknown) => handleToolExecutionError(data as Record<string, unknown>));
-    
-    // Subscribe to permission events
-    safeSubscribe(WebSocketEvent.PERMISSION_REQUESTED, (data: unknown) => handlePermissionRequested(data as Record<string, unknown>));
-    safeSubscribe(WebSocketEvent.PERMISSION_RESOLVED, (data: unknown) => handlePermissionResolved(data as Record<string, unknown>));
+    // For non-typed events, use the original pattern
+    subscribe(WebSocketEvent.PERMISSION_REQUESTED, (data) => handlePermissionRequested(data as Record<string, unknown>));
+    subscribe(WebSocketEvent.PERMISSION_RESOLVED, (data) => handlePermissionResolved(data as Record<string, unknown>));
     
     // Clean up subscriptions
     return () => {
@@ -898,6 +970,7 @@ export function useToolStream() {
     handleToolExecutionStarted,
     handleToolExecutionCompleted,
     handleToolExecutionError,
+    handleToolExecutionAborted,
     handlePermissionRequested,
     handlePermissionResolved
   ]);

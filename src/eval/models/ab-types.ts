@@ -27,7 +27,7 @@ export interface AgentConfiguration {
     temperature: number;
     topP?: number;
     maxTokens?: number;
-    [key: string]: any;
+    [key: string]: number | string | boolean | null | undefined;
   };
   
   /**
@@ -38,7 +38,7 @@ export interface AgentConfiguration {
   availableTools?: string[];
   
   /** Additional metadata about this configuration */
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string | number | boolean | null | undefined>;
 }
 
 /**
@@ -76,7 +76,7 @@ export interface ABEvaluationOptions {
   storageService?: StorageService;
   
   /** Additional options */
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**

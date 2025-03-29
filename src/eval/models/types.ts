@@ -21,10 +21,10 @@ export interface TestCase {
   type: 'exploration' | 'debugging' | 'implementation' | 'analysis';
   
   /** Optional function to determine if the test was successful */
-  successCriteria?: (result: any) => boolean;
+  successCriteria?: (result: TestRunWithHistory) => boolean;
   
   /** Optional function to generate notes about the test run */
-  notes?: (result: any) => string;
+  notes?: (result: TestRunWithHistory) => string;
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   generateToolUsageComparisonTable,
   generateToolPatternsSection
 } from './tool-analysis';
+import { ProcessQueryOptions } from '../runners/judge';
 
 /**
  * Generate a comprehensive A/B testing report
@@ -25,15 +26,33 @@ export async function generateABReport(
       id: string;
       name: string;
       runs: ABTestRunWithHistory[];
-      averageMetrics: any;
-      averageJudgment?: any;
+      averageMetrics: {
+        success: number;
+        duration: number;
+        toolCalls: number;
+        tokenUsage: {
+          input: number;
+          output: number;
+          total: number;
+        };
+      };
+      averageJudgment?: Record<string, number | string | unknown>;
     };
     configB: {
       id: string;
       name: string;
       runs: ABTestRunWithHistory[];
-      averageMetrics: any;
-      averageJudgment?: any;
+      averageMetrics: {
+        success: number;
+        duration: number;
+        toolCalls: number;
+        tokenUsage: {
+          input: number;
+          output: number;
+          total: number;
+        };
+      };
+      averageJudgment?: Record<string, number | string | unknown>;
     };
     runsByTest: Record<string, Record<string, ABTestRunWithHistory[]>>;
     comparison?: ConfigurationComparison;
@@ -374,7 +393,7 @@ function getToolFriendlyName(toolId: string): string {
 /**
  * Format configuration details for the report
  */
-function formatConfigDetails(config: any): string {
+function formatConfigDetails(config: { metadata?: Record<string, string | number | boolean | null | undefined>; [key: string]: unknown }): string {
   let details = '';
   
   // Add configuration parameters
@@ -382,14 +401,23 @@ function formatConfigDetails(config: any): string {
     details += `**Description:** ${config.metadata.description || 'N/A'}\n\n`;
   }
   
-  details += `**Model:** ${config.id.includes('model-') ? config.id.replace('model-', '') : config.id}\n\n`;
+  details += `**Model:** ${typeof config.id === 'string' && config.id.includes('model-') ? config.id.replace('model-', '') : config.id}\n\n`;
   
   if (config.averageMetrics) {
+    const metrics = config.averageMetrics as {
+      success: number;
+      duration: number;
+      toolCalls: number;
+      tokenUsage: { total: number } | number;
+    };
+    
     details += `**Metrics Summary:**\n`;
-    details += `- Success Rate: ${(config.averageMetrics.success * 100).toFixed(1)}%\n`;
-    details += `- Average Duration: ${config.averageMetrics.duration.toFixed(2)}s\n`;
-    details += `- Average Tool Calls: ${config.averageMetrics.toolCalls.toFixed(1)}\n`;
-    details += `- Average Token Usage: ${config.averageMetrics.tokenUsage.total.toFixed(0)}\n`;
+    details += `- Success Rate: ${(metrics.success * 100).toFixed(1)}%\n`;
+    details += `- Average Duration: ${metrics.duration.toFixed(2)}s\n`;
+    details += `- Average Tool Calls: ${metrics.toolCalls.toFixed(1)}\n`;
+    details += `- Average Token Usage: ${typeof metrics.tokenUsage === 'number' ? 
+      metrics.tokenUsage.toFixed(0) : 
+      (metrics.tokenUsage as { total: number }).total.toFixed(0)}\n`;
   }
   
   return details;
@@ -457,45 +485,11 @@ function getCommonItems(runs: ABTestRunWithHistory[], property: 'strengths' | 'w
     .map(([item, count]) => `${item} (${count})`);
 }
 
-/**
- * Format a duration in seconds to a human-readable string
- * 
- * @param seconds Duration in seconds
- * @returns Formatted duration string
- */
-function formatDuration(seconds: number): string {
-  return `${seconds.toFixed(2)}s`;
-}
-
-/**
- * Format a duration difference in seconds to a human-readable string
- * 
- * @param diffSeconds Duration difference in seconds
- * @returns Formatted duration difference string
- */
-function formatDurationDiff(diffSeconds: number): string {
-  const prefix = diffSeconds > 0 ? '+' : '';
-  return `${prefix}${diffSeconds.toFixed(2)}s`;
-}
-
-/**
- * Format a dimension name to be more readable
- * 
- * @param dimension Dimension name
- * @returns Formatted dimension name
- */
-function formatDimension(dimension: string): string {
-  // Add spaces between camelCase
-  return dimension
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, str => str.toUpperCase())
-    .trim();
-}
 
 async function summarizeJudgmentProperty(
   runs: ABTestRunWithHistory[], 
   property: 'strengths' | 'weaknesses' | 'suggestions',
-  modelProvider: any,
+  modelProvider: { processQuery: (prompt: string, options: ProcessQueryOptions) => Promise<{ response: string | null }> },
   configName: string
 ): Promise<string> {
   // Skip if there are no judgments

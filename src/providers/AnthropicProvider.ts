@@ -38,15 +38,23 @@ async function withRetryAndBackoff<T>(
   let retries = 0;
   let delay = initialDelay;
 
-  while (true) {
+  // Using retries with defined maxRetries, so no infinite loop
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // Cast to a type that includes typical API error properties
+      const apiError = error as {
+        status?: number;
+        response?: { status?: number };
+        message?: string;
+      };
+      
       // Check if it's a rate limit error (HTTP 429)
       const isRateLimit = 
-        error?.status === 429 || 
-        error?.response?.status === 429 ||
-        (error?.message && error.message.includes('rate_limit_error'));
+        apiError.status === 429 || 
+        apiError.response?.status === 429 ||
+        (apiError.message && apiError.message.includes('rate_limit_error'));
 
       // If max retries reached or not a rate limit error, rethrow
       if (retries >= maxRetries || !isRateLimit) {
@@ -74,6 +82,10 @@ async function withRetryAndBackoff<T>(
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
+  
+  // This line will never be reached due to the for loop and return/throw,
+  // but TypeScript requires it for compile-time checking
+  throw new Error('Maximum retries exceeded');
 }
 
 /**
@@ -164,7 +176,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
           }
         } catch (error) {
           // If token counting fails, just log and continue
-          logger?.warn('Token counting failed, continuing with uncompressed conversation', LogCategory.MODEL, error as any);
+          logger?.warn('Token counting failed, continuing with uncompressed conversation', LogCategory.MODEL, error instanceof Error ? error : String(error));
         }
       }
 
@@ -221,25 +233,33 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         }
         
         return response as Anthropic.Messages.Message;
-      } catch (error: any) {
+      } catch (error: unknown) {
+        // Cast to a type that includes typical API error properties
+        const apiError = error as {
+          status?: number;
+          message?: string;
+          body?: unknown;
+          response?: { body?: unknown };
+        };
+        
         // Check for token limit error
         const isTokenLimitError = 
-          error?.status === 400 && 
-          (error?.message?.includes('prompt is too long') || 
-           error?.message?.includes('token') && error?.message?.includes('maximum'));
+          apiError.status === 400 && 
+          (apiError.message?.includes('prompt is too long') || 
+           (apiError.message?.includes('token') && apiError.message?.includes('maximum')));
         
         // Log detailed error information for troubleshooting  
         logger?.error('API error details', LogCategory.MODEL, {
-          errorStatus: error?.status,
-          errorMessage: error?.message,
-          errorBody: error?.body || error?.response?.body || null,
+          errorStatus: apiError.status,
+          errorMessage: apiError.message,
+          errorBody: apiError.body || apiError.response?.body || null,
           isTokenLimitError
         });
         
         // If it's a token limit error and we have a session state and token manager, try to compress
         if (isTokenLimitError && prompt.sessionState && prompt.sessionState.conversationHistory.length > 0) {
           logger?.warn(
-            `Token limit exceeded (${error.message}). Attempting to compress conversation history.`,
+            `Token limit exceeded ${apiError.message ? `(${apiError.message})` : ''}. Attempting to compress conversation history.`,
             LogCategory.MODEL
           );
           

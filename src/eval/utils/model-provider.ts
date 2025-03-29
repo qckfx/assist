@@ -9,8 +9,7 @@ import { createLogger, LogLevel } from '../../utils/logger';
 import { ModelProvider, ProcessQueryOptions } from '../runners/judge';
 import { MessageParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs';
 
-// Import AnthropicProvider type
-import { AnthropicProvider } from '../../types';
+// Provider types
 
 /**
  * A simple adapter that makes AnthropicProvider compatible with the ModelProvider interface

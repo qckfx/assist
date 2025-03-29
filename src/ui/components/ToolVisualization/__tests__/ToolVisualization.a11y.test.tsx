@@ -100,7 +100,7 @@ describe('ToolVisualization Accessibility', () => {
     );
     
     // Check that parameters have cursor style when onToggleExpand is provided
-    const paramsElement = container.querySelector('.mt-1.text-xs');
+    const paramsElement = container.querySelector('.truncate');
     expect(paramsElement).toHaveAttribute('style', expect.stringContaining('cursor: pointer'));
   });
   
@@ -108,7 +108,7 @@ describe('ToolVisualization Accessibility', () => {
     const { container } = render(<ToolVisualization tool={mockCompletedTool} />);
     
     // Check that parameters do not have cursor: pointer when onToggleExpand is not provided
-    const paramsElement = container.querySelector('.mt-1.text-xs');
+    const paramsElement = container.querySelector('.truncate');
     expect(paramsElement).toHaveAttribute('style', expect.stringContaining('cursor: default'));
   });
 });

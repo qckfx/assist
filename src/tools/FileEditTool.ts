@@ -5,9 +5,7 @@
 import path from 'path';
 import { createTool } from './createTool';
 import { Tool, ToolContext, ValidationResult, ToolCategory } from '../types/tool';
-import { LogLevel } from '../utils/logger';
-import { LogCategory } from '../utils/logger';
-import { createLogger } from '../utils/logger';
+// Logger imports removed as they are unused
 
 // Interface for the arguments accepted by the FileEditTool
 // Used for type checking and documentation

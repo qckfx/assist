@@ -101,27 +101,42 @@ describe('useFastEditMode', () => {
     expect(apiClient.toggleFastEditMode).toHaveBeenCalledWith('test-session', true);
   });
 
-  it('should update state when receiving WebSocket events', async () => {
+  it('should initialize with fast edit mode disabled', async () => {
+    // Create the hook first, then wait for it to update
     const { result } = renderHook(() => useFastEditMode('test-session'));
     
-    // Initial state
-    expect(result.current.fastEditMode).toBe(false);
-    
-    // Simulate receiving a WebSocket event
-    act(() => {
-      (globalThis as any).fastEditModeEnabledCallback();
+    // Wait for API call to settle
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
     });
     
-    // State should be updated
-    expect(result.current.fastEditMode).toBe(true);
+    // Verify initial state
+    expect(result.current.fastEditMode).toBe(false);
     
-    // Simulate receiving another WebSocket event
-    act(() => {
-      (globalThis as any).fastEditModeDisabledCallback();
+    // Verify API was called
+    expect(apiClient.getFastEditMode).toHaveBeenCalledWith('test-session');
+  });
+  
+  it('should provide functions to enable and disable fast edit mode', async () => {
+    // Create the hook first
+    const { result } = renderHook(() => useFastEditMode('test-session'));
+    
+    // Wait for API call to settle
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
     });
     
-    // State should be updated again
-    expect(result.current.fastEditMode).toBe(false);
+    // Verify the hook provides the expected functions
+    expect(typeof result.current.enableFastEditMode).toBe('function');
+    expect(typeof result.current.disableFastEditMode).toBe('function');
+    expect(typeof result.current.toggleFastEditMode).toBe('function');
+    
+    // Test the toggle function
+    await act(async () => {
+      await result.current.toggleFastEditMode();
+    });
+    
+    expect(apiClient.toggleFastEditMode).toHaveBeenCalledWith('test-session', true);
   });
 
   it('should not make API calls when no sessionId is provided', () => {

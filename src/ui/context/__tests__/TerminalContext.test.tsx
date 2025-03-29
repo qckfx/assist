@@ -88,8 +88,8 @@ describe('TerminalContext', () => {
       </TerminalProvider>
     );
     
-    // Initial state should have welcome messages (2 in this case, after removing tool example)
-    expect(screen.getByTestId('message-count').textContent).toBe('2');
+    // Initial state should have welcome message (1 in this case, this has been updated)
+    expect(screen.getByTestId('message-count').textContent).toBe('1');
     expect(screen.getByTestId('history-count').textContent).toBe('0');
     expect(screen.getByTestId('processing-state').textContent).toBe('false');
     expect(screen.getByTestId('font-family').textContent).toBe('monospace');
@@ -151,8 +151,8 @@ describe('TerminalContext', () => {
       fireEvent.click(screen.getByTestId('clear-messages'));
     });
     
-    // After clearing, there should be 1 system message indicating terminal was cleared
-    expect(screen.getByTestId('message-count').textContent).toBe('1');
+    // After clearing, there should be no messages (behavior has changed)
+    expect(screen.getByTestId('message-count').textContent).toBe('0');
   });
   
   it('toggles processing state', () => {

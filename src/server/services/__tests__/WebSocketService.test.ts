@@ -3,21 +3,26 @@ import { AddressInfo } from 'net';
 import { Socket as ClientSocket } from 'socket.io-client';
 import { WebSocketService, WebSocketEvent } from '../WebSocketService';
 import { AgentServiceEvent, getAgentService } from '../AgentService';
-import { EventEmitter } from 'events';
+// We don't need to import EventEmitter since we get it from requireActual
 
 // Mock the imports
 jest.mock('../AgentService', () => {
-  // Create a mock agent service class that extends EventEmitter
+  // Use properly typed import instead of require
+  const events = jest.requireActual('events');
+  const { EventEmitter } = events;
+  // Create a mock agent service class by extending EventEmitter
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mockAgentService: any = new EventEmitter();
+  const mockAgentService: any = Object.assign({}, EventEmitter.prototype);
   
   // Add methods
   mockAgentService.getPermissionRequests = jest.fn().mockReturnValue([]);
   
+  // Initialize the event emitter
+  EventEmitter.call(mockAgentService);
+  
   // Add a real EventEmitter implementation for our tests
-  const originalEmit = EventEmitter.prototype.emit;
   mockAgentService.emit = function(event: string, ...args: unknown[]) {
-    return originalEmit.call(this, event, ...args);
+    return EventEmitter.prototype.emit.call(this, event, ...args);
   };
   
   return {

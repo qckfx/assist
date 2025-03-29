@@ -8,8 +8,9 @@ import { createToolRegistry } from '../../core/ToolRegistry';
 import { createPermissionManager } from '../../core/PermissionManager';
 import { createAnthropicProvider } from '../../providers/AnthropicProvider';
 import { PromptManager } from '../../core/PromptManager';
-import { LogLevel, LogCategory, createLogger } from '../../utils/logger';
+import { LogLevel, createLogger } from '../../utils/logger';
 import { TestCase, MetricsData, SystemPromptConfig, AgentExecutionHistory, TestRunWithHistory } from '../models/types';
+import { ToolResultEntry } from '../../types/agent';
 import { E2BExecutionAdapter } from '../../utils/E2BExecutionAdapter';
 import { createBashTool } from '../../tools/BashTool';
 import { createGlobTool } from '../../tools/GlobTool';
@@ -50,8 +51,8 @@ export async function runTestCase(
     promptName: systemPrompt.name
   });
   
-  // Set the base path for sandbox environment
-  const basePath = '/home/user';
+  // Set the base path for sandbox environment (for reference only)
+  const _basePath = '/home/user';
   
   // Add debug logging about the execution adapter
   console.log('Debug - Execution adapter:', {
@@ -142,7 +143,7 @@ export async function runTestCase(
     
     // Extract token usage from the session state if available
     if (result.sessionState && result.sessionState.tokenUsage) {
-      const usageData = result.sessionState.tokenUsage as any;
+      const usageData = result.sessionState.tokenUsage as { totalTokens?: number };
       
       // The TokenManager stores this as totalTokens
       if (usageData.totalTokens) {
@@ -154,13 +155,57 @@ export async function runTestCase(
     }
     
     // Custom success criteria if provided
-    if (testCase.successCriteria && result.result) {
-      success = testCase.successCriteria(result.result);
+    if (testCase.successCriteria && result) {
+      // Create a compatible TestRunWithHistory object
+      const runWithHistory: TestRunWithHistory = {
+        testCase,
+        metrics: {
+          testCase: testCase.name,
+          promptName: '',
+          duration: 0,
+          toolCalls: result.result?.toolResults?.length || 0,
+          tokenUsage: { input: 0, output: 0, total: 0 },
+          success: false
+        },
+        executionHistory: {
+          toolCalls: (result.result?.toolResults || []).map((tr: ToolResultEntry) => ({
+            tool: tr.toolId || 'unknown',
+            args: tr.args as Record<string, unknown> || {},
+            result: String(tr.result || ''),
+            startTime: new Date().toISOString(),
+            endTime: new Date().toISOString()
+          }))
+        }
+      };
+      
+      success = testCase.successCriteria(runWithHistory);
     }
     
     // Custom notes if provided
-    if (testCase.notes && result.result) {
-      notes = testCase.notes(result.result);
+    if (testCase.notes && result) {
+      // Create a compatible TestRunWithHistory object if not already created
+      const runWithHistory: TestRunWithHistory = {
+        testCase,
+        metrics: {
+          testCase: testCase.name,
+          promptName: '',
+          duration: 0,
+          toolCalls: result.result?.toolResults?.length || 0,
+          tokenUsage: { input: 0, output: 0, total: 0 },
+          success: false
+        },
+        executionHistory: {
+          toolCalls: (result.result?.toolResults || []).map((tr: ToolResultEntry) => ({
+            tool: tr.toolId || 'unknown',
+            args: tr.args as Record<string, unknown> || {},
+            result: String(tr.result || ''),
+            startTime: new Date().toISOString(),
+            endTime: new Date().toISOString()
+          }))
+        }
+      };
+      
+      notes = testCase.notes(runWithHistory);
     }
   } catch (error) {
     console.error(`Error running test case ${testCase.name}:`, error);
@@ -216,7 +261,7 @@ export async function runTestCaseWithHistory(
   logger.setContext({
     testId: testCase.id,
     testName: testCase.name,
-    modelName: (modelProvider as any).model || 'unknown-model'
+    modelName: 'unknown-model'
   });
   
   // Initialize the tool registry if not provided
@@ -302,7 +347,7 @@ export async function runTestCaseWithHistory(
     
     // Extract token usage from the session state
     if (result.sessionState && result.sessionState.tokenUsage) {
-      const usageData = result.sessionState.tokenUsage as any;
+      const usageData = result.sessionState.tokenUsage as { totalTokens?: number };
       
       if (usageData.totalTokens) {
         tokenUsage.total = usageData.totalTokens;
@@ -312,13 +357,57 @@ export async function runTestCaseWithHistory(
     }
     
     // Custom success criteria if provided
-    if (testCase.successCriteria && result.result) {
-      success = testCase.successCriteria(result.result);
+    if (testCase.successCriteria && result) {
+      // Create a compatible TestRunWithHistory object
+      const runWithHistory: TestRunWithHistory = {
+        testCase,
+        metrics: {
+          testCase: testCase.name,
+          promptName: '',
+          duration: 0,
+          toolCalls: result.result?.toolResults?.length || 0,
+          tokenUsage: { input: 0, output: 0, total: 0 },
+          success: false
+        },
+        executionHistory: {
+          toolCalls: (result.result?.toolResults || []).map((tr: ToolResultEntry) => ({
+            tool: tr.toolId || 'unknown',
+            args: tr.args as Record<string, unknown> || {},
+            result: String(tr.result || ''),
+            startTime: new Date().toISOString(),
+            endTime: new Date().toISOString()
+          })) || []
+        }
+      };
+      
+      success = testCase.successCriteria(runWithHistory);
     }
     
     // Custom notes if provided
-    if (testCase.notes && result.result) {
-      notes = testCase.notes(result.result);
+    if (testCase.notes && result) {
+      // Create a compatible TestRunWithHistory object if not already created
+      const runWithHistory: TestRunWithHistory = {
+        testCase,
+        metrics: {
+          testCase: testCase.name,
+          promptName: '',
+          duration: 0,
+          toolCalls: result.result?.toolResults?.length || 0,
+          tokenUsage: { input: 0, output: 0, total: 0 },
+          success: false
+        },
+        executionHistory: {
+          toolCalls: (result.result?.toolResults || []).map((tr: ToolResultEntry) => ({
+            tool: tr.toolId || 'unknown',
+            args: tr.args as Record<string, unknown> || {},
+            result: String(tr.result || ''),
+            startTime: new Date().toISOString(),
+            endTime: new Date().toISOString()
+          })) || []
+        }
+      };
+      
+      notes = testCase.notes(runWithHistory);
     }
     
     // Extract execution history with run and model information
@@ -332,7 +421,7 @@ export async function runTestCaseWithHistory(
         },
         configInfo: {
           promptName: testCase.name,
-          modelName: (modelProvider as any).model || 'unknown-model'
+          modelName: 'unknown-model'
         }
       }
     );

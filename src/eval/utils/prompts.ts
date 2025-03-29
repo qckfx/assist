@@ -2,7 +2,7 @@
  * Prompt utilities for AI judge evaluation
  */
 
-import { AgentExecutionHistory, TestCaseWithExamples } from '../models/types';
+import { AgentExecutionHistory } from '../models/types';
 import { formatExecutionHistoryForJudge } from './execution-history';
 
 /**
@@ -103,8 +103,7 @@ export function createJudgingPrompt(options: JudgingPromptOptions): string {
   const {
     task,
     executionHistory,
-    examples,
-    systemPromptOverride
+    examples
   } = options;
 
   let prompt = `

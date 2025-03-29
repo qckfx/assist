@@ -169,7 +169,7 @@ function formatTimeDifference(startTime: string, endTime: string): string {
     } else {
       return `${(diffMs / 1000).toFixed(2)}s`;
     }
-  } catch (error) {
+  } catch {
     return 'Unknown';
   }
 }

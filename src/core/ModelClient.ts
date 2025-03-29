@@ -11,6 +11,7 @@ import {
   SessionState, 
   ToolCallResponse 
 } from '../types/model';
+// Import utils as needed
 import { ToolDescription } from '../types/registry';
 import { trackTokenUsage } from '../utils/TokenManager';
 import { createDefaultPromptManager, PromptManager } from './PromptManager';
@@ -114,7 +115,8 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
               args: toolUse.input || {},
               toolUseId: toolUse.id || "", // Save this for returning results
             },
-            toolChosen: true
+            toolChosen: true,
+            aborted: false // Explicitly set aborted flag to false
           };
         }
       }

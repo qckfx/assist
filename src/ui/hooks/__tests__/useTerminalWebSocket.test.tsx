@@ -101,79 +101,102 @@ describe('useTerminalWebSocket using React Context', () => {
     expect(mockConnectionManager.joinSession).toHaveBeenCalledWith(sessionId);
   });
 
-  it('listens for session change events', async () => {
+  it('subscribes to session change events', async () => {
     const sessionId = 'test-session-' + Date.now();
     
-    // Render the hook
-    renderHook(() => useTerminalWebSocket(sessionId));
+    // Create a console.log spy to verify logging
+    const originalConsoleLog = console.log;
+    const mockConsoleLog = vi.fn();
+    console.log = mockConsoleLog;
     
-    // Verify it subscribes to events
-    expect(mockConnectionManager.listenerCount('session_change')).toBeGreaterThan(0);
-    
-    // Emit a session change event
-    mockConnectionManager.emit('session_change', sessionId);
-    
-    // Verify the system message is added
-    expect(mockAddSystemMessage).toHaveBeenCalledWith(`Connected to session: ${sessionId}`);
-    
-    // Now emit a session change event with null (disconnection)
-    mockAddSystemMessage.mockClear();
-    mockConnectionManager.emit('session_change', null);
-    
-    // Verify the disconnection message
-    expect(mockAddSystemMessage).toHaveBeenCalledWith('Disconnected from session');
+    try {
+      // Render the hook
+      renderHook(() => useTerminalWebSocket(sessionId));
+      
+      // Verify it subscribes to events
+      expect(mockConnectionManager.listenerCount('session_change')).toBeGreaterThan(0);
+      
+      // Emit a session change event
+      mockConnectionManager.emit('session_change', sessionId);
+      
+      // Verify console log is called instead of adding system message
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Connected to session'));
+      expect(mockAddSystemMessage).not.toHaveBeenCalled();
+      
+      // Now emit a session change event with null (disconnection)
+      mockConsoleLog.mockClear();
+      mockConnectionManager.emit('session_change', null);
+      
+      // Verify console log is called instead of adding system message
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Disconnected from session'));
+      expect(mockAddSystemMessage).not.toHaveBeenCalled();
+    } finally {
+      // Restore console.log
+      console.log = originalConsoleLog;
+    }
   });
   
-  it('updates system messages when connection status changes', async () => {
+  it('handles connection status changes appropriately', async () => {
     const sessionId = 'test-session-' + Date.now();
     
-    // Render hook with initial connected state
-    const { rerender } = renderHook(() => useTerminalWebSocket(sessionId));
+    // Create a console.log spy to verify logging
+    const originalConsoleLog = console.log;
+    const mockConsoleLog = vi.fn();
+    console.log = mockConsoleLog;
     
-    // Wait for initial render operations to complete
-    await new Promise(resolve => setTimeout(resolve, 0));
-    
-    // Clear message mocks after initial render
-    vi.clearAllMocks();
-    
-    // Change to RECONNECTING
-    mockUseWebSocketFn.mockReturnValue({
-      connectionStatus: ConnectionStatus.RECONNECTING,
-      isConnected: false,
-      currentSessionId: sessionId
-    });
-    
-    // Force re-render to trigger effect
-    rerender();
-    
-    // Wait for effects to run
-    await new Promise(resolve => setTimeout(resolve, 0));
-    
-    // Verify "Reconnecting" message
-    expect(mockAddSystemMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Reconnecting')
-    );
-    
-    // Clear message mocks again
-    vi.clearAllMocks();
-    
-    // Change to ERROR
-    mockUseWebSocketFn.mockReturnValue({
-      connectionStatus: ConnectionStatus.ERROR,
-      isConnected: false,
-      currentSessionId: sessionId
-    });
-    
-    // Force re-render to trigger effect
-    rerender();
-    
-    // Wait for effects to run
-    await new Promise(resolve => setTimeout(resolve, 0));
-    
-    // Verify error message
-    expect(mockAddErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('error')
-    );
+    try {
+      // Render hook with initial connected state
+      const { rerender } = renderHook(() => useTerminalWebSocket(sessionId));
+      
+      // Wait for initial render operations to complete
+      await new Promise(resolve => setTimeout(resolve, 0));
+      
+      // Clear message mocks after initial render
+      vi.clearAllMocks();
+      mockConsoleLog.mockClear();
+      
+      // Change to RECONNECTING
+      mockUseWebSocketFn.mockReturnValue({
+        connectionStatus: ConnectionStatus.RECONNECTING,
+        isConnected: false,
+        currentSessionId: sessionId
+      });
+      
+      // Force re-render to trigger effect
+      rerender();
+      
+      // Wait for effects to run
+      await new Promise(resolve => setTimeout(resolve, 0));
+      
+      // Verify console log is called instead of system message
+      expect(mockConsoleLog).toHaveBeenCalledWith('Reconnecting WebSocket...');
+      expect(mockAddSystemMessage).not.toHaveBeenCalled();
+      
+      // Clear message mocks again
+      vi.clearAllMocks();
+      mockConsoleLog.mockClear();
+      
+      // Change to ERROR
+      mockUseWebSocketFn.mockReturnValue({
+        connectionStatus: ConnectionStatus.ERROR,
+        isConnected: false,
+        currentSessionId: sessionId
+      });
+      
+      // Force re-render to trigger effect
+      rerender();
+      
+      // Wait for effects to run
+      await new Promise(resolve => setTimeout(resolve, 0));
+      
+      // Verify error message is still shown (this is still shown in UI)
+      expect(mockAddErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('error')
+      );
+    } finally {
+      // Restore console.log
+      console.log = originalConsoleLog;
+    }
   });
   
   it('provides connect and disconnect functions', () => {
