@@ -322,7 +322,10 @@ export function Terminal({
       </div>
       <div 
         className="flex flex-col flex-grow overflow-auto terminal-scrollbar"
-        style={{ height: "calc(100% - 80px)" }} /* Leaving space for input and padding */
+        style={{ 
+          height: "calc(100% - 80px)", /* Leaving space for input and padding */
+          overscrollBehavior: 'contain', /* Prevent scroll chaining */
+        }}
         role="log"
         aria-live="polite"
         id={ids.output}
