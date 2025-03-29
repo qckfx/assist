@@ -92,22 +92,7 @@ export function WebSocketTerminal({
       
       {/* Permissions are now handled through the ToolVisualization component */}
       
-      {(isProcessing || isStreaming) && (
-        <div className="absolute bottom-14 right-4">
-          <button
-            onClick={() => abortProcessing()}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm flex items-center"
-            aria-label="Abort processing (Ctrl+C or Esc)"
-            title="Abort processing (Ctrl+C or Esc in empty fields)"
-            data-testid="abort-button"
-          >
-            <span>Abort</span>
-            <span className="ml-2 text-xs opacity-80 hidden sm:inline-block" aria-hidden="true">
-              (Ctrl+C/Esc)
-            </span>
-          </button>
-        </div>
-      )}
+      {/* Abort button is now integrated into the Terminal component */}
     </div>
   );
 }

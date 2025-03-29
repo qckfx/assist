@@ -7,6 +7,7 @@ import ShortcutsPanel from '@/components/ShortcutsPanel';
 import TerminalSettings from '@/components/TerminalSettings';
 import useKeyboardShortcuts, { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
 import { useTerminal } from '@/context/TerminalContext';
+import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTheme } from '@/components/ThemeProvider';
 import Announcer from '@/components/Announcer';
 import { generateAriaId, prefersReducedMotion } from '@/utils/accessibility';
@@ -79,6 +80,7 @@ export function Terminal({
   
   // Use provided theme or get from context
   const terminalContext = useTerminal();
+  const wsTerminalContext = useWebSocketTerminal();
   const { theme: appTheme } = useTheme();
   const themeToUse = theme || terminalContext.state.theme;
   
@@ -369,12 +371,27 @@ export function Terminal({
               )}
             </div>
             
-            {/* Fast Edit Mode Indicator (right-aligned) */}
-            <div className="flex-shrink-0">
+            {/* Fast Edit Mode Indicator and Abort Button (right-aligned) */}
+            <div className="flex-shrink-0 flex items-center">
               <FastEditModeIndicator 
                 sessionId={sessionId} 
                 className="mx-4" 
               />
+              
+              {/* Add Abort Button conditionally when processing */}
+              {terminalContext.state.isProcessing && (
+                <div className="mx-2 -mt-0.5">
+                  <button
+                    onClick={() => wsTerminalContext.abortProcessing()}
+                    className="bg-red-600 hover:bg-red-700 text-white px-2.5 py-0.5 rounded-md text-xs flex items-center transition-colors"
+                    aria-label="Abort processing (Ctrl+C or Esc)"
+                    title="Abort processing (Ctrl+C or Esc in empty fields)"
+                    data-testid="inline-abort-button"
+                  >
+                    <span>Abort (Esc / Ctrl+C)</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
