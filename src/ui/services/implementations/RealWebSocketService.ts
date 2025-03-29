@@ -259,18 +259,17 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
             abortTimestamp
           };
           
-          // Emit a completion event with the abort result
-          this.emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, {
+          // Emit an aborted event instead of a completion event
+          this.emit(WebSocketEvent.TOOL_EXECUTION_ABORTED, {
             sessionId: data.sessionId,
             tool: {
               id: tool.id,
               name: tool.name || 'Tool',
             },
-            result: abortResult,
-            paramSummary: '',
-            executionTime: Date.now() - abortTimestamp,
             timestamp: new Date().toISOString(),
+            abortTimestamp,
             isActive: false,
+            startTime: new Date(abortTimestamp - 1000).toISOString(), // Approximate
           });
         });
         
@@ -278,18 +277,8 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
         this.activeToolsMap.set(data.sessionId, []);
       }
       
-      // Store the aborted tools in session storage for cross-component access
-      if (typeof window !== 'undefined' && abortedTools.size > 0) {
-        window.sessionStorage.setItem(
-          `aborted_tools_${data.sessionId}`,
-          JSON.stringify([...abortedTools])
-        );
-        
-        window.sessionStorage.setItem(
-          `abort_timestamp_${data.sessionId}`,
-          abortTimestamp.toString()
-        );
-      }
+      // No need to store aborted tools in session storage anymore
+      // Each tool will have its own status
       
       // Add abort data to the event
       const enrichedData = {

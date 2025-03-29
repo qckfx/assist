@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { cn } from '../../lib/utils';
 import { ToolExecution } from '../../hooks/useToolStream';
 import { ToolState } from '../../types/terminal';
-import { getAbortedTools } from '@/context/WebSocketTerminalContext';
 
 // Helper function to truncate strings
 const truncateString = (str: string, maxLength: number): string => {
@@ -129,24 +128,14 @@ export function ToolVisualization({
   onToggleExpand,
   sessionId,
 }: ToolVisualizationProps) {
-  const [toolState, setToolState] = useState<ToolState>(
+  // Directly convert tool status to ToolState without using internal state
+  const toolState = 
     tool.status === 'running' ? ToolState.RUNNING :
     tool.status === 'completed' ? ToolState.COMPLETED :
     tool.status === 'error' ? ToolState.ERROR :
     tool.status === 'aborted' ? ToolState.ABORTED :
-    ToolState.PENDING
-  );
-  
-  // Check if this tool was aborted
-  useEffect(() => {
-    if (sessionId && tool.id) {
-      const abortedTools = getAbortedTools(sessionId);
-      if (abortedTools.has(tool.id) && toolState !== ToolState.ABORTED) {
-        // Force the state to ABORTED if it's in the aborted tools list
-        setToolState(ToolState.ABORTED);
-      }
-    }
-  }, [sessionId, tool.id, toolState]);
+    tool.status === 'awaiting-permission' ? 'awaiting-permission' as any :
+    ToolState.PENDING;
   // Use the toolState to determine styling - subtle background colors with clear status indication
   const statusStyles = {
     [ToolState.RUNNING]: 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-sm',
