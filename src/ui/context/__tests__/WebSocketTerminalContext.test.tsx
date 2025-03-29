@@ -374,23 +374,26 @@ describe('WebSocketTerminalContext', () => {
   });
   
   it('should connect to session when created successfully', async () => {
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <WebSocketTerminalProvider>
-        {children}
-      </WebSocketTerminalProvider>
-    );
+    let hookResult: any;
     
-    renderHook(() => useWebSocketTerminal(), { wrapper });
-    
-    // Wait for async operations
-    await vi.waitFor(() => {
-      expect(mockStartSession).toHaveBeenCalled();
+    // Properly wrap the component rendering and state updates in act
+    await act(async () => {
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <WebSocketTerminalProvider>
+          {children}
+        </WebSocketTerminalProvider>
+      );
+      
+      const renderResult = renderHook(() => useWebSocketTerminal(), { wrapper });
+      hookResult = renderResult;
+      
+      // Wait for any pending state updates
+      await new Promise(resolve => setTimeout(resolve, 0));
     });
     
-    // Verify that connectToSession was called with the new session ID
-    await vi.waitFor(() => {
-      expect(mockAddSystemMessage).toHaveBeenCalledWith('Session created: test-session-id');
-      expect(mockConnectToSession).toHaveBeenCalledWith('test-session-id');
-    });
+    // Verify the expected behavior
+    expect(mockStartSession).toHaveBeenCalled();
+    expect(mockAddSystemMessage).toHaveBeenCalledWith('Session created: test-session-id');
+    expect(mockConnectToSession).toHaveBeenCalledWith('test-session-id');
   });
 });
