@@ -442,17 +442,28 @@ export class AgentService extends EventEmitter {
       return false;
     }
 
-    // Mark the session as not processing and set aborted flag
+    // Create abort timestamp
     const abortTimestamp = Date.now();
+    
+    // Directly modify the session state in place instead of creating a new object
+    // This ensures all references to this session state object see the changes
+    if (!session.state) {
+      session.state = { conversationHistory: [] }; // Ensure state exists with required properties
+    }
+    
+    // Set the abort flags directly on the existing state object
+    session.state.__aborted = true;
+    session.state.__abortTimestamp = abortTimestamp;
+    
+    // Update the session with modified state object
+    // Since we modified the state object in place, any code holding a reference
+    // to session.state will see these changes
     sessionManager.updateSession(sessionId, { 
       isProcessing: false,
-      state: {
-        ...session.state,
-        __aborted: true,  // Add this flag to the session state
-        __abortTimestamp: abortTimestamp  // Add timestamp for abort event
-      }
+      // We don't need to include state in the update since we modified it in place
     });
     
+    // Also remove from active processing set
     this.activeProcessingSessionIds.delete(sessionId);
 
     // Emit abort event with timestamp
