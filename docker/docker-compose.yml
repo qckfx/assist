@@ -1,0 +1,29 @@
+# /docker/docker-compose.yml
+version: '3'
+
+services:
+  agent-sandbox:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ..:/workspace:ro
+      # Create a separate writable volume for command output
+      - workspace-tmp:/workspace/tmp
+    working_dir: /workspace
+    # Security limits
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    # Network isolation (can be changed to 'host' if network access is needed)
+    network_mode: "none"
+
+volumes:
+  workspace-tmp:
