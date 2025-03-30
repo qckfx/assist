@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useTerminal } from '@/context/TerminalContext';
+import { useExecutionEnvironment } from '@/hooks/useExecutionEnvironment';
+import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 
 export interface TerminalSettingsProps {
   isOpen: boolean;
@@ -16,6 +18,8 @@ export function TerminalSettings({
   ariaLabelledBy,
 }: TerminalSettingsProps) {
   const { state, dispatch } = useTerminal();
+  const { sessionId } = useWebSocketTerminal();
+  const { isDocker, isE2B } = useExecutionEnvironment();
   
   // Use local state for preview settings to avoid immediate application to terminal
   const [previewSettings, setPreviewSettings] = useState({
@@ -181,6 +185,51 @@ export function TerminalSettings({
             <p id="color-scheme-description" className="text-xs text-gray-400 mt-1">
               This setting only changes the terminal appearance and is separate from the application theme toggle in the top-right corner.
             </p>
+          </div>
+
+          {/* Execution Environment Section */}
+          <div className="space-y-2 border border-gray-700 rounded p-3">
+            <h3 className="text-gray-300 text-sm font-medium">Execution Environment</h3>
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Type:</span>
+                <span className="font-mono">
+                  {isDocker ? (
+                    <span className="text-blue-500 flex items-center gap-1">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M13 3v2h-2V3h2zm2 0h2v2h-2V3zM9 3h2v2H9V3zm2 4v2H9V7h2zm0-2v2h2V5h-2zm6 2h-2V5h2v2zm-4 4h-2V9h2v2zm0-2h2v2h-2V9zm-2 4v2H9v-2h2zm-4 0h2v2H7v-2zm12-2v2h-2v-2h2zm-4 2v2h-2v-2h2z" />
+                      </svg>
+                      Docker Container
+                    </span>
+                  ) : isE2B ? (
+                    <span className="text-green-500 flex items-center gap-1">
+                      <div className="flex items-center justify-center w-4 h-4 rounded-sm bg-green-500 text-white text-[9px] font-bold">
+                        E2B
+                      </div>
+                      E2B Sandbox
+                    </span>
+                  ) : (
+                    <span className="text-amber-500 flex items-center gap-1">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
+                      </svg>
+                      Local System
+                    </span>
+                  )}
+                </span>
+              </div>
+              
+              {isDocker && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400">Session ID:</span>
+                  <span className="font-mono text-xs text-gray-300">{sessionId || 'None'}</span>
+                </div>
+              )}
+              
+              <div className="mt-2 text-xs text-gray-400">
+                <p>Execution environment determines where commands are run. Docker provides better security through isolation.</p>
+              </div>
+            </div>
           </div>
 
           {/* Preview */}

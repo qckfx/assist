@@ -13,7 +13,7 @@ import Announcer from '@/components/Announcer';
 import { generateAriaId, prefersReducedMotion } from '@/utils/accessibility';
 import { useIsSmallScreen } from '@/hooks/useMediaQuery';
 import { TypingIndicator } from '@/components/TypingIndicator';
-import { ConnectionIndicator } from '@/components/ConnectionIndicator';
+import { EnvironmentConnectionIndicator } from '@/components/EnvironmentConnectionIndicator';
 import { useToolStream } from '@/hooks/useToolStream';
 import { useFastEditModeKeyboardShortcut } from '@/hooks/useFastEditModeKeyboardShortcut';
 import { FastEditModeIndicator } from '@/components/FastEditModeIndicator';
@@ -55,7 +55,8 @@ export function Terminal({
   showConnectionIndicator = true,
   showTypingIndicator = true,
   showToolVisualizations = true,
-  connectionStatus,
+  // Not used with the new indicator
+  connectionStatus: _connectionStatus,
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -280,16 +281,10 @@ export function Terminal({
           qckfx Terminal
           {showConnectionIndicator && sessionId && (
             <span 
-              className="ml-2 flex items-center group relative" 
-              data-testid="connection-indicator-container"
+              className="ml-2 flex items-center" 
+              data-testid="environment-connection-container"
             >
-              <ConnectionIndicator showText={false} className="scale-75" />
-              <span className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-                {connectionStatus === 'connected' ? 'Connected' :
-                 connectionStatus === 'connecting' ? 'Connecting...' :
-                 connectionStatus === 'reconnecting' ? 'Reconnecting...' :
-                 connectionStatus === 'disconnected' ? 'Disconnected' : 'Error'}
-              </span>
+              <EnvironmentConnectionIndicator className="scale-75" />
             </span>
           )}
         </div>
