@@ -4,6 +4,7 @@ import { FileReadToolErrorResult, FileReadToolSuccessResult } from '../tools/Fil
 import { ExecutionAdapter } from '../types/tool';
 import { FileEntry, LSToolErrorResult, LSToolSuccessResult } from '../tools/LSTool';
 import path from 'path';
+import { GlobOptions } from 'fs';
 import { LogCategory } from './logger';
 
 export class E2BExecutionAdapter implements ExecutionAdapter {
@@ -124,7 +125,7 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
     return await this.sandbox.commands.run(command, { cwd: workingDir });
   }
   
-  async glob(pattern: string) {
+  async glob(pattern: string, _options?: GlobOptions) {
     try {
       // First try using the glob command if it exists
       const globCheck = await this.sandbox.commands.run('which glob || echo "not_found"');
