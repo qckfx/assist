@@ -380,6 +380,15 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
       this.bufferEvent(WebSocketEvent.TOOL_EXECUTION_ERROR, data);
       this.emit(WebSocketEvent.TOOL_EXECUTION_ERROR, data);
     });
+    
+    // Handle 'init' event from server with environment information
+    this.socket.on(WebSocketEvent.INIT, (data: WebSocketEventMap[WebSocketEvent.INIT]) => {
+      console.log('WebSocket received init event with execution environment:', data);
+      
+      // Buffer and emit the event
+      this.bufferEvent(WebSocketEvent.INIT, data);
+      this.emit(WebSocketEvent.INIT, data);
+    });
   }
 
   /**

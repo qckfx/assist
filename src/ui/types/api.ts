@@ -103,6 +103,9 @@ export enum WebSocketEvent {
   // Fast Edit Mode events
   FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
   FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
+  
+  // Environment information event
+  INIT = 'init',
 }
 
 /**
@@ -201,4 +204,9 @@ export interface WebSocketEventMap {
   [WebSocketEvent.STREAM_CONTENT]: { sessionId: string; content: string; };
   [WebSocketEvent.FAST_EDIT_MODE_ENABLED]: { sessionId: string; enabled: true; };
   [WebSocketEvent.FAST_EDIT_MODE_DISABLED]: { sessionId: string; enabled: false; };
+  [WebSocketEvent.INIT]: { 
+    sessionId: string; 
+    executionEnvironment: 'local' | 'docker' | 'e2b'; 
+    e2bSandboxId?: string; 
+  };
 }

@@ -44,11 +44,15 @@ export class SocketConnectionManager extends EventEmitter {
    * - currentSessionId: The current session this connection is joined to
    * - hasJoined: Whether we've successfully joined the session
    * - pendingSession: Session waiting to be joined once connection is established
+   * - executionEnvironment: The type of execution environment for this session
+   * - e2bSandboxId: Optional sandbox ID for E2B environments
    */
   private sessionState = {
     currentSessionId: null as string | null,
     hasJoined: false,
-    pendingSession: null as string | null
+    pendingSession: null as string | null,
+    executionEnvironment: null as 'local' | 'docker' | 'e2b' | null,
+    e2bSandboxId: null as string | null
   };
   
   private constructor() {
@@ -101,6 +105,35 @@ export class SocketConnectionManager extends EventEmitter {
     return { ...this.sessionState };
   }
   
+  /**
+   * Set up a listener for environment information events
+   */
+  private setupEnvironmentEventListener(): void {
+    if (!this.socket) {
+      console.error('SocketConnectionManager: No socket to set up environment event listener');
+      return;
+    }
+
+    // Set up listener for init event which contains environment info
+    this.socket.on(WebSocketEvent.INIT, (data: WebSocketEventMap[WebSocketEvent.INIT]) => {
+      console.log('SocketConnectionManager: Received environment info:', data);
+      
+      if (data.executionEnvironment) {
+        // Update session state with environment information
+        this.sessionState.executionEnvironment = data.executionEnvironment;
+        this.sessionState.e2bSandboxId = data.e2bSandboxId || null;
+        
+        // Emit environment_change event for components to react
+        this.emit('environment_change', {
+          executionEnvironment: data.executionEnvironment,
+          e2bSandboxId: data.e2bSandboxId
+        });
+        
+        console.log(`SocketConnectionManager: Set execution environment to ${data.executionEnvironment}`);
+      }
+    });
+  }
+
   /**
    * Get the Socket.io socket instance
    */
@@ -158,6 +191,9 @@ export class SocketConnectionManager extends EventEmitter {
     
     // Set up event listeners
     this.setupEventListeners();
+    
+    // Set up environment event listener
+    this.setupEnvironmentEventListener();
   }
   
   /**
@@ -418,7 +454,9 @@ export class SocketConnectionManager extends EventEmitter {
     this.sessionState = {
       currentSessionId: null,
       hasJoined: false,
-      pendingSession: null
+      pendingSession: null,
+      executionEnvironment: null,
+      e2bSandboxId: null
     };
     
     // Emit session change event
