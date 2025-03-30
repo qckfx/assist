@@ -50,10 +50,12 @@ ANTHROPIC_API_KEY=your_key_here npx qckfx
 1. **File Operations**: Read, edit, and create files in your codebase
 2. **Code Search**: Find code with glob patterns and grep-like searches
 3. **Bash Command Execution**: Run terminal commands with proper permission handling
-4. **Interactive Chat**: Have multi-turn conversations with context preservation
-5. **Claude Integration**: Powered by Anthropic's Claude models with tool calling
-6. **Web UI**: Browser-based interface for interacting with the agent
-7. **Real-time Tool Visualization**: See tools executing in real-time with status indicators
+4. **Docker Isolation**: Run commands securely in an isolated Docker container
+5. **Interactive Chat**: Have multi-turn conversations with context preservation
+6. **Claude Integration**: Powered by Anthropic's Claude models with tool calling
+7. **Web UI**: Browser-based interface for interacting with the agent
+8. **Real-time Tool Visualization**: See tools executing in real-time with status indicators
+9. **Environment Indicators**: Clear visualization of execution environment status
 
 ## Architecture
 
@@ -82,9 +84,14 @@ qckfx agent
 │   ├── FileReadTool
 │   ├── FileEditTool
 │   └── FileWriteTool
+├── Execution Environments
+│   ├── DockerExecutionAdapter (runs commands in Docker)
+│   ├── LocalExecutionAdapter (runs commands locally)
+│   └── E2BExecutionAdapter (runs commands in E2B sandbox)
 └── Utils
     ├── Logger
     ├── Error Handling
+    ├── DockerContainerManager (manages Docker containers)
     └── Token Management 
 ```
 
@@ -114,6 +121,23 @@ ANTHROPIC_API_KEY=your_key_here npx qckfx
 
 This will start an interactive session where you can chat with Claude. The agent can use a variety of tools to assist you with software development tasks.
 
+### Execution Environments
+
+qckfx supports multiple execution environments for running commands:
+
+```bash
+# Docker execution (default when Docker is available)
+ANTHROPIC_API_KEY=your_key_here qckfx
+
+# Local execution (forces local even if Docker is available)
+ANTHROPIC_API_KEY=your_key_here qckfx --local
+
+# E2B execution (requires sandbox ID)
+ANTHROPIC_API_KEY=your_key_here qckfx -e <sandbox-id>
+```
+
+For more details on execution environments, security considerations, and troubleshooting, see [Execution Environments Documentation](docs/execution-environments.md).
+
 ### CLI Options
 
 The qckfx CLI supports several options to customize your experience:
@@ -129,6 +153,7 @@ Options:
   -q, --quiet              Minimal output, show only errors and results
   -m, --model <model>      Specify the Claude model to use (default: claude-3-7-sonnet-20250219)
   -e, --e2bSandboxId <id>  Run agent tools in an E2B sandbox (requires sandbox ID)
+  --local                  Force local execution (don't use Docker even if available)
   --web                    Enable web UI (default: true)
   --no-web                 Disable web UI
   --port <port>            Port for web UI (default: 3000)
@@ -306,7 +331,14 @@ For backend-only development:
 npm run dev:server
 ```
 
-See [frontend development guide](docs/web-server/frontend-development.md) for more information.
+### Development Documentation
+
+For more detailed development information, see:
+
+- [Frontend Development Guide](docs/web-server/frontend-development.md)
+- [Docker Integration Guide](docs/development/docker-integration.md)
+- [Terminal UI Development](docs/ui/terminal-ui.md)
+- [Tool Visualization](docs/ui/tool-visualization.md)
 
 ## Hosted Solution
 
