@@ -5,6 +5,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { WebSocketEvent, WebSocketEventMap } from '../types/api';
 import { throttle } from '@/utils/performance';
+import { ToolPreviewData, PreviewMode } from '../../types/preview';
 
 // Type helper for event handlers to properly map WebSocketEvent enum to WebSocketEventMap
 type EventData<E extends WebSocketEvent> = WebSocketEventMap[E];
@@ -12,6 +13,7 @@ type EventData<E extends WebSocketEvent> = WebSocketEventMap[E];
 /**
  * Interface for tool execution event data
  */
+
 export interface ToolExecution {
   id: string;
   tool: string;
@@ -30,6 +32,10 @@ export interface ToolExecution {
   timestamp?: number; // For backward compatibility
   requiresPermission?: boolean;
   permissionId?: string;
+  
+  // Add preview data and view mode
+  preview?: ToolPreviewData;
+  viewMode?: PreviewMode;
 }
 
 // Interface for batched tool executions

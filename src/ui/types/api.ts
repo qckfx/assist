@@ -163,6 +163,8 @@ export interface WebSocketEventMap {
     timestamp: string;
     isActive: false;
     startTime?: string;
+    // Add preview data
+    preview?: import('../../types/preview').ToolPreviewData;
   };
   [WebSocketEvent.TOOL_EXECUTION_ERROR]: { 
     sessionId: string;

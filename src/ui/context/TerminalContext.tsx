@@ -3,6 +3,7 @@ import { TerminalState, TerminalAction, TerminalMessage } from '@/types/terminal
 import { MessageType } from '@/components/Message';
 import { WebSocketEvent, SessionData } from '@/types/api';
 import { useWebSocketContext } from './WebSocketContext';
+import { PreviewMode } from '../../types/preview';
 
 // Initial state
 const initialState: TerminalState = {
@@ -25,6 +26,13 @@ const initialState: TerminalState = {
   isStreaming: false,
   typingIndicator: false,
   streamBuffer: [],
+  
+  // Add default preview preferences
+  previewPreferences: {
+    defaultViewMode: PreviewMode.BRIEF,
+    persistPreference: true,
+    toolOverrides: {}
+  }
 };
 
 // Terminal reducer
@@ -137,6 +145,38 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
         streamBuffer: [],
       };
       
+    // Preview-related actions
+    case 'SET_PREVIEW_MODE':
+      return {
+        ...state,
+        previewPreferences: {
+          ...state.previewPreferences,
+          toolOverrides: {
+            ...state.previewPreferences.toolOverrides,
+            [action.payload.toolId]: {
+              viewMode: action.payload.mode
+            }
+          }
+        }
+      };
+      
+    case 'SET_DEFAULT_PREVIEW_MODE':
+      return {
+        ...state,
+        previewPreferences: {
+          ...state.previewPreferences,
+          defaultViewMode: action.payload
+        }
+      };
+      
+    case 'SET_PREVIEW_PERSISTENCE':
+      return {
+        ...state,
+        previewPreferences: {
+          ...state.previewPreferences,
+          persistPreference: action.payload
+        }
+      };
       
     default:
       return state;
