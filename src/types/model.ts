@@ -36,6 +36,19 @@ export interface ConversationMessage {
   content: Anthropic.Messages.ContentBlock[];
 }
 
+/**
+ * Cache metrics for tracking prompt caching efficiency 
+ */
+export interface CacheMetricsTracking {
+  totalCacheWrites: number;
+  totalCacheReads: number;
+  lastRequestMetrics?: {
+    creation: number;
+    read: number;
+    input: number;
+  };
+}
+
 export interface SessionState {
   conversationHistory: Anthropic.Messages.MessageParam[];
   lastToolError?: {
@@ -51,6 +64,8 @@ export interface SessionState {
   __aborted?: boolean;
   /** Timestamp when the session was aborted */
   __abortTimestamp?: number;
+  /** Cache metrics for tracking prompt caching performance */
+  cacheMetrics?: CacheMetricsTracking;
   [key: string]: unknown;
 }
 
@@ -67,6 +82,7 @@ export interface ModelProviderRequest {
     args: Record<string, unknown>;
   };
   sessionState?: SessionState;
+  cachingEnabled?: boolean; // Whether to enable prompt caching
 }
 
 export type ModelProvider = (request: ModelProviderRequest) => Promise<Anthropic.Messages.Message>;

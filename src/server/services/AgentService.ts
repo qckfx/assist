@@ -51,6 +51,8 @@ export interface AgentServiceConfig {
   permissionMode?: 'auto' | 'interactive';
   /** Tools that are always allowed without permission */
   allowedTools?: string[];
+  /** Whether to enable prompt caching */
+  cachingEnabled?: boolean;
 }
 
 /**
@@ -123,6 +125,7 @@ export class AgentService extends EventEmitter {
       defaultModel: config.defaultModel || 'claude-3-7-sonnet-20250219',
       permissionMode: config.permissionMode || 'interactive',
       allowedTools: config.allowedTools || ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
+      cachingEnabled: config.cachingEnabled !== undefined ? config.cachingEnabled : true,
     };
   }
 
@@ -166,6 +169,7 @@ export class AgentService extends EventEmitter {
       const modelProvider = createAnthropicProvider({
         apiKey: this.config.apiKey,
         model: this.config.defaultModel,
+        cachingEnabled: this.config.cachingEnabled,
       });
 
       // Create a logger for this session
@@ -605,6 +609,7 @@ export function getAgentService(): AgentService {
       defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
       permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',
       allowedTools: process.env.QCKFX_ALLOWED_TOOLS ? process.env.QCKFX_ALLOWED_TOOLS.split(',') : undefined,
+      cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
     });
   }
 

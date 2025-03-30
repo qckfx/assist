@@ -7,6 +7,10 @@ import {
   AnthropicConfig,  
   AnthropicProvider, 
   ModelProviderRequest, 
+  ContentBlockWithCache,
+  ToolWithCache,
+  SystemWithCache,
+  SystemContentBlock
 } from '../types';
 import { LogCategory } from '../types/logger';
 import { Logger } from '../utils/logger';
@@ -106,6 +110,9 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
   // Use the provided tokenManager or fall back to the default
   const tokenManager = config.tokenManager || defaultTokenManager;
   
+  // By default, enable caching unless explicitly disabled
+  const cachingEnabled = config.cachingEnabled !== undefined ? config.cachingEnabled : true;
+  
   // Create Anthropic client
   const anthropic = new Anthropic({
     apiKey
@@ -118,6 +125,11 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
    */
   return async (prompt: ModelProviderRequest): Promise<Anthropic.Messages.Message> => {
     try {
+      // Check if caching is enabled either at the provider level or in the prompt
+      const shouldUseCache = prompt.cachingEnabled !== undefined 
+        ? prompt.cachingEnabled 
+        : cachingEnabled;
+      
       if (prompt.sessionState?.conversationHistory && prompt.sessionState.conversationHistory.length > 0) {
         logger?.debug('Calling Anthropic API', LogCategory.MODEL, { 
           model,
@@ -138,6 +150,14 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
             messages: conversationHistory as Anthropic.MessageParam[],
             system: prompt.systemMessage
           };
+          
+          // If caching is enabled, we need to handle system differently
+          if (shouldUseCache) {
+            // The count tokens endpoint doesn't support system as an array,
+            // so we'll just use the text content for token counting
+            tokenCountParams.system = typeof prompt.systemMessage === 'string' ? 
+              prompt.systemMessage : JSON.stringify(prompt.systemMessage);
+          }
           
           // Add tools if provided
           if (prompt.tools) {
@@ -180,18 +200,104 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         }
       }
 
+      logger?.debug('Preparing API call with caching configuration', LogCategory.MODEL, { 
+        cachingEnabled: shouldUseCache 
+      });
+      
+      // If caching is enabled and tools are provided, add cache_control to the last tool
+      let modifiedTools = prompt.tools;
+      if (shouldUseCache && prompt.tools && prompt.tools.length > 0) {
+        // Create a deep copy to avoid modifying the original tools
+        modifiedTools = JSON.parse(JSON.stringify(prompt.tools)) as Anthropic.Tool[];
+        const lastToolIndex = modifiedTools.length - 1;
+        
+        // Add cache_control to the last tool using our extended type
+        const toolWithCache = modifiedTools[lastToolIndex] as ToolWithCache;
+        toolWithCache.cache_control = { type: "ephemeral" };
+        
+        logger?.debug('Added cache_control to the last tool', LogCategory.MODEL, { 
+          toolName: toolWithCache.name 
+        });
+      }
+      
+      // Format system message with cache_control if caching is enabled
+      let systemContent: string | SystemWithCache = prompt.systemMessage;
+      if (shouldUseCache && prompt.systemMessage) {
+        // Convert system message to array of content blocks for caching
+        systemContent = [
+          {
+            type: "text", 
+            text: prompt.systemMessage,
+            cache_control: { type: "ephemeral" }
+          }
+        ];
+        
+        logger?.debug('Added cache_control to system message', LogCategory.MODEL);
+      }
+      
+      // Add cache_control to the last message in conversation history if available
+      let modifiedMessages = prompt.sessionState?.conversationHistory || [];
+      if (shouldUseCache && 
+          prompt.sessionState?.conversationHistory && 
+          prompt.sessionState.conversationHistory.length > 0) {
+        
+        // Create a deep copy to avoid modifying the original conversation history
+        modifiedMessages = JSON.parse(JSON.stringify(modifiedMessages)) as Anthropic.MessageParam[];
+        
+        // Find the last user message to add cache_control
+        for (let i = modifiedMessages.length - 1; i >= 0; i--) {
+          if (modifiedMessages[i].role === 'user') {
+            // Get the content array from the last user message
+            const content = modifiedMessages[i].content;
+            
+            if (Array.isArray(content) && content.length > 0) {
+              // Add cache_control to the last content block
+              const lastContentIndex = content.length - 1;
+              const contentWithCache = content[lastContentIndex] as ContentBlockWithCache;
+              contentWithCache.cache_control = { type: "ephemeral" };
+              
+              logger?.debug('Added cache_control to last user message', LogCategory.MODEL, { 
+                messageIndex: i, 
+                contentType: content[lastContentIndex].type
+              });
+            } else if (typeof content === 'string') {
+              // If content is a string, convert to content block array with cache_control
+              modifiedMessages[i].content = [{
+                type: "text",
+                text: content,
+                cache_control: { type: "ephemeral" }
+              }];
+              
+              logger?.debug('Converted string content to block with cache_control in last user message', LogCategory.MODEL, { 
+                messageIndex: i
+              });
+            }
+            break;
+          }
+        }
+      }
+      
       // Prepare API call parameters
       const apiParams: Anthropic.Messages.MessageCreateParams = {
         model,
         max_tokens: maxTokens,
-        system: prompt.systemMessage,
-        messages: prompt.sessionState?.conversationHistory || [],
+        // System will be set based on caching configuration
+        messages: modifiedMessages,
         temperature: prompt.temperature
       };
       
+      // Set system parameter based on whether caching is enabled
+      if (shouldUseCache && Array.isArray(systemContent)) {
+        // For cached requests, system must be an array of content blocks
+        (apiParams as unknown as { system: Array<{type: string; text: string; cache_control?: {type: string}}> }).system = systemContent;
+      } else {
+        // For non-cached requests, system is a simple string
+        apiParams.system = prompt.systemMessage;
+      }
+      
       // Add tools if provided (for tool use mode)
-      if (prompt.tools) {
-        apiParams.tools = prompt.tools as Anthropic.Tool[];
+      if (modifiedTools) {
+        apiParams.tools = modifiedTools as Anthropic.Tool[];
       }
       
       // Add tool_choice if provided
@@ -209,30 +315,59 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
           logger
         );
         
+        // Cast response to Message type
+        const messageResponse = response as Anthropic.Messages.Message;
+        
         // Make sure token usage information is available for tracking
-        if (!response.usage) {
+        if (!messageResponse.usage) {
           logger?.warn('Token usage information not provided in the response', LogCategory.MODEL);
         }
         
+        // Log cache metrics if available
+        if (messageResponse && messageResponse.usage && 
+            (messageResponse.usage.cache_creation_input_tokens || messageResponse.usage.cache_read_input_tokens)) {
+          logger?.info('Cache metrics', LogCategory.MODEL, { 
+            cache_creation_input_tokens: messageResponse.usage.cache_creation_input_tokens || 0,
+            cache_read_input_tokens: messageResponse.usage.cache_read_input_tokens || 0,
+            input_tokens: messageResponse.usage.input_tokens,
+            output_tokens: messageResponse.usage.output_tokens,
+            cache_hit: messageResponse.usage.cache_read_input_tokens ? true : false
+          });
+          
+          // Calculate savings from caching if applicable
+          if (messageResponse.usage.cache_read_input_tokens) {
+            const cacheSavings = {
+              tokens: messageResponse.usage.cache_read_input_tokens,
+              percentage: Math.round((messageResponse.usage.cache_read_input_tokens / 
+                (messageResponse.usage.input_tokens + messageResponse.usage.cache_read_input_tokens)) * 100),
+            };
+            
+            logger?.info('Cache performance', LogCategory.MODEL, {
+              saved_tokens: cacheSavings.tokens,
+              savings_percentage: `${cacheSavings.percentage}%`
+            });
+          }
+        }
+        
         logger?.debug('Anthropic API response', LogCategory.MODEL, { 
-          id: response.id,
-          usage: response.usage,
-          contentTypes: response.content?.map(c => c.type)
+          id: messageResponse.id,
+          usage: messageResponse.usage,
+          contentTypes: messageResponse.content?.map((c: Anthropic.Messages.ContentBlock) => c.type)
         });
 
         // Handle empty content array by providing a fallback message
-        if (!response.content || response.content.length === 0) {
+        if (!messageResponse.content || messageResponse.content.length === 0) {
           // Create a fallback content that matches Anthropic's expected format
           const fallbackContent: Anthropic.TextBlock = {
             type: "text", 
             text: "I just wanted to check in that everything looks okay with you, please let me know if you'd like to me change anything or continue on.",
             citations: []
           };
-          response.content = [fallbackContent];
-          logger?.debug('Added fallback content for empty response', LogCategory.MODEL, { content: response.content });
+          messageResponse.content = [fallbackContent];
+          logger?.debug('Added fallback content for empty response', LogCategory.MODEL, { content: messageResponse.content });
         }
         
-        return response as Anthropic.Messages.Message;
+        return messageResponse;
       } catch (error: unknown) {
         // Cast to a type that includes typical API error properties
         const apiError = error as {
@@ -288,17 +423,20 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
             logger
           );
           
+          // Cast to Message type
+          const messageRetryResponse = retryResponse as Anthropic.Messages.Message;
+          
           // Handle empty content array
-          if (!retryResponse.content || retryResponse.content.length === 0) {
+          if (!messageRetryResponse.content || messageRetryResponse.content.length === 0) {
             const fallbackContent: Anthropic.TextBlock = {
               type: "text", 
               text: "I just wanted to check in that everything looks okay with you, please let me know if you'd like to me change anything or continue on.",
               citations: []
             };
-            retryResponse.content = [fallbackContent];
+            messageRetryResponse.content = [fallbackContent];
           }
           
-          return retryResponse as Anthropic.Messages.Message;
+          return messageRetryResponse;
         }
         
         // If not a token limit error or compression didn't help, re-throw

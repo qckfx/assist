@@ -7,7 +7,7 @@ import { Anthropic } from "@anthropic-ai/sdk";
 import { LogCategory, Logger } from "../utils/logger";
 
 /**
- * Tracks token usage from model responses
+ * Tracks token usage from model responses, including cache metrics if available
  * @param response - The model response with usage information
  * @param sessionState - The current session state
  */
@@ -35,6 +35,45 @@ const trackTokenUsage = (response: Anthropic.Messages.Message, sessionState: Ses
       messageIndex,
       tokens: response.usage.output_tokens
     });
+    
+    // Track cache metrics if available
+    if (
+      response.usage.cache_creation_input_tokens !== undefined ||
+      response.usage.cache_read_input_tokens !== undefined
+    ) {
+      // Initialize cache metrics if they don't exist
+      if (!sessionState.cacheMetrics) {
+        sessionState.cacheMetrics = {
+          totalCacheWrites: 0,
+          totalCacheReads: 0,
+          lastRequestMetrics: {
+            creation: 0,
+            read: 0,
+            input: response.usage.input_tokens
+          }
+        };
+      }
+      
+      // Update cache metrics
+      if (response.usage.cache_creation_input_tokens) {
+        sessionState.cacheMetrics.totalCacheWrites += response.usage.cache_creation_input_tokens;
+        if (sessionState.cacheMetrics.lastRequestMetrics) {
+          sessionState.cacheMetrics.lastRequestMetrics.creation = response.usage.cache_creation_input_tokens;
+        }
+      }
+      
+      if (response.usage.cache_read_input_tokens) {
+        sessionState.cacheMetrics.totalCacheReads += response.usage.cache_read_input_tokens;
+        if (sessionState.cacheMetrics.lastRequestMetrics) {
+          sessionState.cacheMetrics.lastRequestMetrics.read = response.usage.cache_read_input_tokens;
+        }
+      }
+      
+      // Update input tokens in lastRequestMetrics
+      if (sessionState.cacheMetrics.lastRequestMetrics) {
+        sessionState.cacheMetrics.lastRequestMetrics.input = response.usage.input_tokens;
+      }
+    }
   }
 };
 
