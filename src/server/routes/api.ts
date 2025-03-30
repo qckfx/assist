@@ -74,6 +74,7 @@ router.post('/permissions/fast-edit-mode', validateBody(fastEditModeToggleSchema
  */
 router.get('/permissions/fast-edit-mode', validateQuery(fastEditModeQuerySchema), permissionController.getFastEditMode);
 
+
 /**
  * @route   GET /api/docs
  * @desc    Get API documentation

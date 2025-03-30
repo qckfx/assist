@@ -5,6 +5,7 @@ import { FileEditToolErrorResult, FileEditToolSuccessResult } from '../tools/Fil
 import { FileReadToolErrorResult, FileReadToolSuccessResult } from '../tools/FileReadTool';
 import { FileEntry, LSToolErrorResult, LSToolSuccessResult } from '../tools/LSTool';
 import { DockerContainerManager, ContainerInfo } from './DockerContainerManager';
+import { LogCategory } from './logger';
 
 /**
  * Execution adapter that runs commands in a Docker container
@@ -57,10 +58,33 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         containerWorkingDir = this.toContainerPath(workingDir, containerInfo);
       }
       
-      this.logger?.debug(`Executing command in container: ${command}`, 'tools');
-      return await this.containerManager.executeCommand(command, containerWorkingDir);
+      this.logger?.debug(`Executing command in container: ${command}`, LogCategory.TOOLS);
+      
+      // Try to execute the command
+      try {
+        return await this.containerManager.executeCommand(command, containerWorkingDir);
+      } catch (error) {
+        // Check if container needs to be restarted
+        if ((error as Error).message.includes('container not running') || 
+            (error as Error).message.includes('No such container')) {
+          
+          this.logger?.warn('Container not running, attempting to restart', LogCategory.TOOLS);
+          
+          // Try to restart container
+          const containerInfo = await this.containerManager.ensureContainer();
+          if (!containerInfo) {
+            throw new Error('Failed to restart container');
+          }
+          
+          // Retry command after restart
+          return await this.containerManager.executeCommand(command, containerWorkingDir);
+        }
+        
+        // If it's not a container availability issue, rethrow
+        throw error;
+      }
     } catch (error) {
-      this.logger?.error(`Error executing command in container: ${(error as Error).message}`, error, 'tools');
+      this.logger?.error(`Error executing command in container: ${(error as Error).message}`, error, LogCategory.TOOLS);
       return {
         stdout: '',
         stderr: `Error executing command: ${(error as Error).message}`,
@@ -462,6 +486,14 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
    * Convert a host path to a container path
    */
   private toContainerPath(hostPath: string, containerInfo: ContainerInfo): string {
+    // If path is already a container path starting with workspace path, return as is
+    if (hostPath === containerInfo.workspacePath || 
+        (hostPath.startsWith(containerInfo.workspacePath) && 
+         (hostPath.length === containerInfo.workspacePath.length || 
+          hostPath[containerInfo.workspacePath.length] === '/'))) {
+      return hostPath;
+    }
+    
     // Ensure absolute path
     const absolutePath = path.isAbsolute(hostPath) 
       ? hostPath 
@@ -496,6 +528,11 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
    * Check if a path is within the working directory
    */
   private isPathWithinWorkingDir(filepath: string, containerInfo: ContainerInfo): boolean {
+    // Special case for workspace path inside container
+    if (filepath === containerInfo.workspacePath) {
+      return true;
+    }
+    
     const absolutePath = path.isAbsolute(filepath) 
       ? filepath 
       : path.resolve(filepath);

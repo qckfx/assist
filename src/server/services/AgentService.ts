@@ -12,6 +12,8 @@ import { Session, sessionManager } from './SessionManager';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { ToolResultEntry } from '../../types';
 import { Anthropic } from '@anthropic-ai/sdk';
+import { serverLogger } from '../logger';
+import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
 
 /**
  * Events emitted by the agent service
@@ -82,6 +84,8 @@ export class AgentService extends EventEmitter {
   private permissionRequests: Map<string, PermissionRequest> = new Map();
   private sessionFastEditMode: Map<string, boolean> = new Map();
   private activeTools: Map<string, Array<{toolId: string; name: string; startTime: Date; paramSummary: string}>> = new Map();
+  private sessionExecutionAdapterTypes: Map<string, 'local' | 'docker' | 'e2b'> = new Map();
+  private sessionE2BSandboxIds: Map<string, string> = new Map();
   
   /**
    * Creates a concise summary of tool arguments for display
@@ -132,9 +136,31 @@ export class AgentService extends EventEmitter {
   /**
    * Start a session with optional configuration
    */
-  public startSession(_config?: { model?: string }): Session {
+  public startSession(config?: { 
+    model?: string; 
+    executionAdapterType?: 'local' | 'docker' | 'e2b';
+    e2bSandboxId?: string;
+  }): Session {
     // Create a new session
     const session = sessionManager.createSession();
+    
+    // Set execution adapter type if specified
+    const adapterType = config?.executionAdapterType || 'docker';
+    this.setExecutionAdapterType(session.id, adapterType);
+    
+    // If using e2b, also store the sandbox ID
+    if (adapterType === 'e2b' && config?.e2bSandboxId) {
+      this.setE2BSandboxId(session.id, config.e2bSandboxId);
+    }
+    
+    // Create the execution adapter asynchronously
+    this.createExecutionAdapterForSession(session.id, {
+      type: adapterType,
+      e2bSandboxId: config?.e2bSandboxId
+    }).catch(error => {
+      serverLogger.error(`Failed to create execution adapter for session ${session.id}`, error);
+    });
+    
     return session;
   }
 
@@ -182,10 +208,29 @@ export class AgentService extends EventEmitter {
         },
       });
 
+      // Get the execution adapter type and sandbox ID for this session
+      const executionAdapterType = this.getExecutionAdapterType(sessionId) || 'local';
+      const e2bSandboxId = this.getE2BSandboxId(sessionId);
+      
+      // Create appropriate environment config based on execution type
+      let environment;
+      
+      if (executionAdapterType === 'e2b' && e2bSandboxId) {
+        environment = { 
+          type: 'e2b' as const, 
+          sandboxId: e2bSandboxId 
+        };
+      } else if (executionAdapterType === 'docker') {
+        environment = { type: 'docker' as const };
+      } else {
+        // Default to local
+        environment = { type: 'local' as const };
+      }
+      
       // Create the agent with permission handling based on configuration
       const agent = createAgent({
         modelProvider,
-        environment: { type: 'local' },
+        environment,
         logger,
         permissionUIHandler: {
           requestPermission: (toolId: string, args: Record<string, unknown>): Promise<boolean> => {
@@ -234,6 +279,11 @@ export class AgentService extends EventEmitter {
       // Set Fast Edit Mode on the agent's permission manager based on this session's setting
       const isFastEditModeEnabled = this.getFastEditMode(sessionId);
       agent.permissionManager.setFastEditMode(isFastEditModeEnabled);
+      
+      // Store the execution adapter type in the session
+      // Get the actual type from the agent's environment or default to 'local'
+      const executionType = agent.environment?.type as 'local' | 'docker' | 'e2b' || 'docker';
+      this.setExecutionAdapterType(sessionId, executionType);
 
       // Collect tool results
       const toolResults: ToolResultEntry[] = [];
@@ -579,6 +629,148 @@ export class AgentService extends EventEmitter {
    */
   public getActiveTools(sessionId: string): Array<{toolId: string; name: string; startTime: Date; paramSummary: string}> {
     return this.activeTools.get(sessionId) || [];
+  }
+  
+  /**
+   * Set the execution adapter type for a session
+   */
+  public setExecutionAdapterType(sessionId: string, type: 'local' | 'docker' | 'e2b'): boolean {
+    try {
+      // Verify the session exists (will throw if not found)
+      sessionManager.getSession(sessionId);
+      
+      // Update the session with the execution adapter type
+      this.sessionExecutionAdapterTypes.set(sessionId, type);
+      
+      // Also update the session object
+      sessionManager.updateSession(sessionId, { executionAdapterType: type });
+      
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  
+  /**
+   * Get the execution adapter type for a session
+   */
+  public getExecutionAdapterType(sessionId: string): 'local' | 'docker' | 'e2b' | undefined {
+    try {
+      // First check our map for the most current value
+      const typeFromMap = this.sessionExecutionAdapterTypes.get(sessionId);
+      if (typeFromMap) {
+        return typeFromMap;
+      }
+      
+      // Then try to get it from the session
+      const session = sessionManager.getSession(sessionId);
+      return session.state.executionAdapterType;
+    } catch {
+      return undefined;
+    }
+  }
+  
+  /**
+   * Set the E2B sandbox ID for a session
+   */
+  public setE2BSandboxId(sessionId: string, sandboxId: string): boolean {
+    try {
+      // Verify the session exists
+      sessionManager.getSession(sessionId);
+      
+      // Store the sandbox ID
+      this.sessionE2BSandboxIds.set(sessionId, sandboxId);
+      
+      // Also update the session state
+      const session = sessionManager.getSession(sessionId);
+      sessionManager.updateSession(sessionId, {
+        state: {
+          ...session.state,
+          e2bSandboxId: sandboxId
+        }
+      });
+      
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  
+  /**
+   * Get the E2B sandbox ID for a session
+   */
+  public getE2BSandboxId(sessionId: string): string | undefined {
+    try {
+      // First check the map
+      const sandboxId = this.sessionE2BSandboxIds.get(sessionId);
+      if (sandboxId) {
+        return sandboxId;
+      }
+      
+      // Then try to get it from the session
+      const session = sessionManager.getSession(sessionId);
+      return session.state.e2bSandboxId;
+    } catch {
+      return undefined;
+    }
+  }
+  
+  /**
+   * Create an execution adapter for a session with the specified type
+   */
+  public async createExecutionAdapterForSession(
+    sessionId: string, 
+    options: { 
+      type?: 'local' | 'docker' | 'e2b';
+      e2bSandboxId?: string;
+    } = {}
+  ): Promise<void> {
+    try {
+      // Get the current session
+      const session = sessionManager.getSession(sessionId);
+      
+      // Prepare options for execution adapter
+      const adapterOptions: ExecutionAdapterFactoryOptions = {
+        type: options.type,
+        autoFallback: true,
+        logger: serverLogger,
+      };
+      
+      // Add E2B-specific options if needed
+      if (options.type === 'e2b' && options.e2bSandboxId) {
+        adapterOptions.e2b = {
+          sandboxId: options.e2bSandboxId
+        };
+      }
+      
+      // Create the execution adapter
+      const { adapter, type } = await createExecutionAdapter(adapterOptions);
+      
+      // Store the adapter type in the session
+      this.setExecutionAdapterType(sessionId, type);
+      
+      // Update the session object with the execution adapter
+      sessionManager.updateSession(sessionId, {
+        state: {
+          ...session.state,
+          executionAdapter: adapter,
+          executionAdapterType: type
+        }
+      });
+      
+      serverLogger.info(`Created ${type} execution adapter for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to create execution adapter for session ${sessionId}`, error);
+      
+      // Log detailed error
+      if (error instanceof Error) {
+        serverLogger.error(`Detailed error creating execution adapter: ${error.message}`, error.stack);
+      }
+      
+      // Fallback to local execution adapter
+      serverLogger.warn(`Falling back to local execution for session ${sessionId}`);
+      this.setExecutionAdapterType(sessionId, 'local');
+    }
   }
 }
 

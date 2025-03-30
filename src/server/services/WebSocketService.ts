@@ -244,6 +244,9 @@ export class WebSocketService {
           const session = this.sessionManager.getSession(sessionId);
           socket.emit(WebSocketEvent.SESSION_UPDATED, session);
           serverLogger.debug(`Sent updated session to client ${socket.id}`);
+          
+          // Send init event with execution environment info
+          this.sendInitEvent(socket);
 
           // If there are pending permission requests, send them
           const pendingPermissions = this.agentService.getPermissionRequests(sessionId);
@@ -535,5 +538,42 @@ export class WebSocketService {
     });
     
     // No permission timeout handler - permission requests wait indefinitely
+  }
+  
+  /**
+   * Get a session ID from a socket instance
+   */
+  private getSessionIdFromSocket(socket: Socket): string | undefined {
+    // Get session ID from socket room membership
+    return Array.from(socket.rooms.values())
+      .find(room => room !== socket.id);
+  }
+  
+  /**
+   * Send initialization event with execution environment information
+   */
+  private sendInitEvent(socket: Socket) {
+    try {
+      const sessionId = this.getSessionIdFromSocket(socket);
+      if (!sessionId) {
+        serverLogger.error('Cannot send init event: no session ID for socket');
+        return;
+      }
+      
+      const session = this.sessionManager.getSession(sessionId);
+      if (!session) {
+        serverLogger.error(`Cannot send init event: session ${sessionId} not found`);
+        return;
+      }
+      
+      // Include execution adapter type and sandbox ID in init event
+      socket.emit('init', {
+        sessionId,
+        executionEnvironment: session.state.executionAdapterType || 'docker',
+        e2bSandboxId: session.state.e2bSandboxId
+      });
+    } catch (error) {
+      serverLogger.error(`Error sending init event: ${(error as Error).message}`, error);
+    }
   }
 }

@@ -12,6 +12,7 @@ import { ModelProvider } from './model';
 // Define repository environment types
 export type RepositoryEnvironment = 
   | { type: 'local' }
+  | { type: 'docker' }
   | { type: 'e2b', sandboxId: string };
 
 export interface AgentConfig {
@@ -30,10 +31,11 @@ export interface AgentConfig {
 
 export interface Agent {
   // Core components
-  agentRunner: (env: RepositoryEnvironment) => Promise<AgentRunner>;
+  agentRunner: (env?: RepositoryEnvironment) => Promise<AgentRunner>;
   toolRegistry: ToolRegistry;
   permissionManager: PermissionManager;
   modelClient: ModelClient;
+  environment?: RepositoryEnvironment;
   logger: {
     debug: (message: string, ...args: unknown[]) => void;
     info: (message: string, ...args: unknown[]) => void;

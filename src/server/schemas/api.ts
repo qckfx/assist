@@ -11,6 +11,9 @@ export const startSessionSchema = z.object({
   config: z
     .object({
       model: z.string().optional(),
+      // Add execution environment configuration
+      executionAdapterType: z.enum(['local', 'docker', 'e2b']).optional(),
+      e2bSandboxId: z.string().optional(), // Only needed when executionAdapterType is 'e2b'
     })
     .optional(),
 });
@@ -145,6 +148,7 @@ export const fastEditModeResponseSchema = z.object({
   sessionId: z.string().uuid(),
   fastEditMode: z.boolean(),
 });
+
 
 // Types based on schemas
 export type StartSessionRequest = z.infer<typeof startSessionSchema>;

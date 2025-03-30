@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { ToolDescription, ToolRegistry } from './registry';
 import { PromptManager } from '../core/PromptManager';
 import { Logger } from '../utils/logger';
+import { ExecutionAdapter } from './tool';
 
 export interface ToolCall {
   toolId: string;
@@ -66,6 +67,12 @@ export interface SessionState {
   __abortTimestamp?: number;
   /** Cache metrics for tracking prompt caching performance */
   cacheMetrics?: CacheMetricsTracking;
+  /** Execution adapter type */
+  executionAdapterType?: 'local' | 'docker' | 'e2b';
+  /** E2B sandbox ID if using E2B execution */
+  e2bSandboxId?: string;
+  /** Execution adapter instance */
+  executionAdapter?: ExecutionAdapter;
   [key: string]: unknown;
 }
 

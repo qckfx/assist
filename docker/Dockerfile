@@ -6,15 +6,15 @@ RUN apk add --no-cache bash curl git
 
 # Set up a non-root user for better security
 RUN addgroup -S agent && adduser -S agent -G agent
-WORKDIR /workspace
-RUN chown -R agent:agent /workspace
+WORKDIR /app
+RUN chown -R agent:agent /app
 
 # Switch to non-root user
 USER agent
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PATH="/workspace/node_modules/.bin:${PATH}"
+ENV PATH="/app/node_modules/.bin:${PATH}"
 
 # Use bash as the default shell
 SHELL ["/bin/bash", "-c"]
