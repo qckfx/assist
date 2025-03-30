@@ -19,6 +19,8 @@ import { createServer } from 'http';
 import swaggerUi from 'swagger-ui-express';
 import { apiDocumentation } from './docs/api';
 import { LogCategory } from '../utils/logger';
+// Import preview generators
+import './services/preview';
 
 /**
  * Error class for server-related errors
