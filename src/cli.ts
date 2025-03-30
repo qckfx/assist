@@ -147,7 +147,8 @@ const startChat = async (options: {
   quiet?: boolean,
   web?: boolean,
   port?: number,
-  dev?: boolean
+  dev?: boolean,
+  caching?: boolean
 }) => {
   // Create a CLI logger first, so we can use it for errors
   const cliLogger = createLogger({ 
@@ -235,7 +236,8 @@ const startChat = async (options: {
   // Create the model provider
   const modelProvider = createAnthropicProvider({
     apiKey: ANTHROPIC_API_KEY,
-    model: options.model
+    model: options.model,
+    cachingEnabled: options.caching !== false // Enable caching by default
   });
   
   // We already created the logger above
@@ -322,6 +324,8 @@ const startChat = async (options: {
       cliLogger.info('  --no-web          Disable web UI', LogCategory.USER_INTERACTION);
       cliLogger.info('  --port <port>     Port for web UI (default: 3000)', LogCategory.USER_INTERACTION);
       cliLogger.info('  --dev             Run in development mode with additional logging', LogCategory.USER_INTERACTION);
+      cliLogger.info('  --caching         Enable prompt caching for Claude (default: true)', LogCategory.USER_INTERACTION);
+      cliLogger.info('  --no-caching      Disable prompt caching for Claude', LogCategory.USER_INTERACTION);
       cliLogger.info('\nEvaluation Commands:', LogCategory.USER_INTERACTION);
       cliLogger.info('  qckfx eval run    Run evaluation test cases', LogCategory.USER_INTERACTION);
       cliLogger.info('  qckfx eval list   List available test cases', LogCategory.USER_INTERACTION);
@@ -462,6 +466,8 @@ program
   .option('--no-web', 'Disable web UI')
   .option('--port <port>', 'Port for web UI', (value) => parseInt(value, 10))
   .option('--dev', 'Run in development mode with additional logging and features')
+  .option('--caching', 'Enable prompt caching for Claude (default: true)')
+  .option('--no-caching', 'Disable prompt caching for Claude')
   .action(startChat);
 
 // Default command (when no command is specified)
@@ -474,6 +480,8 @@ program
   .option('--no-web', 'Disable web UI')
   .option('--port <port>', 'Port for web UI', (value) => parseInt(value, 10))
   .option('--dev', 'Run in development mode with additional logging and features')
+  .option('--caching', 'Enable prompt caching for Claude (default: true)')
+  .option('--no-caching', 'Disable prompt caching for Claude')
   .action(startChat);
 
 // Setup evaluation commands
