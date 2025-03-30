@@ -3,6 +3,7 @@ import { LocalExecutionAdapter } from './LocalExecutionAdapter';
 import { DockerExecutionAdapter } from './DockerExecutionAdapter';
 import { DockerContainerManager } from './DockerContainerManager';
 import { E2BExecutionAdapter } from './E2BExecutionAdapter';
+import { LogCategory } from './logger';
 
 export type ExecutionAdapterType = 'local' | 'docker' | 'e2b';
 
@@ -54,10 +55,12 @@ export async function createExecutionAdapter(
   type: ExecutionAdapterType;
 }> {
   const { 
-    type = 'local',
+    type = 'docker',
     autoFallback = true,
     logger
   } = options;
+  
+  logger?.info(`Creating execution adapter: Requested type = ${type}, default = docker`, 'system');
   
   // Track reasons for fallback for logging
   let fallbackReason = '';
@@ -65,7 +68,7 @@ export async function createExecutionAdapter(
   // Try to create the requested adapter type
   try {
     if (type === 'docker') {
-      logger?.info('Attempting to create Docker execution adapter', 'system');
+      logger?.info('Attempting to create Docker execution adapter', LogCategory.SYSTEM);
       
       // Create the container manager
       const containerManager = new DockerContainerManager({
@@ -89,10 +92,23 @@ export async function createExecutionAdapter(
         throw new Error(fallbackReason);
       }
       
-      // Create the Docker execution adapter
+      // Create Docker execution adapter
       const dockerAdapter = new DockerExecutionAdapter(containerManager, { logger });
       
-      logger?.info('Successfully created Docker execution adapter', 'system');
+      // Verify Docker adapter is working by running a simple test command
+      try {
+        const { exitCode } = await dockerAdapter.executeCommand('echo "Docker test"');
+        if (exitCode !== 0) {
+          fallbackReason = 'Docker container is not responding to commands';
+          throw new Error(fallbackReason);
+        }
+      } catch (cmdError) {
+        fallbackReason = `Docker command execution failed: ${(cmdError as Error).message}`;
+        throw cmdError;
+      }
+      
+      logger?.info('Successfully created Docker execution adapter', LogCategory.SYSTEM);
+      
       return {
         adapter: dockerAdapter,
         type: 'docker'
@@ -100,7 +116,7 @@ export async function createExecutionAdapter(
     }
     
     if (type === 'e2b') {
-      logger?.info('Creating E2B execution adapter', 'system');
+      logger?.info('Creating E2B execution adapter', LogCategory.SYSTEM);
       
       if (!options.e2b?.sandboxId) {
         fallbackReason = 'E2B sandbox ID is required';
@@ -115,15 +131,28 @@ export async function createExecutionAdapter(
       };
     }
   } catch (error) {
+    // Add detailed error logging
+    logger?.error(
+      `Failed to create ${type} execution adapter: ${(error as Error).message}`, 
+      error, 
+      LogCategory.SYSTEM
+    );
+    
+    // If auto fallback is disabled, rethrow the error
     if (!autoFallback) {
       throw error;
     }
     
-    logger?.warn(`Failed to create ${type} execution adapter: ${(error as Error).message}, falling back to local execution`, 'system');
+    // Log warning about fallback
+    logger?.warn(
+      `Falling back to local execution: ${fallbackReason || (error as Error).message}`, 
+      LogCategory.SYSTEM
+    );
   }
   
   // Fall back to local execution
-  logger?.info('Creating local execution adapter', 'system');
+  logger?.info('Creating local execution adapter', LogCategory.SYSTEM);
+  
   return {
     adapter: new LocalExecutionAdapter({ logger }),
     type: 'local'

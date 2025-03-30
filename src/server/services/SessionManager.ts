@@ -20,6 +20,8 @@ export interface Session {
   state: SessionState;
   /** Whether the session is currently processing a query */
   isProcessing: boolean;
+  /** The type of execution adapter used for this session */
+  executionAdapterType?: 'local' | 'docker' | 'e2b';
 }
 
 /**

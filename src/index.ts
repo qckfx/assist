@@ -31,6 +31,8 @@ import { createLogger, LogLevel, LogCategory } from './utils/logger';
 import { createErrorHandler, createError } from './utils/ErrorHandler';
 import { LocalExecutionAdapter } from './utils/LocalExecutionAdapter';
 import { E2BExecutionAdapter } from './utils/E2BExecutionAdapter';
+import { DockerContainerManager } from './utils/DockerContainerManager';
+import { DockerExecutionAdapter } from './utils/DockerExecutionAdapter';
 
 // Types
 import { Agent, AgentConfig, RepositoryEnvironment } from './types/main';
@@ -81,9 +83,25 @@ const createAgent = (config: AgentConfig): Agent => {
   
   // Create the agent runner
   const agentRunner = async () => {
-    const executionAdapter = config.environment.type === 'local' 
-      ? new LocalExecutionAdapter() 
-      : await E2BExecutionAdapter.create(config.environment.sandboxId);
+    let executionAdapter;
+    
+    // Select the appropriate execution adapter based on environment type
+    switch (config.environment.type) {
+      case 'local':
+        executionAdapter = new LocalExecutionAdapter();
+        break;
+      case 'docker': {
+        // Create container manager and adapter
+        const containerManager = new DockerContainerManager({ logger });
+        executionAdapter = new DockerExecutionAdapter(containerManager, { logger });
+        break;
+      }
+      case 'e2b':
+        executionAdapter = await E2BExecutionAdapter.create(config.environment.sandboxId);
+        break;
+      default:
+        executionAdapter = new LocalExecutionAdapter();
+    }
     
     return createAgentRunner({
       modelClient,
@@ -103,6 +121,7 @@ const createAgent = (config: AgentConfig): Agent => {
     toolRegistry,
     permissionManager,
     modelClient,
+    environment: config.environment,
     logger,
     
     // Helper methods

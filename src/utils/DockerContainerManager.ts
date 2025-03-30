@@ -62,11 +62,25 @@ export class DockerContainerManager {
    */
   public async isDockerAvailable(): Promise<boolean> {
     try {
-      await execAsync('docker --version');
-      await execAsync('docker-compose --version');
+      const { stdout: dockerVersion } = await execAsync('docker --version');
+      const { stdout: composeVersion } = await execAsync('docker-compose --version');
+      
+      this.logger?.info(`Docker available: ${dockerVersion.trim()}`, 'system');
+      this.logger?.info(`Docker Compose available: ${composeVersion.trim()}`, 'system');
+      
       return true;
     } catch (error) {
-      this.logger?.warn(`Docker not available: ${(error as Error).message}`, 'system');
+      // Provide more detailed error messages based on error type
+      if ((error as any).code === 'ENOENT') {
+        this.logger?.error('Docker not found on system PATH', 'system');
+      } else if ((error as any).code === 'EACCES') {
+        this.logger?.error('Permission denied when checking Docker availability', 'system');
+      } else {
+        this.logger?.error(`Docker not available: ${(error as Error).message}`, 'system');
+        if ((error as any).stderr) {
+          this.logger?.error(`Docker error details: ${(error as any).stderr}`, 'system');
+        }
+      }
       return false;
     }
   }
@@ -242,19 +256,51 @@ export class DockerContainerManager {
       }
       
       // Start container if needed
-      const containerInfo = await this.startContainer();
-      if (!containerInfo) {
+      try {
+        const containerInfo = await this.startContainer();
+        if (!containerInfo) {
+          this.logger?.error('Failed to start Docker container', 'system');
+          return null;
+        }
+        
+        // Check if container is healthy with timeout
+        let attempts = 0;
+        const maxAttempts = 3;
+        let containerReady = false;
+        
+        while (attempts < maxAttempts && !containerReady) {
+          try {
+            attempts++;
+            const { exitCode } = await this.executeCommand('echo "Container health check"');
+            if (exitCode === 0) {
+              containerReady = true;
+              break;
+            }
+            
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (healthError) {
+            this.logger?.warn(`Health check attempt ${attempts} failed: ${(healthError as Error).message}`, 'system');
+            
+            if (attempts >= maxAttempts) {
+              throw healthError;
+            }
+            
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+        
+        if (!containerReady) {
+          this.logger?.error('Container health check failed after multiple attempts', 'system');
+          return null;
+        }
+        
+        return containerInfo;
+      } catch (startError) {
+        this.logger?.error(`Error starting container: ${(startError as Error).message}`, startError, 'system');
         return null;
       }
-      
-      // Check if container is healthy
-      const { exitCode } = await this.executeCommand('echo "Container health check"');
-      if (exitCode !== 0) {
-        this.logger?.error('Container health check failed', 'system');
-        return null;
-      }
-      
-      return containerInfo;
     } catch (error) {
       this.logger?.error(`Error ensuring container: ${(error as Error).message}`, error, 'system');
       return null;
