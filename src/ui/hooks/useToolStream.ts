@@ -510,7 +510,7 @@ export function useToolStream() {
   
   // Handler for tool execution completed with improved synchronization
   const handleToolExecutionCompleted = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_COMPLETED>) => {
-    const { tool, result, paramSummary, executionTime, timestamp, startTime } = data;
+    const { tool, result, paramSummary, executionTime, timestamp, startTime, preview } = data;
     const toolId = tool.id;
     
     setState(prev => {
@@ -569,6 +569,8 @@ export function useToolStream() {
         endTime: new Date(timestamp).getTime(),
         executionTime: executionTime || 
           (new Date(timestamp).getTime() - prevExecution.startTime),
+        // Include preview data from WebSocket event
+        preview,
       };
       
       // Add to history - without limiting size (let's show all tools)
@@ -692,7 +694,7 @@ export function useToolStream() {
   
   // Handler for tool execution error
   const handleToolExecutionError = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_ERROR>) => {
-    const { tool, error, paramSummary, timestamp, startTime } = data;
+    const { tool, error, paramSummary, timestamp, startTime, preview } = data;
     const toolId = tool.id;
     
     setState(prev => {
@@ -747,6 +749,8 @@ export function useToolStream() {
         paramSummary: prevExecution.paramSummary,
         endTime: new Date(timestamp).getTime(),
         executionTime: new Date(timestamp).getTime() - prevExecution.startTime,
+        // Include preview data for errors
+        preview,
       };
       
       // Add to history - without limiting size
