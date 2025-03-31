@@ -4,6 +4,7 @@ import { WebSocketProvider } from '@/context/WebSocketContext';
 import { WebSocketTerminalProvider } from '@/context/WebSocketTerminalContext';
 import { TerminalProvider } from '@/context/TerminalContext';
 import WebSocketTerminal from '@/components/WebSocketTerminal';
+import { ToolPreferencesProvider } from '@/context/ToolPreferencesContext';
 
 function App() {
   return (
@@ -11,16 +12,18 @@ function App() {
       <WebSocketProvider>
         <TerminalProvider>
           <WebSocketTerminalProvider>
-            <Layout>
-              <div className="flex items-center justify-center h-full p-4" style={{ height: "calc(100vh - 120px)" }}>
-                <WebSocketTerminal 
-                  fullScreen 
-                  autoConnect={true}
-                  showConnectionStatus={true}
-                  showTypingIndicator={true}
-                />
-              </div>
-            </Layout>
+            <ToolPreferencesProvider>
+              <Layout>
+                <div className="flex items-center justify-center h-full p-4" style={{ height: "calc(100vh - 120px)" }}>
+                  <WebSocketTerminal 
+                    fullScreen 
+                    autoConnect={true}
+                    showConnectionStatus={true}
+                    showTypingIndicator={true}
+                  />
+                </div>
+              </Layout>
+            </ToolPreferencesProvider>
           </WebSocketTerminalProvider>
         </TerminalProvider>
       </WebSocketProvider>

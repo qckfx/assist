@@ -48,6 +48,25 @@ vi.mock('@/hooks/useToolStream', () => ({
   })
 }));
 
+// Mock the ToolPreferencesContext
+vi.mock('@/context/ToolPreferencesContext', () => ({
+  useToolPreferencesContext: () => ({
+    preferences: {
+      defaultViewMode: 'brief',
+      persistPreferences: true,
+      toolOverrides: {}
+    },
+    initialized: true,
+    setDefaultViewMode: vi.fn(),
+    setToolViewMode: vi.fn(),
+    togglePersistPreferences: vi.fn(),
+    resetPreferences: vi.fn(),
+    getToolViewMode: vi.fn(() => 'brief'),
+    clearToolOverride: vi.fn()
+  }),
+  ToolPreferencesProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
+
 // Mock the ThemeProvider
 vi.mock('@/components/ThemeProvider', () => ({
   useTheme: () => ({

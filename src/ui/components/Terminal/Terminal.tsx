@@ -17,6 +17,7 @@ import { EnvironmentConnectionIndicator } from '@/components/EnvironmentConnecti
 import { useToolStream } from '@/hooks/useToolStream';
 import { useFastEditModeKeyboardShortcut } from '@/hooks/useFastEditModeKeyboardShortcut';
 import { FastEditModeIndicator } from '@/components/FastEditModeIndicator';
+import { useToolPreferencesContext } from '@/context/ToolPreferencesContext';
 // We'll use this component in the future
 import _ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
 import { PreviewMode } from '../../../types/preview';
@@ -77,17 +78,21 @@ export function Terminal({
     input: generateAriaId('terminal-input'),
   });
   
-  // Initialize the tool stream hook to get active tool information and view mode handling
+  // Initialize the tool stream hook to get active tool information
   const { 
     getActiveTools, 
     getRecentTools, 
     hasActiveTools, 
     toolHistory, 
-    activeToolCount,
-    setToolViewMode,
-    setDefaultViewMode, 
-    defaultViewMode
+    activeToolCount
   } = useToolStream();
+  
+  // Use the preferences context for view mode handling
+  const {
+    preferences,
+    setToolViewMode,
+    setDefaultViewMode
+  } = useToolPreferencesContext();
   
   // Use provided theme or get from context
   const terminalContext = useTerminal();
@@ -227,18 +232,22 @@ export function Terminal({
   // Register Fast Edit Mode keyboard shortcut (Shift+Tab)
   useFastEditModeKeyboardShortcut(sessionId, !inputDisabled);
 
-  // Handle tool view mode changes
+  // Handle tool view mode changes with preference persistence
   const handleViewModeChange = React.useCallback((toolId: string, mode: PreviewMode) => {
+    // Save the tool-specific preference
     setToolViewMode(toolId, mode);
     
-    // If the user expanded a tool, set brief as default for future tools
-    // If the user collapsed a tool, set retracted as default for future tools
-    if (mode === PreviewMode.COMPLETE || mode === PreviewMode.BRIEF) {
-      setDefaultViewMode(PreviewMode.BRIEF);
-    } else if (mode === PreviewMode.RETRACTED) {
-      setDefaultViewMode(PreviewMode.RETRACTED);
+    // If we should persist preferences, update the default mode based on user action
+    if (preferences.persistPreferences) {
+      // If the user expanded a tool, set brief as default for future tools
+      // If the user collapsed a tool, set retracted as default for future tools
+      if (mode === PreviewMode.COMPLETE || mode === PreviewMode.BRIEF) {
+        setDefaultViewMode(PreviewMode.BRIEF);
+      } else if (mode === PreviewMode.RETRACTED) {
+        setDefaultViewMode(PreviewMode.RETRACTED);
+      }
     }
-  }, [setToolViewMode, setDefaultViewMode]);
+  }, [setToolViewMode, setDefaultViewMode, preferences.persistPreferences]);
 
   return (
     <div
@@ -374,7 +383,7 @@ export function Terminal({
                 showToolsInline={showToolVisualizations}
                 isDarkTheme={shouldUseDarkTerminal}
                 onToolViewModeChange={handleViewModeChange}
-                defaultToolViewMode={defaultViewMode}
+                defaultToolViewMode={preferences.defaultViewMode}
               />
             );
           })()}

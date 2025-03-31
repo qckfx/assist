@@ -4,6 +4,7 @@ import Message from '@/components/Message';
 import { TerminalMessage } from '@/types/terminal';
 import { ToolExecution } from '@/hooks/useToolStream';
 import ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
+import { PreviewMode } from '../../../types/preview';
 
 // Define types for timeline items
 type MessageTimelineItem = {
@@ -31,8 +32,8 @@ export interface MessageFeedProps {
   ariaLabelledBy?: string;
   showToolsInline?: boolean;
   isDarkTheme?: boolean; // Add terminal theme property
-  onToolViewModeChange?: (toolId: string, mode: unknown) => void;
-  defaultToolViewMode?: unknown;
+  onToolViewModeChange?: (toolId: string, mode: PreviewMode) => void;
+  defaultToolViewMode?: PreviewMode;
 }
 
 export function MessageFeed({

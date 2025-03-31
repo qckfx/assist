@@ -61,6 +61,25 @@ vi.mock('@/hooks/useFastEditMode', () => ({
   })
 }));
 
+// Mock ToolPreferencesContext
+vi.mock('@/context/ToolPreferencesContext', () => ({
+  useToolPreferencesContext: () => ({
+    preferences: {
+      defaultViewMode: 'brief',
+      persistPreferences: true,
+      toolOverrides: {}
+    },
+    initialized: true,
+    setDefaultViewMode: vi.fn(),
+    setToolViewMode: vi.fn(),
+    togglePersistPreferences: vi.fn(),
+    resetPreferences: vi.fn(),
+    getToolViewMode: vi.fn(() => 'brief'),
+    clearToolOverride: vi.fn()
+  }),
+  ToolPreferencesProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
+}));
+
 vi.mock('@/components/ThemeProvider', () => ({
   useTheme: () => ({
     theme: 'dark',
