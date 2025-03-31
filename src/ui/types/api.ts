@@ -200,8 +200,11 @@ export interface WebSocketEventMap {
     permission: { 
       id: string; 
       toolId: string; 
+      toolName?: string;
       args: Record<string, unknown>;
       timestamp: string;
+      preview?: ToolPreviewData;
+      executionId?: string;
     };
   };
   [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };

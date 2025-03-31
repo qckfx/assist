@@ -4,12 +4,15 @@ import { ToolExecution } from '../../hooks/useToolStream';
 import { ToolState } from '../../types/terminal';
 import { PreviewMode, PreviewContentType } from '../../../types/preview';
 import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
+import MonacoDiffViewer from '../DiffViewer';
 
 // Helper function to truncate strings
 const truncateString = (str: string, maxLength: number): string => {
   if (str.length <= maxLength) return str;
   return str.substring(0, maxLength - 3) + '...';
 };
+
+// (We removed the shortenPath helper function since path shortening is now handled server-side)
 
 // Helper function to get a meaningful description of what the tool is doing
 const getToolDescription = (tool: ToolExecution): string => {
@@ -30,6 +33,17 @@ const getToolDescription = (tool: ToolExecution): string => {
   // If we have result object with a pattern field (common in search tools)
   if (tool.result && typeof tool.result === 'object' && 'pattern' in tool.result && typeof tool.result.pattern === 'string') {
     return `Searching for: ${tool.result.pattern}`;
+  }
+  
+  // Check if result contains a displayPath (added by the execution adapters)
+  if (tool.result && typeof tool.result === 'object' && 'displayPath' in tool.result && typeof tool.result.displayPath === 'string') {
+    if ('success' in tool.result) {
+      if (tool.toolName.includes('Read') || tool.toolName.includes('View')) {
+        return `Reading file: ${tool.result.displayPath}`;
+      } else if (tool.toolName.includes('Edit') || tool.toolName.includes('Write')) {
+        return `Editing file: ${tool.result.displayPath}`;
+      }
+    }
   }
   
   // If we have args, create a meaningful description based on the tool type
@@ -54,20 +68,20 @@ const getToolDescription = (tool: ToolExecution): string => {
     if (toolInfo.includes('View') || toolInfo.includes('Read') || 
         toolInfo.includes('Cat') || toolInfo.includes('file_read')) {
       const path = tool.args.file_path || tool.args.path || tool.args.filePath;
-      return path ? `Reading file: ${truncateString(String(path), 80)}` : `Reading file`;
+      return path ? `Reading file: ${String(path)}` : `Reading file`;
     }
     
     // File editing tools
     if (toolInfo.includes('Edit') || toolInfo.includes('Write') || 
         toolInfo.includes('file_edit') || toolInfo.includes('file_write')) {
       const path = tool.args.file_path || tool.args.path || tool.args.filePath;
-      return path ? `Editing file: ${truncateString(String(path), 80)}` : `Editing file`;
+      return path ? `Editing file: ${String(path)}` : `Editing file`;
     }
     
     // Directory listing tools
     if (toolInfo.includes('LS') || toolInfo.includes('List') || toolInfo.includes('ls')) {
       const path = tool.args.path || tool.args.directory || '.';
-      return `Listing files in: ${truncateString(String(path), 80)}`;
+      return `Listing files in: ${String(path)}`;
     }
     
     // Agent tools
@@ -144,6 +158,13 @@ export function ToolVisualization({
   defaultViewMode = PreviewMode.BRIEF,
   onViewModeChange,
 }: ToolVisualizationProps) {
+  // Add component lifecycle logging
+  console.log('ToolVisualization RENDER', { 
+    id: tool.id, 
+    status: tool.status, 
+    hasPreview: !!tool.preview,
+    toolName: tool.toolName 
+  });
   // Determine the tool state from the status
   const toolState = 
     tool.status === 'running' ? ToolState.RUNNING :
@@ -168,8 +189,24 @@ export function ToolVisualization({
   
   // Handle cycling through view modes
   const cycleViewMode = useCallback((e?: React.MouseEvent) => {
-    // If tool is not completed or has no preview, do nothing
-    if (toolState !== ToolState.COMPLETED || !tool.preview) {
+    console.log('cycleViewMode called:', {
+      toolId: tool.id,
+      toolState,
+      status: tool.status,
+      hasPreview: !!tool.preview,
+      viewMode
+    });
+    
+    // If tool has no preview or is in a state that can't show previews, do nothing
+    if (!tool.preview || (
+        toolState !== ToolState.COMPLETED && 
+        toolState !== ToolState.RUNNING && 
+        tool.status !== 'awaiting-permission')) {
+      console.log('cycleViewMode early return - condition not met:', { 
+        toolState, 
+        status: tool.status,
+        hasPreview: !!tool.preview 
+      });
       return;
     }
     
@@ -238,7 +275,8 @@ export function ToolVisualization({
   
   // Determine if we should show a preview
   const hasPreview = !!tool.preview;
-  const canExpandCollapse = hasPreview && toolState === ToolState.COMPLETED;
+  // Can expand/collapse if there's a preview and tool is completed or awaiting permission
+  const canExpandCollapse = hasPreview && (toolState === ToolState.COMPLETED || tool.status === 'awaiting-permission');
   
   return (
     <div 
@@ -286,9 +324,20 @@ export function ToolVisualization({
         </div>
         
         {/* View mode toggle button */}
+        {console.log('View mode toggle rendering check:', {
+          toolId: tool.id,
+          toolState,
+          status: tool.status,
+          hasPreview: !!tool.preview,
+          canExpandCollapse,
+          viewMode
+        })}
         {canExpandCollapse && (
           <button
-            onClick={(e) => cycleViewMode(e)}
+            onClick={(e) => {
+              console.log('Toggle button clicked for tool:', tool.id);
+              cycleViewMode(e);
+            }}
             className={cn(
               'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700',
               'transition-colors duration-200'
@@ -301,13 +350,22 @@ export function ToolVisualization({
         )}
       </div>
       
-      {/* Tool description */}
-      <div className="truncate mb-1">
+      {/* Tool description - using break-all for paths */}
+      <div className="mb-1 break-words overflow-hidden">
         {getToolDescription(tool)}
       </div>
       
-      {/* Preview content - only show if there's preview data and tool is completed */}
-      {hasPreview && toolState === ToolState.COMPLETED && viewMode !== PreviewMode.RETRACTED && (
+      {/* Preview content - show if preview data exists for completed, running, or awaiting permission tools */}
+      {/* Add debug logging for conditional rendering */}
+      {process.env.NODE_ENV === 'development' && console.log('Preview render condition:', {
+        toolId: tool.id,
+        hasPreview,
+        toolState,
+        status: tool.status,
+        viewMode,
+        shouldRender: hasPreview && (toolState === ToolState.COMPLETED || toolState === ToolState.RUNNING || tool.status === 'awaiting-permission') && viewMode !== PreviewMode.RETRACTED
+      })}
+      {hasPreview && (toolState === ToolState.COMPLETED || toolState === ToolState.RUNNING || tool.status === 'awaiting-permission') && viewMode !== PreviewMode.RETRACTED && (
         <div 
           className={cn(
             'mt-2 preview-container',
@@ -381,6 +439,19 @@ function PreviewContent({ tool, viewMode, isDarkTheme }: PreviewContentProps) {
   // Cast preview to unknown first for type safety
   const fullContent = (tool.preview as unknown as { fullContent?: string }).fullContent;
   
+  // Log preview content info for debugging
+  console.log('PreviewContent component render:', {
+    toolId: tool.id,
+    toolStatus: tool.status,
+    viewMode,
+    contentType,
+    hasBriefContent: !!briefContent,
+    briefContentLength: briefContent?.length,
+    hasFullContent: !!fullContent,
+    fullContentLength: fullContent?.length,
+    areContentsDifferent: fullContent !== briefContent,
+  });
+  
   // Determine content to show based on view mode
   const content = viewMode === PreviewMode.BRIEF ? briefContent : (fullContent || briefContent) as string;
   
@@ -409,26 +480,69 @@ function PreviewContent({ tool, viewMode, isDarkTheme }: PreviewContentProps) {
       );
       
     case PreviewContentType.DIFF:
+      // Extract file path and changes from metadata if available
+      const filePath = tool.preview?.metadata?.filePath as string || '';
+      const changesSummary = tool.preview?.metadata?.changesSummary as { additions: number, deletions: number } || { additions: 0, deletions: 0 };
+      const isEmptyFile = tool.preview?.metadata?.isEmptyFile === true;
+      
+      // Extract original and modified text from tool data
+      const oldString = tool.args.searchCode as string || 
+                        tool.args.old_string as string || 
+                        '';
+      const newString = tool.args.replaceCode as string || 
+                        tool.args.new_string as string || 
+                        '';
+      
+      // Handle empty file case
+      if (isEmptyFile || (oldString === '' && newString === '')) {
+        return (
+          <div 
+            className={`${baseStyles} text-center italic`}
+            style={{ maxHeight }}
+            data-testid="preview-content-diff-empty"
+          >
+            <div className={isDarkTheme ? 'text-gray-300' : 'text-gray-700'}>
+              {filePath ? `Creating empty file: ${filePath}` : 'Creating empty file'}
+            </div>
+          </div>
+        );
+      }
+      
+      // Determine if we can get original and modified content
+      const hasOriginalAndModified = !!(oldString || newString);
+      
+      // Regular diff content with Monaco diffing for better visualization
       return (
         <div 
           className={baseStyles}
-          style={{ maxHeight }}
+          style={{ maxHeight: 'none' }}  // Allow Monaco editor to control height
           data-testid="preview-content-diff"
         >
-          {/* Show diff with highlighting */}
-          {content.split('\n').map((line: string, i: number) => {
-            const lineClass = line.startsWith('+') 
-              ? (isDarkTheme ? 'bg-green-900/30 text-green-300' : 'bg-green-50 text-green-800') 
-              : line.startsWith('-') 
-                ? (isDarkTheme ? 'bg-red-900/30 text-red-300' : 'bg-red-50 text-red-800')
-                : '';
-                
-            return (
-              <div key={i} className={lineClass}>
-                {line}
-              </div>
-            );
-          })}
+          {/* File info header */}
+          {filePath && (
+            <div className={`mb-2 font-medium ${isDarkTheme ? 'text-yellow-300' : 'text-yellow-700'}`}>
+              {filePath}
+              <span className="ml-2 text-xs">
+                <span className={isDarkTheme ? 'text-green-300' : 'text-green-700'}>
+                  +{changesSummary.additions}
+                </span>
+                <span className="mx-1">|</span>
+                <span className={isDarkTheme ? 'text-red-300' : 'text-red-700'}>
+                  -{changesSummary.deletions}
+                </span>
+              </span>
+            </div>
+          )}
+          
+          {/* Use Monaco diff viewer for all cases - with unified diff fallback */}
+          <MonacoDiffViewer
+            originalText={oldString}
+            modifiedText={newString}
+            unifiedDiff={hasOriginalAndModified ? '' : content}
+            fileName={filePath}
+            isDarkTheme={isDarkTheme}
+            height={viewMode === PreviewMode.COMPLETE ? '500px' : '200px'}
+          />
         </div>
       );
       

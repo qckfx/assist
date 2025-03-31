@@ -83,7 +83,7 @@ export class AgentService extends EventEmitter {
   private activeProcessingSessionIds: Set<string> = new Set();
   private permissionRequests: Map<string, PermissionRequest> = new Map();
   private sessionFastEditMode: Map<string, boolean> = new Map();
-  private activeTools: Map<string, Array<{toolId: string; name: string; startTime: Date; paramSummary: string}>> = new Map();
+  private activeTools: Map<string, Array<{toolId: string; name: string; startTime: Date; paramSummary: string; executionId: string}>> = new Map();
   private sessionExecutionAdapterTypes: Map<string, 'local' | 'docker' | 'e2b'> = new Map();
   private sessionE2BSandboxIds: Map<string, string> = new Map();
   private activeToolArgs = new Map<string, Record<string, unknown>>();
@@ -267,12 +267,23 @@ export class AgentService extends EventEmitter {
               const tool = agent.toolRegistry.getTool(toolId);
               const toolName = tool?.name || toolId;
               
-              // Emit permission requested event
+              // Find the active tool's executionId to link permission with visualization
+              const activeTools = this.activeTools.get(sessionId) || [];
+              
+              // Find the most recent active tool that matches this tool ID
+              const activeTool = activeTools
+                .filter(t => t.toolId === toolId)
+                .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())[0];
+              
+              const executionId = activeTool?.executionId || `${toolId}-${Date.now()}`;
+              
+              // Emit permission requested event with execution ID
               this.emit(AgentServiceEvent.PERMISSION_REQUESTED, {
                 permissionId,
                 sessionId,
                 toolId,
                 toolName,
+                executionId, // Include execution ID for linking with visualization
                 args,
                 timestamp: permissionRequest.timestamp.toISOString(),
               });
@@ -302,8 +313,12 @@ export class AgentService extends EventEmitter {
         const paramSummary = this.summarizeToolParameters(toolId, args);
         const startTime = new Date();
         
+        // Generate a unique execution ID to link with permission requests
+        const executionId = `${toolId}-${Date.now()}`;
+        
         // Store the arguments in the active tools map for later use by preview generators
         this.activeToolArgs.set(`${sessionId}:${toolId}`, args);
+        this.activeToolArgs.set(`${sessionId}:${executionId}`, args); // Also store by executionId
         
         // Track this tool as active
         if (!this.activeTools.has(sessionId)) {
@@ -312,6 +327,7 @@ export class AgentService extends EventEmitter {
         
         this.activeTools.get(sessionId)?.push({
           toolId,
+          executionId, // Store the execution ID
           name: toolName,
           startTime,
           paramSummary
@@ -321,6 +337,7 @@ export class AgentService extends EventEmitter {
           sessionId,
           tool: {
             id: toolId,
+            executionId, // Include execution ID
             name: toolName,
           },
           args,

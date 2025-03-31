@@ -29,6 +29,9 @@ export class WebSocketService {
   
   // Map of sessionId -> Map of toolId -> active tool execution
   private activeTools: Map<string, Map<string, ActiveToolExecution>> = new Map();
+  
+  // Map to store permission previews by execution ID
+  private permissionPreviews: Map<string, ToolPreviewData> = new Map();
 
   constructor(server: HTTPServer) {
     // Set up debug mode before initializing socket.io
@@ -118,11 +121,26 @@ export class WebSocketService {
    */
   public close(): Promise<void> {
     return new Promise((resolve) => {
+      // Clean up all stored previews
+      this.permissionPreviews.clear();
+      
       this.io.close(() => {
         serverLogger.info('WebSocketService closed');
         resolve();
       });
     });
+  }
+  
+  /**
+   * Clean up any resources associated with a session
+   */
+  public cleanupSession(sessionId: string): void {
+    // Remove active tools for this session
+    this.activeTools.delete(sessionId);
+    
+    // We don't need to clean up permissionPreviews here since they're
+    // automatically cleaned up after being used or when a tool execution errors/aborts
+    serverLogger.debug(`Cleaned up resources for session ${sessionId}`);
   }
 
   /**
@@ -388,31 +406,43 @@ export class WebSocketService {
     
     // Tool execution completed
     this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, 
-      async ({ sessionId, tool, result, paramSummary, executionTime, timestamp }) => {
+      async ({ sessionId, tool, result, paramSummary, executionTime, timestamp, executionId }) => {
         // Get tool args from the stored data in AgentService
         const args = this.agentService.getToolArgs(sessionId, tool.id) || {};
         
-        // Try to generate preview data using the PreviewService
+        // Check if we have a stored preview from a permission request
         let preview: ToolPreviewData | null = null;
-        try {
-          // Use PreviewService to generate the preview
-          preview = await previewService.generatePreview(
-            {
-              id: tool.id,
-              name: tool.name
-            },
-            args,
-            result
-          );
+        
+        // First check if we have a stored preview for this execution
+        if (executionId && this.permissionPreviews.has(executionId)) {
+          // Reuse the stored preview
+          preview = this.permissionPreviews.get(executionId)!;
+          serverLogger.debug(`Reusing stored permission preview for executionId: ${executionId}`);
           
-          if (preview) {
-            serverLogger.debug(`Generated preview for tool ${tool.id}`, {
-              previewType: preview.contentType,
-              hasFullContent: preview.hasFullContent
-            });
+          // Clean up after using the preview
+          this.permissionPreviews.delete(executionId);
+        } else {
+          // Fall back to generating a new preview if no permission request occurred
+          try {
+            // Use PreviewService to generate the preview
+            preview = await previewService.generatePreview(
+              {
+                id: tool.id,
+                name: tool.name
+              },
+              args,
+              result
+            );
+            
+            if (preview) {
+              serverLogger.debug(`Generated new preview for tool ${tool.id}`, {
+                previewType: preview.contentType,
+                hasFullContent: preview.hasFullContent
+              });
+            }
+          } catch (error) {
+            serverLogger.error(`Error generating preview for tool ${tool.id}:`, error);
           }
-        } catch (error) {
-          serverLogger.error(`Error generating preview for tool ${tool.id}:`, error);
         }
         
         // Remove from active tools
@@ -514,7 +544,33 @@ export class WebSocketService {
     });
 
     // Permission requested
-    this.agentService.on(AgentServiceEvent.PERMISSION_REQUESTED, ({ permissionId, sessionId, toolId, toolName, args, timestamp }) => {
+    this.agentService.on(AgentServiceEvent.PERMISSION_REQUESTED, ({ permissionId, sessionId, toolId, toolName, executionId, args, timestamp }) => {
+      // Generate a preview for the permission request
+      const preview = previewService.generatePermissionPreview(
+        {
+          id: toolId,
+          name: toolName || toolId
+        },
+        args
+      );
+      
+      // Store the preview with the execution ID as key for later reuse
+      if (executionId && preview) {
+        this.permissionPreviews.set(executionId, preview);
+        serverLogger.debug(`Stored permission preview for executionId: ${executionId}`);
+      }
+      
+      // Log detailed preview information for debugging
+      serverLogger.info(`Permission request with preview for ${toolId} (executionId: ${executionId})`, {
+        previewContentType: preview?.contentType,
+        previewBriefLength: preview?.briefContent?.length,
+        previewMetadata: preview?.metadata,
+        fullPreview: JSON.stringify(preview, null, 2),
+        toolId,
+        toolName,
+        executionId
+      });
+      
       // Format the permission object according to the expected UI format
       this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, { 
         sessionId,
@@ -522,8 +578,10 @@ export class WebSocketService {
           id: permissionId,
           toolId: toolId,
           toolName: toolName || toolId, // Fallback to toolId if name isn't available
+          executionId, // Include executionId to link with tool visualization
           args: args,
-          timestamp: timestamp
+          timestamp: timestamp,
+          preview // Include preview data
         },
       });
       

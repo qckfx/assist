@@ -87,6 +87,7 @@ export interface DiffPreviewData extends ToolPreviewData {
 export interface DirectoryPreviewData extends ToolPreviewData {
   contentType: PreviewContentType.DIRECTORY;
   briefContent: string; // Formatted directory summary
+  fullContent?: string; // Complete formatted directory listing 
   entries: Array<{
     name: string;
     isDirectory: boolean;

@@ -154,10 +154,14 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       // Check if file exists
       const { exitCode: fileExists } = await this.executeCommand(`[ -f "${containerPath}" ]`);
       if (fileExists !== 0) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
-          error: `File does not exist: ${filepath}`
+          displayPath,
+          error: `File does not exist: ${displayPath}`
         };
       }
       
@@ -166,17 +170,25 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       const fileSize = parseInt(fileSizeStr.trim(), 10);
       
       if (isNaN(fileSize)) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
-          error: `Unable to determine file size: ${filepath}`
+          displayPath,
+          error: `Unable to determine file size: ${displayPath}`
         };
       }
       
       if (fileSize > maxSize) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
+          displayPath,
           error: `File is too large (${fileSize} bytes) to read. Max size: ${maxSize} bytes`
         };
       }
@@ -208,9 +220,13 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
           ? Math.min(startLine + lineCount, totalLines) 
           : totalLines;
         
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: true as const,
           path: filepath,
+          displayPath, // Add formatted path for UI display
           content: content,
           size: fileSize,
           encoding,
@@ -223,9 +239,13 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         };
       }
       
+      // Format path for display
+      const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+      
       return {
         success: true as const,
         path: filepath,
+        displayPath, // Add formatted path for UI display
         content: content,
         size: fileSize,
         encoding
@@ -301,6 +321,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         return {
           success: false as const,
           path: filepath,
+          displayPath: fileResult.displayPath || this.formatPathForDisplay(filepath, containerInfo),
           error: fileResult.error
         };
       }
@@ -311,17 +332,25 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       const occurrences = fileContent.split(searchCode).length - 1;
       
       if (occurrences === 0) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
-          error: `Search code not found in file: ${filepath}`
+          displayPath,
+          error: `Search code not found in file: ${displayPath}`
         };
       }
       
       if (occurrences > 1) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
+          displayPath,
           error: `Found ${occurrences} instances of the search code. Please provide a more specific search code that matches exactly once.`
         };
       }
@@ -332,9 +361,13 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       // Write the new content
       await this.writeFile(filepath, newContent);
       
+      // Format path for display
+      const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+      
       return {
         success: true as const,
         path: filepath,
+        displayPath,
         originalContent: fileContent,
         newContent: newContent
       };
@@ -342,6 +375,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       return {
         success: false as const,
         path: filepath,
+        displayPath: filepath, // Use original path for display in case of early errors
         error: `Error editing file: ${(error as Error).message}`
       };
     }
@@ -552,6 +586,25 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       );
     }
     return containerPath;
+  }
+  
+  /**
+   * Format a path for display by converting absolute paths to relative ones
+   * This is used in tool results to show more user-friendly paths
+   */
+  private formatPathForDisplay(absolutePath: string, containerInfo: ContainerInfo): string {
+    // If it's a container path, convert to relative project path
+    if (absolutePath.startsWith(containerInfo.workspacePath)) {
+      return path.posix.relative(containerInfo.workspacePath, absolutePath);
+    }
+    
+    // If it's a host path, try to make it relative to the project directory
+    if (absolutePath.startsWith(containerInfo.projectPath)) {
+      return path.relative(containerInfo.projectPath, absolutePath);
+    }
+    
+    // If path is outside known directories, return as is
+    return absolutePath;
   }
 
   /**

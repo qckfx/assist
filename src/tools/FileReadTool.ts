@@ -19,6 +19,7 @@ export interface FileReadToolArgs {
 export interface FileReadToolSuccessResult {
   success: true;
   path: string;
+  displayPath?: string; // Optional formatted path for UI display
   content: string;
   size: number;
   encoding: string;
@@ -33,6 +34,7 @@ export interface FileReadToolSuccessResult {
 export interface FileReadToolErrorResult {
   success: false;
   path: string;
+  displayPath?: string; // Optional formatted path for UI display
   error: string;
 }
 
