@@ -2,18 +2,29 @@
  * Agent service for API integration
  */
 import { EventEmitter } from 'events';
+import { Anthropic } from '@anthropic-ai/sdk';
 import {
   createAgent,
   createAnthropicProvider,
   createLogger,
   LogLevel,
 } from '../../index';
-import { Session, sessionManager } from './SessionManager';
-import { ServerError, AgentBusyError } from '../utils/errors';
+import { Agent } from '../../types/main';
+import { ToolPreviewState } from '../../types/preview';
 import { ToolResultEntry } from '../../types';
-import { Anthropic } from '@anthropic-ai/sdk';
-import { serverLogger } from '../logger';
+import { 
+  ToolExecutionState, 
+  ToolExecutionStatus,
+  ToolExecutionEvent,
+  PermissionRequestState
+} from '../../types/tool-execution';
+import { createToolExecutionManager, ToolExecutionManagerImpl } from './ToolExecutionManagerImpl';
+import { createPreviewManager, PreviewManagerImpl } from './PreviewManagerImpl';
+import { Session, sessionManager } from './SessionManager';
+import { previewService } from './preview/PreviewService';
+import { ServerError, AgentBusyError } from '../utils/errors';
 import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
+import { serverLogger } from '../logger';
 
 /**
  * Events emitted by the agent service
@@ -78,15 +89,74 @@ export interface PermissionRequest {
 /**
  * Agent service for processing queries
  */
+// Define interfaces for the tool state and events
+interface ActiveTool {
+  toolId: string;
+  name: string;
+  startTime: Date;
+  paramSummary: string;
+  executionId: string;
+}
+
+// Define type interfaces for the event data
+interface ToolExecutionEventData {
+  sessionId: string;
+  tool: {
+    id: string;
+    name: string;
+    executionId?: string;
+  };
+  args?: Record<string, unknown>;
+  result?: unknown;
+  paramSummary?: string;
+  executionTime?: number;
+  timestamp?: string;
+  startTime?: string;
+  abortTimestamp?: string;
+  preview?: {
+    contentType: string;
+    briefContent: string;
+    fullContent?: string;
+    metadata?: Record<string, unknown>;
+  };
+  error?: {
+    message: string;
+    stack?: string;
+  };
+}
+
+interface PermissionEventData {
+  permissionId: string;
+  sessionId: string;
+  toolId: string;
+  toolName?: string;
+  executionId?: string;
+  args?: Record<string, unknown>;
+  granted?: boolean;
+  timestamp?: string;
+  preview?: {
+    contentType: string;
+    briefContent: string;
+    fullContent?: string;
+    metadata?: Record<string, unknown>;
+  };
+}
+
 export class AgentService extends EventEmitter {
   private config: AgentServiceConfig;
   private activeProcessingSessionIds: Set<string> = new Set();
   private permissionRequests: Map<string, PermissionRequest> = new Map();
   private sessionFastEditMode: Map<string, boolean> = new Map();
-  private activeTools: Map<string, Array<{toolId: string; name: string; startTime: Date; paramSummary: string; executionId: string}>> = new Map();
+  private activeTools: Map<string, ActiveTool[]> = new Map();
   private sessionExecutionAdapterTypes: Map<string, 'local' | 'docker' | 'e2b'> = new Map();
   private sessionE2BSandboxIds: Map<string, string> = new Map();
   private activeToolArgs = new Map<string, Record<string, unknown>>();
+  
+  // Add new properties for the managers
+  private toolExecutionManager: ToolExecutionManagerImpl;
+  private previewManager: PreviewManagerImpl;
+  // Store reference to the current agent
+  private agent: Agent | null = null;
   
   /**
    * Creates a concise summary of tool arguments for display
@@ -132,6 +202,371 @@ export class AgentService extends EventEmitter {
       allowedTools: config.allowedTools || ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
       cachingEnabled: config.cachingEnabled !== undefined ? config.cachingEnabled : true,
     };
+    
+    // Initialize the new managers
+    this.toolExecutionManager = createToolExecutionManager() as ToolExecutionManagerImpl;
+    this.previewManager = createPreviewManager() as PreviewManagerImpl;
+    
+    // Set up event forwarding from the tool execution manager
+    this.setupToolExecutionEventForwarding();
+  }
+  
+  /**
+   * Set up event forwarding from ToolExecutionManager to AgentService
+   */
+  private setupToolExecutionEventForwarding(): void {
+    // Map ToolExecutionEvent to AgentServiceEvent
+    const eventMap: Record<ToolExecutionEvent, AgentServiceEvent> = {
+      [ToolExecutionEvent.CREATED]: AgentServiceEvent.TOOL_EXECUTION_STARTED,
+      [ToolExecutionEvent.UPDATED]: AgentServiceEvent.TOOL_EXECUTION,
+      [ToolExecutionEvent.COMPLETED]: AgentServiceEvent.TOOL_EXECUTION_COMPLETED,
+      [ToolExecutionEvent.ERROR]: AgentServiceEvent.TOOL_EXECUTION_ERROR,
+      [ToolExecutionEvent.ABORTED]: AgentServiceEvent.TOOL_EXECUTION_ABORTED,
+      [ToolExecutionEvent.PERMISSION_REQUESTED]: AgentServiceEvent.PERMISSION_REQUESTED,
+      [ToolExecutionEvent.PERMISSION_RESOLVED]: AgentServiceEvent.PERMISSION_RESOLVED
+    };
+    
+    // Forward each event type
+    Object.entries(eventMap).forEach(([toolEvent, agentEvent]) => {
+      this.toolExecutionManager.on(toolEvent as ToolExecutionEvent, (data) => {
+        // Transform the data to match the expected format for AgentService events
+        const transformedData = this.transformEventData(
+          toolEvent as ToolExecutionEvent, 
+          data as ToolExecutionState | { execution: ToolExecutionState; permission: PermissionRequestState }
+        );
+        this.emit(agentEvent, transformedData);
+      });
+    });
+  }
+  
+  /**
+   * Transform event data from ToolExecutionManager format to AgentService format
+   */
+  private transformEventData(
+    toolEvent: ToolExecutionEvent, 
+    data: ToolExecutionState | { execution: ToolExecutionState; permission: PermissionRequestState }
+  ): ToolExecutionEventData | PermissionEventData {
+    switch (toolEvent) {
+      case ToolExecutionEvent.CREATED:
+        return this.transformToolCreatedEvent(data as ToolExecutionState);
+        
+      case ToolExecutionEvent.UPDATED:
+        return this.transformToolUpdatedEvent(data as ToolExecutionState);
+        
+      case ToolExecutionEvent.COMPLETED:
+        return this.transformToolCompletedEvent(data as ToolExecutionState);
+        
+      case ToolExecutionEvent.ERROR:
+        return this.transformToolErrorEvent(data as ToolExecutionState);
+        
+      case ToolExecutionEvent.ABORTED:
+        return this.transformToolAbortedEvent(data as ToolExecutionState);
+        
+      case ToolExecutionEvent.PERMISSION_REQUESTED:
+        return this.transformPermissionRequestedEvent(data as { execution: ToolExecutionState; permission: PermissionRequestState });
+        
+      case ToolExecutionEvent.PERMISSION_RESOLVED:
+        return this.transformPermissionResolvedEvent(data as { execution: ToolExecutionState; permission: PermissionRequestState });
+        
+      default:
+        // Create a basic structure for unknown event types
+        if ('execution' in data) {
+          return {
+            sessionId: data.execution.sessionId,
+            tool: {
+              id: data.execution.toolId,
+              name: data.execution.toolName,
+              executionId: data.execution.id
+            },
+            timestamp: new Date().toISOString()
+          } as ToolExecutionEventData;
+        } else {
+          return {
+            sessionId: data.sessionId,
+            tool: {
+              id: data.toolId,
+              name: data.toolName,
+              executionId: data.id
+            },
+            timestamp: new Date().toISOString()
+          } as ToolExecutionEventData;
+        }
+    }
+  }
+  
+  /**
+   * Transform tool created event data
+   */
+  private transformToolCreatedEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    return {
+      sessionId: execution.sessionId,
+      tool: {
+        id: execution.toolId,
+        name: execution.toolName,
+        executionId: execution.id
+      },
+      args: execution.args,
+      paramSummary: execution.summary || this.summarizeToolParameters(execution.toolId, execution.args),
+      timestamp: execution.startTime
+    };
+  }
+  
+  /**
+   * Transform tool updated event data
+   */
+  private transformToolUpdatedEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    return {
+      sessionId: execution.sessionId,
+      tool: {
+        id: execution.toolId,
+        name: execution.toolName,
+        executionId: execution.id
+      },
+      result: execution.result,
+      timestamp: new Date().toISOString()
+    };
+  }
+  
+  /**
+   * Transform tool completed event data
+   */
+  private transformToolCompletedEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    // Get the preview for this execution if available
+    const preview = this.previewManager.getPreviewForExecution(execution.id);
+    
+    return {
+      sessionId: execution.sessionId,
+      tool: {
+        id: execution.toolId,
+        name: execution.toolName,
+        executionId: execution.id
+      },
+      result: execution.result,
+      paramSummary: execution.summary,
+      executionTime: execution.executionTime,
+      timestamp: execution.endTime,
+      startTime: execution.startTime,
+      preview: preview ? this.convertPreviewStateToData(preview) : undefined
+    };
+  }
+  
+  /**
+   * Transform tool error event data
+   */
+  private transformToolErrorEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    return {
+      sessionId: execution.sessionId,
+      tool: {
+        id: execution.toolId,
+        name: execution.toolName,
+        executionId: execution.id
+      },
+      error: execution.error,
+      paramSummary: execution.summary,
+      timestamp: execution.endTime,
+      startTime: execution.startTime
+    };
+  }
+  
+  /**
+   * Transform tool aborted event data
+   */
+  private transformToolAbortedEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    return {
+      sessionId: execution.sessionId,
+      tool: {
+        id: execution.toolId,
+        name: execution.toolName,
+        executionId: execution.id
+      },
+      timestamp: execution.endTime,
+      startTime: execution.startTime,
+      abortTimestamp: execution.endTime
+    };
+  }
+  
+  /**
+   * Transform permission requested event data
+   */
+  private transformPermissionRequestedEvent(data: { execution: ToolExecutionState, permission: PermissionRequestState }): PermissionEventData {
+    const { execution, permission } = data;
+    
+    // Get the preview for this execution if available
+    const preview = this.previewManager.getPreviewForExecution(execution.id);
+    
+    return {
+      permissionId: permission.id,
+      sessionId: permission.sessionId,
+      toolId: permission.toolId,
+      toolName: permission.toolName,
+      executionId: execution.id,
+      args: permission.args,
+      timestamp: permission.requestTime,
+      preview: preview ? this.convertPreviewStateToData(preview) : undefined
+    };
+  }
+  
+  /**
+   * Transform permission resolved event data
+   */
+  private transformPermissionResolvedEvent(data: { execution: ToolExecutionState, permission: PermissionRequestState }): PermissionEventData {
+    const { execution, permission } = data;
+    
+    return {
+      permissionId: permission.id,
+      sessionId: permission.sessionId,
+      toolId: permission.toolId,
+      executionId: execution.id,
+      granted: permission.granted,
+      timestamp: permission.resolvedTime
+    };
+  }
+  
+  /**
+   * Convert preview state to the format expected by clients
+   */
+  private convertPreviewStateToData(preview: ToolPreviewState): {
+    contentType: string;
+    briefContent: string;
+    fullContent?: string;
+    metadata?: Record<string, unknown>;
+  } {
+    return {
+      contentType: preview.contentType,
+      briefContent: preview.briefContent,
+      fullContent: preview.fullContent,
+      metadata: preview.metadata
+    };
+  }
+  
+  // When a tool execution starts (from the onToolExecutionStart callback)
+  private handleToolExecutionStart(toolId: string, args: Record<string, unknown>, sessionId: string): void {
+    const tool = this.agent?.toolRegistry.getTool(toolId);
+    const toolName = tool?.name || toolId;
+    
+    // Create a new tool execution in the manager
+    const execution = this.toolExecutionManager.createExecution(
+      sessionId,
+      toolId,
+      toolName,
+      args
+    );
+    
+    // Add a summary for better display
+    const paramSummary = this.summarizeToolParameters(toolId, args);
+    this.toolExecutionManager.updateExecution(execution.id, { summary: paramSummary });
+    
+    // Start the execution
+    this.toolExecutionManager.startExecution(execution.id);
+    
+    // For backward compatibility, still track in the activeTools map
+    if (!this.activeTools.has(sessionId)) {
+      this.activeTools.set(sessionId, []);
+    }
+    
+    this.activeTools.get(sessionId)?.push({
+      toolId,
+      executionId: execution.id,
+      name: toolName,
+      startTime: new Date(execution.startTime),
+      paramSummary
+    });
+    
+    // Store the arguments for potential preview generation
+    this.activeToolArgs.set(`${sessionId}:${toolId}`, args);
+    this.activeToolArgs.set(`${sessionId}:${execution.id}`, args);
+  }
+  
+  // When a tool execution completes
+  private handleToolExecutionComplete(
+    toolId: string, 
+    args: Record<string, unknown>, 
+    result: unknown, 
+    executionTime: number, 
+    sessionId: string
+  ): void {
+    // Find the execution ID for this tool
+    const activeTools = this.activeTools.get(sessionId) || [];
+    const activeTool = activeTools.find(t => t.toolId === toolId);
+    const executionId = activeTool?.executionId;
+    
+    if (executionId) {
+      // Complete the execution in the manager
+      this.toolExecutionManager.completeExecution(executionId, result, executionTime);
+      
+      // Generate a preview for the completed tool
+      this.generateToolExecutionPreview(executionId, toolId, args, result);
+      
+      // Remove from active tools
+      this.activeTools.set(
+        sessionId, 
+        activeTools.filter(t => t.toolId !== toolId)
+      );
+      
+      // Clean up stored arguments
+      this.activeToolArgs.delete(`${sessionId}:${toolId}`);
+      this.activeToolArgs.delete(`${sessionId}:${executionId}`);
+    } else {
+      // If we don't have an execution ID, fall back to old behavior
+      serverLogger.warn(`No execution ID found for completed tool: ${toolId}`);
+      
+      // Emit directly instead of through the manager
+      this.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, {
+        sessionId,
+        tool: {
+          id: toolId,
+          name: this.agent?.toolRegistry.getTool(toolId)?.name || toolId
+        },
+        result,
+        executionTime,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+  
+  // When a tool execution fails
+  private handleToolExecutionError(
+    toolId: string, 
+    args: Record<string, unknown>, 
+    error: Error, 
+    sessionId: string
+  ): void {
+    // Find the execution ID for this tool
+    const activeTools = this.activeTools.get(sessionId) || [];
+    const activeTool = activeTools.find(t => t.toolId === toolId);
+    const executionId = activeTool?.executionId;
+    
+    if (executionId) {
+      // Mark the execution as failed in the manager
+      this.toolExecutionManager.failExecution(executionId, error);
+      
+      // Remove from active tools
+      this.activeTools.set(
+        sessionId, 
+        activeTools.filter(t => t.toolId !== toolId)
+      );
+      
+      // Clean up stored arguments
+      this.activeToolArgs.delete(`${sessionId}:${toolId}`);
+      this.activeToolArgs.delete(`${sessionId}:${executionId}`);
+    } else {
+      // If we don't have an execution ID, fall back to old behavior
+      serverLogger.warn(`No execution ID found for failed tool: ${toolId}`);
+      
+      // Emit directly instead of through the manager
+      this.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, {
+        sessionId,
+        tool: {
+          id: toolId,
+          name: this.agent?.toolRegistry.getTool(toolId)?.name || toolId
+        },
+        error: {
+          message: error.message,
+          stack: error.stack
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
   }
 
   /**
@@ -235,7 +670,7 @@ export class AgentService extends EventEmitter {
       }
       
       // Create the agent with permission handling based on configuration
-      const agent = createAgent({
+      this.agent = createAgent({
         modelProvider,
         environment,
         logger,
@@ -246,49 +681,63 @@ export class AgentService extends EventEmitter {
               return Promise.resolve(true);
             }
 
-            // For interactive mode, create a permission request
-            const permissionId = `${sessionId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            // For interactive mode, find or create a tool execution for this permission request
+            let executionId: string;
+            const activeTools = this.activeTools.get(sessionId) || [];
+            const activeTool = activeTools.find(t => t.toolId === toolId);
             
+            if (activeTool?.executionId) {
+              executionId = activeTool.executionId;
+            } else {
+              // Create a new execution for this permission request
+              const tool = this.agent?.toolRegistry.getTool(toolId);
+              const toolName = tool?.name || toolId;
+              const execution = this.toolExecutionManager.createExecution(
+                sessionId,
+                toolId,
+                toolName,
+                args
+              );
+              executionId = execution.id;
+              
+              // Add to active tools
+              const paramSummary = this.summarizeToolParameters(toolId, args);
+              this.toolExecutionManager.updateExecution(executionId, { summary: paramSummary });
+              
+              if (!this.activeTools.has(sessionId)) {
+                this.activeTools.set(sessionId, []);
+              }
+              
+              this.activeTools.get(sessionId)?.push({
+                toolId,
+                executionId,
+                name: toolName,
+                startTime: new Date(execution.startTime),
+                paramSummary
+              });
+            }
+            
+            // Create the permission request in the manager
+            const permission = this.toolExecutionManager.requestPermission(executionId, args);
+            
+            // Generate a preview for the permission request
+            this.generatePermissionPreview(executionId, toolId, args);
+            
+            // Create a promise to wait for permission resolution
             return new Promise<boolean>(resolve => {
-              // Create the permission request
+              const permissionId = permission.id;
+              
+              // Store the permission request with the resolver
               const permissionRequest: PermissionRequest = {
                 id: permissionId,
                 sessionId,
                 toolId,
                 args,
-                timestamp: new Date(),
-                resolver: resolve,
+                timestamp: new Date(permission.requestTime),
+                resolver: resolve
               };
               
-              // Store the permission request
               this.permissionRequests.set(permissionId, permissionRequest);
-              
-              // Get the tool name if available
-              const tool = agent.toolRegistry.getTool(toolId);
-              const toolName = tool?.name || toolId;
-              
-              // Find the active tool's executionId to link permission with visualization
-              const activeTools = this.activeTools.get(sessionId) || [];
-              
-              // Find the most recent active tool that matches this tool ID
-              const activeTool = activeTools
-                .filter(t => t.toolId === toolId)
-                .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())[0];
-              
-              const executionId = activeTool?.executionId || `${toolId}-${Date.now()}`;
-              
-              // Emit permission requested event with execution ID
-              this.emit(AgentServiceEvent.PERMISSION_REQUESTED, {
-                permissionId,
-                sessionId,
-                toolId,
-                toolName,
-                executionId, // Include execution ID for linking with visualization
-                args,
-                timestamp: permissionRequest.timestamp.toISOString(),
-              });
-              
-              // No timeout - permission requests wait indefinitely for user action
             });
           },
         },
@@ -296,128 +745,38 @@ export class AgentService extends EventEmitter {
       
       // Set Fast Edit Mode on the agent's permission manager based on this session's setting
       const isFastEditModeEnabled = this.getFastEditMode(sessionId);
-      agent.permissionManager.setFastEditMode(isFastEditModeEnabled);
+      this.agent.permissionManager.setFastEditMode(isFastEditModeEnabled);
       
       // Store the execution adapter type in the session
       // Get the actual type from the agent's environment or default to 'local'
-      const executionType = agent.environment?.type as 'local' | 'docker' | 'e2b' || 'docker';
+      const executionType = this.agent.environment?.type as 'local' | 'docker' | 'e2b' || 'docker';
       this.setExecutionAdapterType(sessionId, executionType);
 
       // Collect tool results
       const toolResults: ToolResultEntry[] = [];
       
       // Register callbacks for tool execution events using the new API
-      const unregisterStart = agent.toolRegistry.onToolExecutionStart((toolId, args, _context) => {
-        const tool = agent.toolRegistry.getTool(toolId);
-        const toolName = tool?.name || toolId;
-        const paramSummary = this.summarizeToolParameters(toolId, args);
-        const startTime = new Date();
-        
-        // Generate a unique execution ID to link with permission requests
-        const executionId = `${toolId}-${Date.now()}`;
-        
-        // Store the arguments in the active tools map for later use by preview generators
-        this.activeToolArgs.set(`${sessionId}:${toolId}`, args);
-        this.activeToolArgs.set(`${sessionId}:${executionId}`, args); // Also store by executionId
-        
-        // Track this tool as active
-        if (!this.activeTools.has(sessionId)) {
-          this.activeTools.set(sessionId, []);
+      const unregisterStart = this.agent.toolRegistry.onToolExecutionStart(
+        (toolId: string, args: Record<string, unknown>, _context: unknown) => {
+          this.handleToolExecutionStart(toolId, args, sessionId);
         }
-        
-        this.activeTools.get(sessionId)?.push({
-          toolId,
-          executionId, // Store the execution ID
-          name: toolName,
-          startTime,
-          paramSummary
-        });
-        
-        this.emit(AgentServiceEvent.TOOL_EXECUTION_STARTED, {
-          sessionId,
-          tool: {
-            id: toolId,
-            executionId, // Include execution ID
-            name: toolName,
-          },
-          args,
-          paramSummary,
-          timestamp: startTime.toISOString(),
-        });
-      });
+      );
       
-      const unregisterComplete = agent.toolRegistry.onToolExecutionComplete((toolId, args, result, executionTime) => {
-        const tool = agent.toolRegistry.getTool(toolId);
-        const toolName = tool?.name || toolId;
-        const paramSummary = this.summarizeToolParameters(toolId, args);
-        
-        // Remove this tool from active tools
-        if (this.activeTools.has(sessionId)) {
-          const activeTools = this.activeTools.get(sessionId) || [];
-          const updatedTools = activeTools.filter(t => t.toolId !== toolId);
-          this.activeTools.set(sessionId, updatedTools);
+      const unregisterComplete = this.agent.toolRegistry.onToolExecutionComplete(
+        (toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => {
+          this.handleToolExecutionComplete(toolId, args, result, executionTime, sessionId);
         }
-        
-        // Clean up stored arguments after tool completion
-        this.activeToolArgs.delete(`${sessionId}:${toolId}`);
-        
-        // Emit the standard tool execution event for consistency
-        this.emit(AgentServiceEvent.TOOL_EXECUTION, { 
-          sessionId,
-          tool: {
-            id: toolId,
-            name: toolName,
-          },
-          result,
-        });
-        
-        // Emit the new tool execution completed event
-        this.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, {
-          sessionId,
-          tool: {
-            id: toolId,
-            name: toolName,
-          },
-          result,
-          paramSummary,
-          executionTime,
-          timestamp: new Date().toISOString(),
-        });
-      });
+      );
       
-      const unregisterError = agent.toolRegistry.onToolExecutionError((toolId, args, error) => {
-        const tool = agent.toolRegistry.getTool(toolId);
-        const toolName = tool?.name || toolId;
-        const paramSummary = this.summarizeToolParameters(toolId, args);
-        
-        // Remove this tool from active tools
-        if (this.activeTools.has(sessionId)) {
-          const activeTools = this.activeTools.get(sessionId) || [];
-          const updatedTools = activeTools.filter(t => t.toolId !== toolId);
-          this.activeTools.set(sessionId, updatedTools);
+      const unregisterError = this.agent.toolRegistry.onToolExecutionError(
+        (toolId: string, args: Record<string, unknown>, error: Error) => {
+          this.handleToolExecutionError(toolId, args, error, sessionId);
         }
-        
-        // Clean up stored arguments on error too
-        this.activeToolArgs.delete(`${sessionId}:${toolId}`);
-        
-        this.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, {
-          sessionId,
-          tool: {
-            id: toolId,
-            name: toolName,
-          },
-          error: {
-            message: error.message,
-            stack: error.stack,
-          },
-          paramSummary,
-          timestamp: new Date().toISOString(),
-        });
-      });
+      );
       
       try {
         // Process the query with our registered callbacks
-        const result = await agent.processQuery(query, session.state);
+        const result = await this.agent.processQuery(query, session.state);
   
         if (result.error) {
           throw new ServerError(`Agent error: ${result.error}`);
@@ -504,26 +863,151 @@ export class AgentService extends EventEmitter {
     // Call the resolver
     request.resolver(granted);
     
-    // Find the associated executionId by looking at active tools
-    const activeTools = this.activeTools.get(request.sessionId) || [];
-    // Find most recent tool matching this toolId
-    const matchingTool = activeTools
-      .filter(t => t.toolId === request.toolId)
-      .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())[0];
-    
-    const executionId = matchingTool?.executionId;
-    
-    // Emit the permission resolved event with executionId
-    this.emit(AgentServiceEvent.PERMISSION_RESOLVED, {
-      permissionId,
-      sessionId: request.sessionId,
-      toolId: request.toolId,
-      executionId, // Add executionId to event data
-      granted,
-      timestamp: new Date().toISOString(),
-    });
-    
-    return true;
+    // Resolve the permission in the manager
+    try {
+      // Find the execution ID for this permission
+      const sessionId = request.sessionId;
+      const toolId = request.toolId;
+      const activeTools = this.activeTools.get(sessionId) || [];
+      const activeTool = activeTools.find(t => t.toolId === toolId);
+      const executionId = activeTool?.executionId;
+      
+      if (executionId) {
+        // Resolve in the manager (will emit appropriate events)
+        const permissionRequests = this.toolExecutionManager
+          .getExecutionsForSession(sessionId)
+          .filter(e => e.status === ToolExecutionStatus.AWAITING_PERMISSION)
+          .map(e => this.toolExecutionManager.getPermissionRequestForExecution(e.id))
+          .filter(Boolean);
+        
+        const matchingRequest = permissionRequests.find(p => p?.id === permissionId);
+        
+        if (matchingRequest) {
+          this.toolExecutionManager.resolvePermission(permissionId, granted);
+          return true;
+        }
+      }
+      
+      // If we can't find the permission in the manager, fall back to old behavior
+      serverLogger.warn(`No execution found for permission: ${permissionId}`);
+      
+      // Emit directly instead of through the manager
+      this.emit(AgentServiceEvent.PERMISSION_RESOLVED, {
+        permissionId,
+        sessionId: request.sessionId,
+        toolId: request.toolId,
+        granted,
+        timestamp: new Date().toISOString()
+      });
+      
+      return true;
+    } catch (error) {
+      serverLogger.error(`Error resolving permission: ${permissionId}`, error);
+      return false;
+    }
+  }
+  
+  /**
+   * Generate a preview for a tool execution
+   */
+  private generateToolExecutionPreview(
+    executionId: string,
+    toolId: string,
+    args: Record<string, unknown>,
+    result: unknown
+  ): void {
+    try {
+      // Get the execution from the manager
+      const execution = this.toolExecutionManager.getExecution(executionId);
+      if (!execution) {
+        serverLogger.warn(`No execution found for preview generation: ${executionId}`);
+        return;
+      }
+      
+      // Use the existing previewService to generate the preview
+      const toolInfo = {
+        id: toolId,
+        name: execution.toolName
+      };
+      
+      // Asynchronously generate the preview
+      previewService.generatePreview(toolInfo, args, result)
+        .then(previewData => {
+          if (!previewData) return;
+          
+          // Create a preview in the manager
+          // For TypeScript compatibility - check if there's full content available
+          const fullContent = previewData.hasFullContent 
+            ? (previewData as unknown as { fullContent: string }).fullContent
+            : undefined;
+            
+          this.previewManager.createPreview(
+            execution.sessionId,
+            executionId,
+            previewData.contentType,
+            previewData.briefContent,
+            fullContent,
+            previewData.metadata
+          );
+        })
+        .catch(error => {
+          serverLogger.error(`Error generating preview for ${executionId}:`, error);
+        });
+    } catch (error) {
+      serverLogger.error(`Error in generateToolExecutionPreview:`, error);
+    }
+  }
+  
+  /**
+   * Generate a preview for a permission request
+   */
+  private generatePermissionPreview(
+    executionId: string,
+    toolId: string,
+    args: Record<string, unknown>
+  ): void {
+    try {
+      // Get the execution and permission from the manager
+      const execution = this.toolExecutionManager.getExecution(executionId);
+      if (!execution) {
+        serverLogger.warn(`No execution found for permission preview: ${executionId}`);
+        return;
+      }
+      
+      const permission = this.toolExecutionManager.getPermissionRequestForExecution(executionId);
+      if (!permission) {
+        serverLogger.warn(`No permission found for execution: ${executionId}`);
+        return;
+      }
+      
+      // Use the existing previewService to generate the preview
+      const toolInfo = {
+        id: toolId,
+        name: execution.toolName
+      };
+      
+      // Generate the permission preview
+      const previewData = previewService.generatePermissionPreview(toolInfo, args);
+      if (!previewData) return;
+      
+      // Create a preview in the manager
+      // For TypeScript compatibility - check if there's full content available
+      const fullContent = previewData.hasFullContent 
+        ? (previewData as unknown as { fullContent: string }).fullContent
+        : undefined;
+        
+      this.previewManager.createPermissionPreview(
+        execution.sessionId,
+        executionId,
+        permission.id,
+        previewData.contentType,
+        previewData.briefContent,
+        fullContent,
+        previewData.metadata
+      );
+    } catch (error) {
+      serverLogger.error(`Error in generatePermissionPreview:`, error);
+    }
   }
 
   /**
@@ -603,17 +1087,38 @@ export class AgentService extends EventEmitter {
       abortTimestamp
     });
     
-    // For each active tool, emit a tool abortion event
+    // For each active tool, mark it as aborted in the manager and emit an event
     for (const tool of activeTools) {
-      this.emit(AgentServiceEvent.TOOL_EXECUTION_ABORTED, {
-        sessionId,
-        tool: {
-          id: tool.toolId,
-          name: tool.name,
-        },
-        timestamp: new Date().toISOString(),
-        abortTimestamp
-      });
+      if (tool.executionId) {
+        try {
+          // Abort the execution in the manager (this will emit events)
+          this.toolExecutionManager.abortExecution(tool.executionId);
+        } catch (error) {
+          // If abortion in manager fails, fall back to old behavior
+          serverLogger.warn(`Failed to abort tool execution ${tool.executionId}: ${(error as Error).message}`);
+          this.emit(AgentServiceEvent.TOOL_EXECUTION_ABORTED, {
+            sessionId,
+            tool: {
+              id: tool.toolId,
+              name: tool.name,
+              executionId: tool.executionId
+            },
+            timestamp: new Date().toISOString(),
+            abortTimestamp
+          });
+        }
+      } else {
+        // Emit the old-style event if we don't have an execution ID
+        this.emit(AgentServiceEvent.TOOL_EXECUTION_ABORTED, {
+          sessionId,
+          tool: {
+            id: tool.toolId,
+            name: tool.name,
+          },
+          timestamp: new Date().toISOString(),
+          abortTimestamp
+        });
+      }
     }
 
     return true;
@@ -670,7 +1175,7 @@ export class AgentService extends EventEmitter {
   /**
    * Get active tools for a session
    */
-  public getActiveTools(sessionId: string): Array<{toolId: string; name: string; startTime: Date; paramSummary: string}> {
+  public getActiveTools(sessionId: string): ActiveTool[] {
     return this.activeTools.get(sessionId) || [];
   }
   
@@ -679,6 +1184,20 @@ export class AgentService extends EventEmitter {
    */
   public getToolArgs(sessionId: string, toolId: string): Record<string, unknown> | undefined {
     return this.activeToolArgs.get(`${sessionId}:${toolId}`);
+  }
+  
+  /**
+   * Get all tool executions for a session
+   */
+  public getToolExecutionsForSession(sessionId: string): ToolExecutionState[] {
+    return this.toolExecutionManager.getExecutionsForSession(sessionId);
+  }
+  
+  /**
+   * Get a specific tool execution
+   */
+  public getToolExecution(executionId: string): ToolExecutionState | undefined {
+    return this.toolExecutionManager.getExecution(executionId);
   }
   
   /**
