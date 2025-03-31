@@ -82,18 +82,15 @@ describe('ToolVisualization', () => {
     expect(screen.getByText('File not found')).toBeInTheDocument();
   });
   
-  it('toggles expanded parameters when clicked', () => {
-    const toggleMock = vi.fn();
+  it('shows tool description', () => {
     const { getByText } = render(
       <ToolVisualization 
-        tool={mockCompletedTool} 
-        onToggleExpand={toggleMock} 
+        tool={mockCompletedTool}
       />
     );
     
-    // Click to expand
-    getByText('command: ls -la').click();
-    expect(toggleMock).toHaveBeenCalledTimes(1);
+    // Check description is shown
+    expect(getByText('command: ls -la')).toBeInTheDocument();
   });
   
   it('renders with compact property if provided', () => {

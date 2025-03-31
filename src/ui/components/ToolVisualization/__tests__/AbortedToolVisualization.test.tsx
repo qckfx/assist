@@ -31,7 +31,6 @@ describe('ToolVisualization Abort State', () => {
           },
           startTime: Date.now() // Required property
         }}
-        sessionId="test-session-id"
       />
     );
     
@@ -53,7 +52,6 @@ describe('ToolVisualization Abort State', () => {
           startTime: Date.now(), // Required property
           status: 'aborted' // Change the status to aborted to match our updated component
         }}
-        sessionId="test-session-id"
       />
     );
     
@@ -72,7 +70,6 @@ describe('ToolVisualization Abort State', () => {
           startTime: Date.now(), // Required property
           status: 'running'
         }}
-        sessionId="test-session-id"
       />
     );
     

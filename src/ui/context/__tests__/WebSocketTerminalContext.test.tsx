@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, renderHook, screen } from '@testing-library/react';
 import { ConnectionStatus } from '@/types/api';
 import React from 'react';
+import { PreviewMode } from '../../../types/preview';
 
 // Mock the SocketConnectionManager from the websocket utils
 vi.mock('@/utils/websocket', () => {
@@ -159,6 +160,7 @@ vi.mocked(useTerminal).mockReturnValue({
     },
     typingIndicator: false,
     streamBuffer: [],
+    previewPreferences: { defaultViewMode: PreviewMode.BRIEF, persistPreference: false },
   },
   dispatch: vi.fn(),
   addMessage: vi.fn(),

@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { EnvironmentConnectionIndicator } from '../EnvironmentConnectionIndicator';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { useExecutionEnvironment } from '../../hooks/useExecutionEnvironment';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock the hooks
 vi.mock('../../hooks/useConnectionStatus');
@@ -13,8 +14,14 @@ describe('EnvironmentConnectionIndicator', () => {
   beforeEach(() => {
     vi.mocked(useConnectionStatus).mockReturnValue({
       status: 'connected',
+      reconnectAttempts: 0,
+      isConnected: true,
+      isConnecting: false,
+      isDisconnected: false,
+      hasError: false,
       error: null,
-      connect: vi.fn(),
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
     });
     
     vi.mocked(useExecutionEnvironment).mockReturnValue({
@@ -63,8 +70,14 @@ describe('EnvironmentConnectionIndicator', () => {
   it('should show disconnected status correctly', () => {
     vi.mocked(useConnectionStatus).mockReturnValue({
       status: 'disconnected',
+      reconnectAttempts: 0,
+      isConnected: false,
+      isConnecting: false,
+      isDisconnected: true,
+      hasError: false,
       error: null,
-      connect: vi.fn(),
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
     });
     
     render(<EnvironmentConnectionIndicator />);
@@ -77,8 +90,14 @@ describe('EnvironmentConnectionIndicator', () => {
   it('should show error status correctly', () => {
     vi.mocked(useConnectionStatus).mockReturnValue({
       status: 'error',
-      error: { message: 'Connection failed' },
-      connect: vi.fn(),
+      reconnectAttempts: 3,
+      isConnected: false,
+      isConnecting: false,
+      isDisconnected: false,
+      hasError: true,
+      error: new Error('Connection failed'),
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
     });
     
     render(<EnvironmentConnectionIndicator />);

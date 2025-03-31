@@ -110,13 +110,12 @@ describe('ToolVisualization Visual Tests', () => {
     expect(toolElement?.textContent).toContain('BashTool');
   });
   
-  it('renders expanded parameters when showExpandedParams is true', () => {
+  it('renders parameters with proper formatting', () => {
     const { container } = render(
-      <ToolVisualization tool={mockRunningTool} showExpandedParams={true} />
+      <ToolVisualization tool={mockRunningTool} />
     );
     
-    // Check that there's a div with whitespace-pre-wrap class for expanded params
-    const expandedElement = container.querySelector('.whitespace-pre-wrap');
-    expect(expandedElement).toBeInTheDocument();
+    // Check that the description is shown
+    expect(container.textContent).toContain('pattern: **/*.ts');
   });
 });
