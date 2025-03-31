@@ -99,7 +99,7 @@ jest.mock('../utils', () => ({
 jest.mock('../services/WebSocketService', () => {
   return {
     WebSocketService: {
-      getInstance: jest.fn().mockImplementation(() => ({
+      create: jest.fn().mockImplementation(() => ({
         close: jest.fn().mockResolvedValue(undefined)
       }))
     }

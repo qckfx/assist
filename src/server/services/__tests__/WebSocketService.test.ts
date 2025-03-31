@@ -88,7 +88,7 @@ describe('WebSocketService', () => {
     };
 
     // Initialize the WebSocketService
-    webSocketService = WebSocketService.getInstance(httpServer);
+    webSocketService = WebSocketService.create(httpServer);
     
     // Use type assertion here to access private members for testing
     // TypeScript won't allow this normally, but it's a common pattern in testing
@@ -107,10 +107,11 @@ describe('WebSocketService', () => {
     jest.clearAllMocks();
   });
 
-  it('should be a singleton', () => {
-    const instance1 = WebSocketService.getInstance();
-    const instance2 = WebSocketService.getInstance();
-    expect(instance1).toBe(instance2);
+  it('should create independent instances', () => {
+    const instance1 = WebSocketService.create(httpServer);
+    const instance2 = WebSocketService.create(httpServer);
+    // We no longer expect them to be the same instance
+    expect(instance1).not.toBe(instance2);
   });
 
   it('should expose expected methods and properties', () => {
