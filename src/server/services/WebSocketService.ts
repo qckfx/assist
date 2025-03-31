@@ -416,12 +416,15 @@ export class WebSocketService {
         }
         
         // Remove from active tools
-        const activeToolData = this.activeTools.get(sessionId)?.get(tool.id);
-        this.activeTools.get(sessionId)?.delete(tool.id);
-        
-        // Clean up empty maps
-        if (this.activeTools.get(sessionId)?.size === 0) {
-          this.activeTools.delete(sessionId);
+        const sessionTools = this.activeTools.get(sessionId);
+        const activeToolData = sessionTools?.get(tool.id);
+        if (sessionTools) {
+          sessionTools.delete(tool.id);
+          
+          // Clean up empty maps
+          if (sessionTools.size === 0) {
+            this.activeTools.delete(sessionId);
+          }
         }
         
         // Forward the event to clients with preview data if available
@@ -446,12 +449,15 @@ export class WebSocketService {
     this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_ERROR, 
       async ({ sessionId, tool, error, paramSummary, timestamp }) => {
         // Remove from active tools
-        const activeToolData = this.activeTools.get(sessionId)?.get(tool.id);
-        this.activeTools.get(sessionId)?.delete(tool.id);
-        
-        // Clean up empty maps
-        if (this.activeTools.get(sessionId)?.size === 0) {
-          this.activeTools.delete(sessionId);
+        const sessionTools = this.activeTools.get(sessionId);
+        const activeToolData = sessionTools?.get(tool.id);
+        if (sessionTools) {
+          sessionTools.delete(tool.id);
+          
+          // Clean up empty maps
+          if (sessionTools.size === 0) {
+            this.activeTools.delete(sessionId);
+          }
         }
         
         // Create error preview data using the PreviewService
@@ -483,12 +489,15 @@ export class WebSocketService {
     // Tool execution aborted
     this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_ABORTED, ({ sessionId, tool, timestamp, abortTimestamp }) => {
       // Remove from active tools
-      const activeToolData = this.activeTools.get(sessionId)?.get(tool.id);
-      this.activeTools.get(sessionId)?.delete(tool.id);
-      
-      // Clean up empty maps
-      if (this.activeTools.get(sessionId)?.size === 0) {
-        this.activeTools.delete(sessionId);
+      const sessionTools = this.activeTools.get(sessionId);
+      const activeToolData = sessionTools?.get(tool.id);
+      if (sessionTools) {
+        sessionTools.delete(tool.id);
+        
+        // Clean up empty maps
+        if (sessionTools.size === 0) {
+          this.activeTools.delete(sessionId);
+        }
       }
       
       // Forward the event to clients

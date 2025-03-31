@@ -9,6 +9,7 @@ interface MockApp {
   use: jest.Mock;
   get: jest.Mock;
   listen: jest.Mock;
+  locals?: Record<string, unknown>;
 }
 
 interface MockServer {
@@ -45,10 +46,11 @@ jest.mock('http', () => {
 // Mock dependencies
 jest.mock('express', () => {
   // Create a mock app
-  const mockApp: MockApp = {
+  const mockApp: MockApp & { locals: Record<string, unknown> } = {
     use: jest.fn().mockReturnThis(),
     get: jest.fn().mockReturnThis(),
     listen: jest.fn(() => mockServer),
+    locals: {} // Add locals property to the mock app
   };
   
   // Mock app.listen to immediately call its callback
