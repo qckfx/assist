@@ -50,10 +50,9 @@ export function MessageFeed({
 }: MessageFeedProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Auto-scroll effect for new messages only, not for tool state changes
+  // Auto-scroll effect for new messages and new tool executions
   useEffect(() => {
-    // Only auto-scroll when message count changes (new messages)
-    // Not when tools change state or view mode
+    // Scroll on changes to message count or tool execution count
     if (autoScroll && messagesEndRef.current) {
       // Check if scrollIntoView is available (for JSDOM in tests)
       if (typeof messagesEndRef.current.scrollIntoView === 'function') {
@@ -61,7 +60,7 @@ export function MessageFeed({
         messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
       }
     }
-  }, [messages.length, autoScroll]);
+  }, [messages.length, Object.keys(toolExecutions).length, autoScroll]);
 
   // Process tools and messages together in a timeline
   const getTimelinedItems = () => {
