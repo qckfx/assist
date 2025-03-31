@@ -19,6 +19,7 @@ import { useFastEditModeKeyboardShortcut } from '@/hooks/useFastEditModeKeyboard
 import { FastEditModeIndicator } from '@/components/FastEditModeIndicator';
 // We'll use this component in the future
 import _ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
+import { PreviewMode } from '../../../types/preview';
 
 export interface TerminalProps {
   className?: string;
@@ -76,8 +77,17 @@ export function Terminal({
     input: generateAriaId('terminal-input'),
   });
   
-  // Initialize the tool stream hook to get active tool information
-  const { getActiveTools, getRecentTools, hasActiveTools, toolHistory, activeToolCount } = useToolStream();
+  // Initialize the tool stream hook to get active tool information and view mode handling
+  const { 
+    getActiveTools, 
+    getRecentTools, 
+    hasActiveTools, 
+    toolHistory, 
+    activeToolCount,
+    setToolViewMode,
+    setDefaultViewMode, 
+    defaultViewMode
+  } = useToolStream();
   
   // Use provided theme or get from context
   const terminalContext = useTerminal();
@@ -217,6 +227,19 @@ export function Terminal({
   // Register Fast Edit Mode keyboard shortcut (Shift+Tab)
   useFastEditModeKeyboardShortcut(sessionId, !inputDisabled);
 
+  // Handle tool view mode changes
+  const handleViewModeChange = React.useCallback((toolId: string, mode: PreviewMode) => {
+    setToolViewMode(toolId, mode);
+    
+    // If the user expanded a tool, set brief as default for future tools
+    // If the user collapsed a tool, set retracted as default for future tools
+    if (mode === PreviewMode.COMPLETE || mode === PreviewMode.BRIEF) {
+      setDefaultViewMode(PreviewMode.BRIEF);
+    } else if (mode === PreviewMode.RETRACTED) {
+      setDefaultViewMode(PreviewMode.RETRACTED);
+    }
+  }, [setToolViewMode, setDefaultViewMode]);
+
   return (
     <div
       ref={terminalRef}
@@ -350,6 +373,8 @@ export function Terminal({
                 toolExecutions={showToolVisualizations ? toolMap : {}}
                 showToolsInline={showToolVisualizations}
                 isDarkTheme={shouldUseDarkTerminal}
+                onToolViewModeChange={handleViewModeChange}
+                defaultToolViewMode={defaultViewMode}
               />
             );
           })()}

@@ -148,6 +148,9 @@ export function useToolStream() {
     toolExecutions: Record<string, ToolExecution>;
     activeToolCount: number;
     toolHistory: ToolExecution[];
+    // Add view mode preferences
+    viewModes: Record<string, PreviewMode>;
+    defaultViewMode: PreviewMode;
   }>({
     results: {},
     activeTools: {},
@@ -156,6 +159,9 @@ export function useToolStream() {
     toolExecutions: {},
     activeToolCount: 0,
     toolHistory: [],
+    // Initialize view modes
+    viewModes: {},
+    defaultViewMode: PreviewMode.BRIEF,
   });
   
   // Create a buffer for batched updates
@@ -990,6 +996,8 @@ export function useToolStream() {
       toolExecutions: {},
       activeToolCount: 0,
       toolHistory: [],
+      viewModes: {},
+      defaultViewMode: PreviewMode.BRIEF,
     });
     setToolBuffers({});
   }, []);
@@ -1006,9 +1014,12 @@ export function useToolStream() {
         // Include both running tools and tools awaiting permission
         tool.status === 'running' || tool.status === 'awaiting-permission'
       )
-      .map(([, tool]) => tool);
+      .map(([id, tool]) => ({
+        ...tool,
+        viewMode: state.viewModes[id] || state.defaultViewMode
+      }));
     return tools;
-  }, [state.toolExecutions]);
+  }, [state.toolExecutions, state.viewModes, state.defaultViewMode]);
 
   // Utility method to get all completed tools from the history
   const getRecentTools = useCallback((count = 1000) => {
@@ -1017,15 +1028,46 @@ export function useToolStream() {
         // Exclude running and awaiting-permission tools which are already in active
         tool.status !== 'running' && tool.status !== 'awaiting-permission'
       )
+      .map(tool => ({
+        ...tool,
+        viewMode: state.viewModes[tool.id] || state.defaultViewMode
+      }))
       .reverse();
     // If a count limit is provided, respect it
     return count && count < tools.length ? tools.slice(0, count) : tools;
-  }, [state.toolHistory]);
+  }, [state.toolHistory, state.viewModes, state.defaultViewMode]);
 
   // Utility method to get a specific tool execution by ID
   const getToolExecutionById = useCallback((toolId: string) => {
-    return state.toolExecutions[toolId];
-  }, [state.toolExecutions]);
+    const tool = state.toolExecutions[toolId];
+    
+    if (!tool) return undefined;
+    
+    // Attach view mode to the tool
+    return {
+      ...tool,
+      viewMode: state.viewModes[toolId] || state.defaultViewMode
+    };
+  }, [state.toolExecutions, state.viewModes, state.defaultViewMode]);
+
+  // Add method to update view mode
+  const setToolViewMode = useCallback((toolId: string, mode: PreviewMode) => {
+    setState(prev => ({
+      ...prev,
+      viewModes: {
+        ...prev.viewModes,
+        [toolId]: mode
+      }
+    }));
+  }, []);
+  
+  // Add method to set default view mode for all tools
+  const setDefaultViewMode = useCallback((mode: PreviewMode) => {
+    setState(prev => ({
+      ...prev,
+      defaultViewMode: mode
+    }));
+  }, []);
 
   return {
     state,
@@ -1043,6 +1085,10 @@ export function useToolStream() {
     hasActiveTools: state.activeToolCount > 0,
     activeToolCount: state.activeToolCount,
     toolHistory: state.toolHistory,
+    // Add view mode controls
+    setToolViewMode,
+    setDefaultViewMode,
+    defaultViewMode: state.defaultViewMode,
   };
 }
 

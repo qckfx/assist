@@ -31,6 +31,8 @@ export interface MessageFeedProps {
   ariaLabelledBy?: string;
   showToolsInline?: boolean;
   isDarkTheme?: boolean; // Add terminal theme property
+  onToolViewModeChange?: (toolId: string, mode: unknown) => void;
+  defaultToolViewMode?: unknown;
 }
 
 export function MessageFeed({
@@ -41,7 +43,9 @@ export function MessageFeed({
   enableAnsiColors = true,
   ariaLabelledBy,
   showToolsInline = true,
-  isDarkTheme = false // Default to light theme
+  isDarkTheme = false, // Default to light theme
+  onToolViewModeChange,
+  defaultToolViewMode
 }: MessageFeedProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -161,6 +165,8 @@ export function MessageFeed({
               compact={true} // Always use compact view
               className="mx-0" // Remove horizontal margin
               isDarkTheme={isDarkTheme} // Pass terminal theme
+              defaultViewMode={defaultToolViewMode}
+              onViewModeChange={onToolViewModeChange}
             />
           </div>
         );

@@ -16,16 +16,19 @@ export function ToolVisualizations({
   className,
   maxVisible = 3,
   compact = false,
-  sessionId,
+  // Unused props
+  sessionId: _sessionId,
 }: ToolVisualizationsProps) {
-  const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
+  // This state is not currently used but kept for future expansion
+  const [_expandedTools, _setExpandedTools] = useState<Record<string, boolean>>({});
   
   // Show only the first maxVisible tools if there are more
   const visibleTools = tools.slice(0, maxVisible);
   const hiddenCount = Math.max(0, tools.length - maxVisible);
   
-  const toggleExpand = (toolId: string) => {
-    setExpandedTools(prev => ({
+  // This function is not currently used but kept for future expansion
+  const _toggleExpand = (toolId: string) => {
+    _setExpandedTools(prev => ({
       ...prev,
       [toolId]: !prev[toolId],
     }));
@@ -42,9 +45,7 @@ export function ToolVisualizations({
           key={tool.id}
           tool={tool}
           compact={compact}
-          showExpandedParams={expandedTools[tool.id]}
-          onToggleExpand={() => toggleExpand(tool.id)}
-          sessionId={sessionId}
+          isDarkTheme={false}
         />
       ))}
       
