@@ -25,8 +25,8 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
     // Get the agent service
     const agentService = getAgentService();
     
-    // Create a new session
-    const session = agentService.startSession(body.config);
+    // Create a new session - now awaiting to ensure container is initialized
+    const session = await agentService.startSession(body.config);
     
     // Return the session info
     res.status(201).json({

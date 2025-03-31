@@ -137,11 +137,11 @@ export class AgentService extends EventEmitter {
   /**
    * Start a session with optional configuration
    */
-  public startSession(config?: { 
+  public async startSession(config?: { 
     model?: string; 
     executionAdapterType?: 'local' | 'docker' | 'e2b';
     e2bSandboxId?: string;
-  }): Session {
+  }): Promise<Session> {
     // Create a new session
     const session = sessionManager.createSession();
     
@@ -154,13 +154,17 @@ export class AgentService extends EventEmitter {
       this.setE2BSandboxId(session.id, config.e2bSandboxId);
     }
     
-    // Create the execution adapter asynchronously
-    this.createExecutionAdapterForSession(session.id, {
-      type: adapterType,
-      e2bSandboxId: config?.e2bSandboxId
-    }).catch(error => {
+    // Create the execution adapter eagerly (synchronously before returning)
+    serverLogger.info(`Eagerly creating ${adapterType} execution adapter for session ${session.id}`);
+    try {
+      await this.createExecutionAdapterForSession(session.id, {
+        type: adapterType,
+        e2bSandboxId: config?.e2bSandboxId
+      });
+      serverLogger.info(`Docker container initialization completed for session ${session.id}`);
+    } catch (error) {
       serverLogger.error(`Failed to create execution adapter for session ${session.id}`, error);
-    });
+    }
     
     return session;
   }
