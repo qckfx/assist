@@ -18,6 +18,17 @@ jest.mock('../AgentService', () => {
   // Add methods
   mockAgentService.getPermissionRequests = jest.fn().mockReturnValue([]);
   mockAgentService.getToolArgs = jest.fn().mockReturnValue({});
+  mockAgentService.getToolExecution = jest.fn().mockImplementation((executionId) => ({
+    id: executionId || 'mock-execution-id',
+    sessionId: 'test-session-id',
+    toolId: 'file_read',
+    toolName: 'File Read',
+    status: 2, // RUNNING
+    args: {},
+    startTime: new Date().toISOString(),
+    summary: 'test parameter summary'
+  }));
+  mockAgentService.getToolExecutionsForSession = jest.fn().mockReturnValue([]);
   
   // Initialize the event emitter
   EventEmitter.call(mockAgentService);

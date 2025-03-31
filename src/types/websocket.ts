@@ -31,3 +31,59 @@ export enum WebSocketEvent {
   TOOL_STATE_UPDATE = 'tool_state_update',
   TOOL_HISTORY = 'tool_history',
 }
+
+/**
+ * Extended event map to include the new event data types
+ */
+export interface WebSocketEventMap {
+  // Existing event mappings go here (they're defined in another file or are inferred)
+  
+  // New events
+  [WebSocketEvent.TOOL_STATE_UPDATE]: {
+    sessionId: string;
+    tool: {
+      id: string;
+      tool: string;
+      toolName: string;
+      status: string;
+      args: Record<string, unknown>;
+      startTime: number;
+      endTime?: number;
+      executionTime?: number;
+      paramSummary?: string;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+      permissionId?: string;
+      preview?: {
+        contentType: string;
+        briefContent: string;
+        fullContent?: string;
+        metadata?: Record<string, unknown>;
+      };
+    };
+  };
+  
+  [WebSocketEvent.TOOL_HISTORY]: {
+    sessionId: string;
+    tools: Array<{
+      id: string;
+      tool: string;
+      toolName: string;
+      status: string;
+      args: Record<string, unknown>;
+      startTime: number;
+      endTime?: number;
+      executionTime?: number;
+      paramSummary?: string;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+      permissionId?: string;
+      preview?: {
+        contentType: string;
+        briefContent: string;
+        fullContent?: string;
+        metadata?: Record<string, unknown>;
+      };
+    }>;
+  };
+}
