@@ -22,7 +22,8 @@ export enum PreviewContentType {
   DIRECTORY = 'directory',
   JSON = 'json',
   IMAGE = 'image',
-  BINARY = 'binary'
+  BINARY = 'binary',
+  ERROR = 'error'
 }
 
 /**
@@ -116,4 +117,18 @@ export interface BinaryPreviewData extends ToolPreviewData {
   mimeType?: string;
   size: number;
   hexDump?: string; // Hex representation of first few bytes
+}
+
+/**
+ * Error data preview
+ */
+export interface ErrorPreviewData extends ToolPreviewData {
+  contentType: PreviewContentType.ERROR;
+  briefContent: string; // Error message
+  fullContent?: string; // Full error stack
+  metadata: {
+    errorName: string;
+    errorType: string;
+    [key: string]: unknown;
+  };
 }

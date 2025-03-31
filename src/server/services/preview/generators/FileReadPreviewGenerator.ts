@@ -2,7 +2,7 @@
  * Preview generator for file read operations
  */
 
-import { Tool, ToolCategory } from '../../../../types/tool';
+import { ToolInfo } from '../PreviewService';
 import { 
   ToolPreviewData, 
   PreviewContentType,
@@ -61,7 +61,7 @@ export class FileReadPreviewGenerator extends PreviewGenerator {
    * Generate preview for file read results
    */
   async generatePreview(
-    tool: Tool,
+    tool: ToolInfo,
     args: Record<string, unknown>,
     result: unknown,
     options?: PreviewOptions
@@ -75,14 +75,22 @@ export class FileReadPreviewGenerator extends PreviewGenerator {
         return null;
       }
       
-      // Access properties safely
-      const resultAsAny = result as Record<string, unknown>;
-      const filePath = args.file_path as string || args.path as string || resultAsAny.path || '';
+      // Access properties safely with type casting
+      const resultObj = result as { 
+        success?: boolean;
+        error?: string;
+        path?: string;
+        content?: string;
+        lineCount?: number;
+        size?: number; 
+      };
+      
+      const filePath = args.file_path as string || args.path as string || resultObj.path || '';
       
       // Handle both success and failure cases
-      if ('success' in result && !result.success) {
+      if ('success' in result && resultObj.success === false) {
         // Error result case
-        const errorMessage = resultAsAny.error || 'Unknown error';
+        const errorMessage = resultObj.error || 'Unknown error';
         return this.createBasicPreview(
           PreviewContentType.TEXT,
           `Error reading file: ${errorMessage}`,
@@ -96,8 +104,8 @@ export class FileReadPreviewGenerator extends PreviewGenerator {
       }
       
       // Success case
-      const content = resultAsAny.content || '';
-      const lineCount = resultAsAny.lineCount || content.split('\n').length;
+      const content = typeof resultObj.content === 'string' ? resultObj.content : '';
+      const lineCount = resultObj.lineCount || (content ? content.split('\n').length : 0);
       
       // Determine if this is code or text based on file extension
       const isCode = this.isCodeFile(filePath);
@@ -116,7 +124,7 @@ export class FileReadPreviewGenerator extends PreviewGenerator {
           filePath,
           metadata: {
             fileName: path.basename(filePath),
-            fileSize: resultAsAny.size || content.length,
+            fileSize: typeof resultObj.size === 'number' ? resultObj.size : content.length,
             lineCount
           }
         };
@@ -137,7 +145,7 @@ export class FileReadPreviewGenerator extends PreviewGenerator {
           isTruncated: content.length > briefContent.length,
           metadata: {
             fileName: path.basename(filePath),
-            fileSize: resultAsAny.size || content.length,
+            fileSize: typeof resultObj.size === 'number' ? resultObj.size : content.length,
             lineCount
           }
         };
@@ -158,32 +166,14 @@ export class FileReadPreviewGenerator extends PreviewGenerator {
   /**
    * Check if this generator can handle the tool and result
    */
-  canHandle(tool: Tool, result: unknown): boolean {
-    // Check if tool is in the right category
-    const isReadTool = tool.category === ToolCategory.READONLY || 
-                       (Array.isArray(tool.category) && 
-                        tool.category.includes(ToolCategory.READONLY));
-    
+  canHandle(tool: ToolInfo, result: unknown): boolean {
     // Check for known file read tool IDs
-    const isFileReadId = 
-      tool.id === 'FileReadTool' || 
-      tool.id === 'View' || 
-      tool.id.includes('file_read') ||
-      tool.id.includes('read_file');
+    const isFileReadId = tool.id === 'file_read';
     
     // Check result format
     const hasValidResult = this.isFileReadResult(result);
     
-    // Special case for test: if the tool's category was explicitly changed
-    // to SHELL_EXECUTION, we shouldn't handle it even if the ID matches
-    if (tool.category === ToolCategory.SHELL_EXECUTION ||
-        (Array.isArray(tool.category) && 
-         tool.category.includes(ToolCategory.SHELL_EXECUTION) &&
-         !tool.category.includes(ToolCategory.READONLY))) {
-      return false;
-    }
-    
-    return (isReadTool || isFileReadId) && hasValidResult;
+    return isFileReadId && hasValidResult;
   }
   
   /**

@@ -1,7 +1,8 @@
 import { createServer, Server as HTTPServer } from 'http';
 import { AddressInfo } from 'net';
 import { Socket as ClientSocket } from 'socket.io-client';
-import { WebSocketService, WebSocketEvent } from '../WebSocketService';
+import { WebSocketService } from '../WebSocketService'; 
+import { WebSocketEvent } from '../../../types/websocket';
 import { AgentServiceEvent, getAgentService } from '../AgentService';
 // We don't need to import EventEmitter since we get it from requireActual
 

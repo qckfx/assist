@@ -111,6 +111,7 @@ jest.mock('../logger', () => ({
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
+    debug: jest.fn(), // Add the debug method that's used in PreviewGeneratorRegistry
   },
 }));
 

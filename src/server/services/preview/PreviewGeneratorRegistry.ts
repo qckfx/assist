@@ -2,9 +2,9 @@
  * Registry for preview generators
  */
 
-import { Tool } from '../../../types/tool';
 import { ToolPreviewData } from '../../../types/preview';
-import { PreviewGenerator, PreviewOptions } from './PreviewGenerator';
+import { PreviewGenerator } from './PreviewGenerator';
+import { PreviewOptions, ToolInfo } from './PreviewService';
 import { serverLogger } from '../../logger';
 
 export class PreviewGeneratorRegistry {
@@ -19,16 +19,16 @@ export class PreviewGeneratorRegistry {
   }
   
   /**
-   * Find the appropriate generator for a tool and result
+   * Find the appropriate generator for a tool info and result
    */
-  findGenerator(tool: Tool, result: unknown): PreviewGenerator | null {
+  findGenerator(toolInfo: ToolInfo, result: unknown): PreviewGenerator | null {
     for (const generator of this.generators) {
-      if (generator.canHandle(tool, result)) {
+      if (generator.canHandle(toolInfo, result)) {
         return generator;
       }
     }
     
-    serverLogger.debug(`No preview generator found for tool: ${tool.id}`);
+    serverLogger.debug(`No preview generator found for tool: ${toolInfo.id}`);
     return null;
   }
   
@@ -36,18 +36,18 @@ export class PreviewGeneratorRegistry {
    * Generate a preview for a tool execution result
    */
   async generatePreview(
-    tool: Tool,
+    toolInfo: ToolInfo,
     args: Record<string, unknown>,
     result: unknown,
     options?: PreviewOptions
   ): Promise<ToolPreviewData | null> {
     try {
-      const generator = this.findGenerator(tool, result);
+      const generator = this.findGenerator(toolInfo, result);
       if (!generator) return null;
       
-      return await generator.generatePreview(tool, args, result, options);
+      return await generator.generatePreview(toolInfo, args, result, options);
     } catch (error) {
-      serverLogger.error(`Error generating preview for tool ${tool.id}:`, error);
+      serverLogger.error(`Error generating preview for tool ${toolInfo.id}:`, error);
       return null;
     }
   }

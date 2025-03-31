@@ -86,6 +86,7 @@ export class AgentService extends EventEmitter {
   private activeTools: Map<string, Array<{toolId: string; name: string; startTime: Date; paramSummary: string}>> = new Map();
   private sessionExecutionAdapterTypes: Map<string, 'local' | 'docker' | 'e2b'> = new Map();
   private sessionE2BSandboxIds: Map<string, string> = new Map();
+  private activeToolArgs = new Map<string, Record<string, unknown>>();
   
   /**
    * Creates a concise summary of tool arguments for display
@@ -295,6 +296,9 @@ export class AgentService extends EventEmitter {
         const paramSummary = this.summarizeToolParameters(toolId, args);
         const startTime = new Date();
         
+        // Store the arguments in the active tools map for later use by preview generators
+        this.activeToolArgs.set(`${sessionId}:${toolId}`, args);
+        
         // Track this tool as active
         if (!this.activeTools.has(sessionId)) {
           this.activeTools.set(sessionId, []);
@@ -331,6 +335,9 @@ export class AgentService extends EventEmitter {
           this.activeTools.set(sessionId, updatedTools);
         }
         
+        // Clean up stored arguments after tool completion
+        this.activeToolArgs.delete(`${sessionId}:${toolId}`);
+        
         // Emit the standard tool execution event for consistency
         this.emit(AgentServiceEvent.TOOL_EXECUTION, { 
           sessionId,
@@ -366,6 +373,9 @@ export class AgentService extends EventEmitter {
           const updatedTools = activeTools.filter(t => t.toolId !== toolId);
           this.activeTools.set(sessionId, updatedTools);
         }
+        
+        // Clean up stored arguments on error too
+        this.activeToolArgs.delete(`${sessionId}:${toolId}`);
         
         this.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, {
           sessionId,
@@ -632,6 +642,13 @@ export class AgentService extends EventEmitter {
   }
   
   /**
+   * Get the arguments for a tool execution
+   */
+  public getToolArgs(sessionId: string, toolId: string): Record<string, unknown> | undefined {
+    return this.activeToolArgs.get(`${sessionId}:${toolId}`);
+  }
+  
+  /**
    * Set the execution adapter type for a session
    */
   public setExecutionAdapterType(sessionId: string, type: 'local' | 'docker' | 'e2b'): boolean {
@@ -714,6 +731,7 @@ export class AgentService extends EventEmitter {
       return undefined;
     }
   }
+  
   
   /**
    * Create an execution adapter for a session with the specified type

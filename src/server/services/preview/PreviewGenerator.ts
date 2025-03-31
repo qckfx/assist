@@ -2,8 +2,14 @@
  * Base class for tool output preview generators
  */
 
-import { Tool } from '../../../types/tool';
+// No need to import ToolCategory
 import { ToolPreviewData, PreviewContentType } from '../../../types/preview';
+
+// Import the ToolInfo interface from PreviewService
+import { ToolInfo } from './PreviewService';
+
+// Re-export ToolInfo for backward compatibility
+export { ToolInfo };
 
 export interface PreviewOptions {
   maxBriefLines?: number;
@@ -26,16 +32,16 @@ export abstract class PreviewGenerator {
    * Generate a preview for a tool execution result
    */
   abstract generatePreview(
-    tool: Tool,
+    toolInfo: ToolInfo,
     args: Record<string, unknown>,
     result: unknown,
     options?: PreviewOptions
   ): Promise<ToolPreviewData | null>;
   
   /**
-   * Check if this generator can handle the given tool and result
+   * Check if this generator can handle the given tool info and result
    */
-  abstract canHandle(tool: Tool, result: unknown): boolean;
+  abstract canHandle(toolInfo: ToolInfo, result: unknown): boolean;
   
   /**
    * Helper to create a basic preview object

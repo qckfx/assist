@@ -3,34 +3,9 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { AgentService, AgentServiceEvent, getAgentService } from './AgentService';
 import { SessionManager, sessionManager } from './SessionManager';
 import { serverLogger } from '../logger';
-
-/**
- * Event types for WebSocket communication
- */
-export enum WebSocketEvent {
-  CONNECT = 'connect',
-  DISCONNECT = 'disconnect',
-  ERROR = 'error',
-  JOIN_SESSION = 'join_session',
-  LEAVE_SESSION = 'leave_session',
-  PROCESSING_STARTED = 'processing_started',
-  PROCESSING_COMPLETED = 'processing_completed',
-  PROCESSING_ERROR = 'processing_error',
-  PROCESSING_ABORTED = 'processing_aborted',
-  TOOL_EXECUTION = 'tool_execution',
-  TOOL_EXECUTION_BATCH = 'tool_execution_batch',
-  TOOL_EXECUTION_STARTED = 'tool_execution_started',
-  TOOL_EXECUTION_COMPLETED = 'tool_execution_completed',
-  TOOL_EXECUTION_ERROR = 'tool_execution_error',
-  TOOL_EXECUTION_ABORTED = 'tool_execution_aborted',
-  PERMISSION_REQUESTED = 'permission_requested',
-  PERMISSION_RESOLVED = 'permission_resolved',
-  PERMISSION_TIMEOUT = 'permission_timeout',
-  SESSION_UPDATED = 'session_updated',
-  STREAM_CONTENT = 'stream_content',
-  FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
-  FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
-}
+import { previewService } from './preview';
+import { ToolPreviewData } from '../../types/preview';
+import { WebSocketEvent } from '../../types/websocket';
 
 /**
  * Interface for tracking active tool execution
@@ -416,55 +391,98 @@ export class WebSocketService {
     });
     
     // Tool execution completed
-    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, ({ sessionId, tool, result, paramSummary, executionTime, timestamp }) => {
-      // Remove from active tools
-      const activeToolData = this.activeTools.get(sessionId)?.get(tool.id);
-      this.activeTools.get(sessionId)?.delete(tool.id);
-      
-      // Clean up empty maps
-      if (this.activeTools.get(sessionId)?.size === 0) {
-        this.activeTools.delete(sessionId);
+    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, 
+      async ({ sessionId, tool, result, paramSummary, executionTime, timestamp }) => {
+        // Get tool args from the stored data in AgentService
+        const args = this.agentService.getToolArgs(sessionId, tool.id) || {};
+        
+        // Try to generate preview data using the PreviewService
+        let preview: ToolPreviewData | null = null;
+        try {
+          // Use PreviewService to generate the preview
+          preview = await previewService.generatePreview(
+            {
+              id: tool.id,
+              name: tool.name
+            },
+            args,
+            result
+          );
+          
+          if (preview) {
+            serverLogger.debug(`Generated preview for tool ${tool.id}`, {
+              previewType: preview.contentType,
+              hasFullContent: preview.hasFullContent
+            });
+          }
+        } catch (error) {
+          serverLogger.error(`Error generating preview for tool ${tool.id}:`, error);
+        }
+        
+        // Remove from active tools
+        const activeToolData = this.activeTools.get(sessionId)?.get(tool.id);
+        this.activeTools.get(sessionId)?.delete(tool.id);
+        
+        // Clean up empty maps
+        if (this.activeTools.get(sessionId)?.size === 0) {
+          this.activeTools.delete(sessionId);
+        }
+        
+        // Forward the event to clients with preview data if available
+        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, { 
+          sessionId,
+          tool,
+          result,
+          paramSummary,
+          executionTime,
+          timestamp,
+          isActive: false,
+          startTime: activeToolData?.startTime.toISOString(),
+          // Include preview data if available
+          preview
+        });
+        
+        serverLogger.debug(`Tool execution completed: ${tool.name} (${tool.id}) in session ${sessionId}, took ${executionTime}ms`);
       }
-      
-      // Forward the event to clients
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, { 
-        sessionId,
-        tool,
-        result,
-        paramSummary,
-        executionTime,
-        timestamp,
-        isActive: false,
-        startTime: activeToolData?.startTime.toISOString(),
-      });
-      
-      serverLogger.debug(`Tool execution completed: ${tool.name} (${tool.id}) in session ${sessionId}, took ${executionTime}ms`);
-    });
+    );
     
     // Tool execution error
-    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_ERROR, ({ sessionId, tool, error, paramSummary, timestamp }) => {
-      // Remove from active tools
-      const activeToolData = this.activeTools.get(sessionId)?.get(tool.id);
-      this.activeTools.get(sessionId)?.delete(tool.id);
-      
-      // Clean up empty maps
-      if (this.activeTools.get(sessionId)?.size === 0) {
-        this.activeTools.delete(sessionId);
+    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_ERROR, 
+      async ({ sessionId, tool, error, paramSummary, timestamp }) => {
+        // Remove from active tools
+        const activeToolData = this.activeTools.get(sessionId)?.get(tool.id);
+        this.activeTools.get(sessionId)?.delete(tool.id);
+        
+        // Clean up empty maps
+        if (this.activeTools.get(sessionId)?.size === 0) {
+          this.activeTools.delete(sessionId);
+        }
+        
+        // Create error preview data using the PreviewService
+        const preview = previewService.generateErrorPreview(
+          {
+            id: tool.id,
+            name: tool.name
+          },
+          error,
+          { paramSummary }
+        );
+        
+        // Forward the event to clients
+        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ERROR, { 
+          sessionId,
+          tool,
+          error,
+          paramSummary,
+          timestamp,
+          isActive: false,
+          startTime: activeToolData?.startTime.toISOString(),
+          preview
+        });
+        
+        serverLogger.debug(`Tool execution error: ${tool.name} (${tool.id}) in session ${sessionId}, error: ${error.message}`);
       }
-      
-      // Forward the event to clients
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ERROR, { 
-        sessionId,
-        tool,
-        error,
-        paramSummary,
-        timestamp,
-        isActive: false,
-        startTime: activeToolData?.startTime.toISOString(),
-      });
-      
-      serverLogger.debug(`Tool execution error: ${tool.name} (${tool.id}) in session ${sessionId}, error: ${error.message}`);
-    });
+    );
     
     // Tool execution aborted
     this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_ABORTED, ({ sessionId, tool, timestamp, abortTimestamp }) => {

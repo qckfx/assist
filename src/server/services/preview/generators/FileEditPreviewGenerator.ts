@@ -2,7 +2,7 @@
  * Preview generator for file edit operations
  */
 
-import { Tool, ToolCategory } from '../../../../types/tool';
+import { ToolInfo } from '../PreviewService';
 import { 
   ToolPreviewData, 
   PreviewContentType,
@@ -18,7 +18,7 @@ export class FileEditPreviewGenerator extends PreviewGenerator {
    * Generate preview for file edit results
    */
   async generatePreview(
-    tool: Tool,
+    tool: ToolInfo,
     args: Record<string, unknown>,
     result: unknown,
     options?: PreviewOptions
@@ -78,23 +78,14 @@ export class FileEditPreviewGenerator extends PreviewGenerator {
   /**
    * Check if this generator can handle the tool and result
    */
-  canHandle(tool: Tool, result: unknown): boolean {
-    // Check if tool is in the right category
-    const isEditTool = 
-      tool.category === ToolCategory.FILE_OPERATION || 
-      (Array.isArray(tool.category) && 
-       tool.category.includes(ToolCategory.FILE_OPERATION));
-    
-    // Check for known file edit tool IDs
-    const isFileEditId = 
-      tool.id === 'FileEditTool' || 
-      tool.id === 'Edit' || 
-      tool.id.includes('file_edit');
+  canHandle(tool: ToolInfo, result: unknown): boolean {
+    // Check for the exact file edit tool ID
+    const isFileEditTool = tool.id === 'file_edit';
     
     // Check result format
     const hasValidResult = this.isFileEditResult(result);
     
-    return (isEditTool || isFileEditId) && hasValidResult;
+    return isFileEditTool && hasValidResult;
   }
   
   /**

@@ -2,7 +2,7 @@
  * Preview generator for bash command executions
  */
 
-import { Tool, ToolCategory } from '../../../../types/tool';
+import { ToolInfo } from '../PreviewService';
 import { 
   ToolPreviewData, 
   PreviewContentType,
@@ -25,7 +25,7 @@ export class BashPreviewGenerator extends PreviewGenerator {
    * Generate preview for bash tool results
    */
   async generatePreview(
-    tool: Tool,
+    tool: ToolInfo,
     args: Record<string, unknown>,
     result: unknown,
     options?: PreviewOptions
@@ -94,24 +94,14 @@ export class BashPreviewGenerator extends PreviewGenerator {
   /**
    * Check if this generator can handle the tool and result
    */
-  canHandle(tool: Tool, result: unknown): boolean {
-    // Check if tool is in the right category
-    const isShellTool = 
-      tool.category === ToolCategory.SHELL_EXECUTION || 
-      (Array.isArray(tool.category) && 
-       tool.category.includes(ToolCategory.SHELL_EXECUTION));
-    
-    // Check for known bash tool IDs
-    const isBashToolId = 
-      tool.id === 'BashTool' || 
-      tool.id === 'Bash' || 
-      tool.id.includes('bash') || 
-      tool.id.includes('shell');
+  canHandle(tool: ToolInfo, result: unknown): boolean {
+    // Check for the exact bash tool ID
+    const isBashTool = tool.id === 'bash';
     
     // Check result format
     const hasValidResult = this.isBashResult(result);
     
-    return (isShellTool || isBashToolId) && hasValidResult;
+    return isBashTool && hasValidResult;
   }
   
   /**

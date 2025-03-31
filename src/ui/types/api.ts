@@ -1,4 +1,5 @@
 // Basic API response and request types
+import { ToolPreviewData } from '../../types/preview';
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -163,8 +164,8 @@ export interface WebSocketEventMap {
     timestamp: string;
     isActive: false;
     startTime?: string;
-    // Add preview data
-    preview?: import('../../types/preview').ToolPreviewData;
+    // Include preview data
+    preview?: ToolPreviewData;
   };
   [WebSocketEvent.TOOL_EXECUTION_ERROR]: { 
     sessionId: string;
@@ -180,6 +181,8 @@ export interface WebSocketEventMap {
     timestamp: string;
     isActive: false;
     startTime?: string;
+    // Include preview data for errors
+    preview?: ToolPreviewData;
   };
   [WebSocketEvent.TOOL_EXECUTION_ABORTED]: {
     sessionId: string;

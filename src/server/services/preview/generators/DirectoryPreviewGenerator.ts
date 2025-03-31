@@ -2,7 +2,7 @@
  * Preview generator for directory listing operations
  */
 
-import { Tool } from '../../../../types/tool';
+import { ToolInfo } from '../PreviewService';
 import { 
   ToolPreviewData, 
   PreviewContentType,
@@ -17,7 +17,7 @@ export class DirectoryPreviewGenerator extends PreviewGenerator {
    * Generate preview for LS tool results
    */
   async generatePreview(
-    tool: Tool,
+    tool: ToolInfo,
     args: Record<string, unknown>,
     result: unknown,
     options?: PreviewOptions
@@ -31,14 +31,25 @@ export class DirectoryPreviewGenerator extends PreviewGenerator {
         return null;
       }
       
-      const resultAsAny = result as Record<string, unknown>;
+      const resultObj = result as { 
+        entries?: unknown[];
+        files?: unknown[];
+      };
+      
       const dirPath = args.path as string || '.';
       
-      // Get entries from result, handling different formats
-      const entries = resultAsAny.entries || resultAsAny.files || [];
+      // Get entries from result, handling different formats and enforce array type
+      const rawEntries = resultObj.entries || resultObj.files || [];
+      const entries = rawEntries as Array<{
+        name: string;
+        isDirectory: boolean;
+        size?: number;
+        mtime?: string;
+        modified?: Date;
+      }>;
       
       // Count directories and files
-      const directories = entries.filter((entry: Record<string, unknown>) => entry.isDirectory).length;
+      const directories = entries.filter(entry => Boolean(entry.isDirectory)).length;
       const files = entries.length - directories;
       
       // Format brief content (limited entries)
@@ -49,11 +60,12 @@ export class DirectoryPreviewGenerator extends PreviewGenerator {
         contentType: PreviewContentType.DIRECTORY,
         briefContent,
         hasFullContent: entries.length > briefEntries.length,
-        entries: entries.map((entry: Record<string, unknown>) => ({
-          name: entry.name,
-          isDirectory: entry.isDirectory,
-          size: entry.size,
-          modified: entry.modified ? entry.modified.toISOString() : entry.mtime
+        entries: entries.map(entry => ({
+          name: String(entry.name || ''),
+          isDirectory: Boolean(entry.isDirectory),
+          size: typeof entry.size === 'number' ? entry.size : undefined,
+          modified: entry.modified instanceof Date ? entry.modified.toISOString() : 
+                    typeof entry.mtime === 'string' ? entry.mtime : undefined
         })),
         path: dirPath,
         totalFiles: files,
@@ -76,12 +88,9 @@ export class DirectoryPreviewGenerator extends PreviewGenerator {
   /**
    * Check if this generator can handle the tool and result
    */
-  canHandle(tool: Tool, result: unknown): boolean {
-    // Check for known LS tool IDs
-    const isLSTool = 
-      tool.id === 'LSTool' || 
-      tool.id === 'LS' || 
-      tool.id.includes('ls');
+  canHandle(tool: ToolInfo, result: unknown): boolean {
+    // Check for the exact LS tool ID
+    const isLSTool = tool.id === 'ls';
     
     // Check result format
     const hasValidResult = this.isLSResult(result);
