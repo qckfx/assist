@@ -589,12 +589,23 @@ export class WebSocketService {
     });
 
     // Permission resolved
-    this.agentService.on(AgentServiceEvent.PERMISSION_RESOLVED, ({ sessionId, permissionId, granted }) => {
+    this.agentService.on(AgentServiceEvent.PERMISSION_RESOLVED, ({ sessionId, permissionId, toolId, executionId, granted }) => {
       // Map AgentService's "granted" property to WebSocketEvent's "resolution" property
       this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, { 
         sessionId,
         permissionId,
+        toolId,
+        executionId, // Include executionId for proper tool tracking
         resolution: granted, // Map "granted" to "resolution" to match the WebSocketEvent type
+      });
+      
+      // Log detailed information about this permission resolution
+      serverLogger.debug(`Permission resolution emitted with execution data`, {
+        permissionId,
+        toolId,
+        executionId,
+        granted,
+        hasLinkedPreview: this.permissionPreviews.has(executionId || ''),
       });
     });
     

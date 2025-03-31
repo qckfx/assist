@@ -468,15 +468,24 @@ export function useToolStream() {
     const { tool, args, paramSummary, timestamp } = data;
     const toolId = tool.id;
     const toolName = tool.name;
+    const executionId = tool.executionId as string; // Use server-provided executionId if available
     
     setState(prev => {
-      // Generate a consistent ID based on the tool ID so we can update it later
-      // but also include a timestamp for uniqueness between different executions
-      const executionId = `${toolId}-${new Date(timestamp).getTime()}`;
+      // Generate a consistent ID based on the provided executionId or create one
+      // This ID will be used consistently throughout the tool lifecycle
+      const uniqueExecutionId = executionId || `${toolId}-${new Date(timestamp).getTime()}`;
+      
+      console.log('Tool execution started', { 
+        toolId, 
+        toolName, 
+        receivedExecutionId: executionId,
+        uniqueExecutionId,
+        timestamp
+      });
       
       // Create a new ToolExecution object
       const execution: ToolExecution = {
-        id: executionId,
+        id: uniqueExecutionId,
         tool: toolId,
         toolName,
         status: 'running',
@@ -485,16 +494,28 @@ export function useToolStream() {
         startTime: new Date(timestamp).getTime(),
       };
       
+      // Set up mappings to help link this tool across its lifecycle
+      const mappings = { ...(prev.toolIdMappings || {}) };
+      
+      // Store a mapping using the executionId if provided
+      if (executionId) {
+        mappings[`executionId:${executionId}`] = uniqueExecutionId;
+      }
+      
+      // Store a mapping by toolId+timestamp
+      const timeKey = `${toolId}-${new Date(timestamp).getTime()}`;
+      mappings[timeKey] = uniqueExecutionId;
+      
       // Add to toolExecutions
       const toolExecutions = {
         ...prev.toolExecutions,
-        [executionId]: execution
+        [uniqueExecutionId]: execution
       };
       
       // Update active tools
       const activeTools = {
         ...prev.activeTools,
-        [executionId]: true
+        [uniqueExecutionId]: true
       };
       
       // Count active tools (running or awaiting permission)
@@ -507,6 +528,7 @@ export function useToolStream() {
         toolExecutions,
         activeTools,
         activeToolCount,
+        toolIdMappings: mappings,
         latestExecution: execution
       };
     });
@@ -516,69 +538,84 @@ export function useToolStream() {
   const handleToolExecutionCompleted = useCallback((data: EventData<WebSocketEvent.TOOL_EXECUTION_COMPLETED>) => {
     const { tool, result, paramSummary, executionTime, timestamp, startTime, preview } = data;
     const toolId = tool.id;
+    const executionId = tool.executionId as string; // Get executionId from tool data if present
     
     setState(prev => {
-      // Generate the expected execution ID from startTime if available
-      const expectedStartTime = startTime ? new Date(startTime).getTime() : null;
-      
-      // Find the existing execution by looking for a matching ID pattern or tool ID
+      // Find the existing execution using multiple strategies
       let matchingExecution: ToolExecution | null = null;
       let matchingExecutionId: string | null = null;
       
-      // First try to find a tool with the same start time
-      if (expectedStartTime) {
-        const expectedId = `${toolId}-${expectedStartTime}`;
-        if (prev.toolExecutions[expectedId]) {
-          matchingExecution = prev.toolExecutions[expectedId];
-          matchingExecutionId = expectedId;
+      console.log('Looking for matching tool execution', {
+        toolId,
+        executionId,
+        hasExecutionId: !!executionId,
+        hasMappings: !!prev.toolIdMappings,
+        mappingKeys: prev.toolIdMappings ? Object.keys(prev.toolIdMappings) : [],
+        hasStartTime: !!startTime 
+      });
+      
+      // Strategy 1: Try direct executionId match if available
+      if (executionId && executionId in prev.toolExecutions) {
+        matchingExecution = prev.toolExecutions[executionId];
+        matchingExecutionId = executionId;
+        console.log(`Found direct match by executionId: ${executionId}`);
+      }
+      
+      // Strategy 2: Try mapping lookup by executionId
+      if (!matchingExecution && executionId && prev.toolIdMappings) {
+        const mappedId = prev.toolIdMappings[`executionId:${executionId}`];
+        if (mappedId && mappedId in prev.toolExecutions) {
+          matchingExecution = prev.toolExecutions[mappedId];
+          matchingExecutionId = mappedId;
+          console.log(`Found match via executionId mapping: ${executionId} -> ${mappedId}`);
         }
       }
       
-      // Try to look up by toolIdMappings
-      let lookupMapping = false;
-      if (prev.toolIdMappings) {
-        // We might have stored this tool by permissionId earlier
-        const possibleKeys = [];
+      // Strategy 3: Try by timestamp pattern
+      if (!matchingExecution && startTime) {
+        const expectedStartTime = new Date(startTime).getTime();
+        const expectedId = `${toolId}-${expectedStartTime}`;
         
-        // Check different possible keys that could link this tool to an earlier one
-        if (tool.executionId) {
-          possibleKeys.push(`executionId:${tool.executionId}`);
+        // Direct match by ID pattern
+        if (expectedId in prev.toolExecutions) {
+          matchingExecution = prev.toolExecutions[expectedId];
+          matchingExecutionId = expectedId;
+          console.log(`Found match by ID pattern: ${expectedId}`);
         }
         
-        // Find all matching tools by checking potential keys
-        for (const key of possibleKeys) {
-          const mappedId = prev.toolIdMappings[key];
-          if (mappedId && prev.toolExecutions[mappedId]) {
-            lookupMapping = true;
+        // Lookup by pattern in mappings
+        if (!matchingExecution && prev.toolIdMappings && prev.toolIdMappings[expectedId]) {
+          const mappedId = prev.toolIdMappings[expectedId];
+          if (mappedId in prev.toolExecutions) {
             matchingExecution = prev.toolExecutions[mappedId];
             matchingExecutionId = mappedId;
-            console.log(`Found tool match via mapping: ${key} -> ${mappedId}`);
-            break;
+            console.log(`Found match via timestamp pattern mapping: ${expectedId} -> ${mappedId}`);
           }
         }
       }
       
-      // If no match by mapping or start time, look for a running tool with matching tool ID
+      // Strategy 4: Find most recent running tool with matching toolId
       if (!matchingExecution) {
         // Create a sorted array of tools by start time (newest first)
         const runningTools = Object.entries(prev.toolExecutions)
           .filter(([, execution]) => 
-            // Match by tool ID or tool name
+            // Match by tool ID or tool name, prioritizing running status
             (execution.tool === toolId || execution.toolName === tool.name) && 
-            execution.status === 'running'
+            (execution.status === 'running' || execution.status === 'awaiting-permission')
           )
           .sort(([, a], [, b]) => b.startTime - a.startTime);
         
         if (runningTools.length > 0) {
           // Take the most recent running tool
           [matchingExecutionId, matchingExecution] = runningTools[0];
-          console.log(`Found matching running tool: ${matchingExecutionId}`);
+          console.log(`Found most recent running tool: ${matchingExecutionId}`);
         }
       }
       
-      // If still no match, create a fallback ID
+      // Strategy 5: If all else fails, create a fallback ID that won't conflict
       if (!matchingExecutionId) {
-        matchingExecutionId = `${toolId}-${expectedStartTime || Date.now()}`;
+        matchingExecutionId = `${toolId}-completion-${Date.now()}`;
+        console.log(`No match found, using fallback ID: ${matchingExecutionId}`);
       }
       
       // Get the existing execution or create a new one if none exists
@@ -589,10 +626,10 @@ export function useToolStream() {
         status: 'running',
         args: {},
         paramSummary: paramSummary || 'Tool execution',
-        startTime: expectedStartTime || Date.now() - (executionTime || 0),
+        startTime: startTime ? new Date(startTime).getTime() : Date.now() - (executionTime || 0),
       };
       
-      // Update with completion data but keep the original description
+      // Update with completion data but keep the original description and preview
       const execution: ToolExecution = {
         ...prevExecution,
         status: 'completed',
@@ -606,9 +643,11 @@ export function useToolStream() {
         preview: prevExecution.preview || preview,
       };
       
-      // Log preview handling for debugging
+      // Log completion details for debugging
       console.log('Tool execution completed', {
         toolId,
+        matchingId: matchingExecutionId,
+        existingStatus: prevExecution.status,
         hadPreviousPreview: !!prevExecution.preview,
         newPreviewProvided: !!preview,
         usingExistingPreview: !!prevExecution.preview && !!execution.preview
@@ -617,7 +656,7 @@ export function useToolStream() {
       // Add to history - without limiting size (let's show all tools)
       const toolHistory = [...prev.toolHistory, execution];
       
-      // Simply update the toolExecutions map without limits
+      // Update the toolExecutions map
       const updatedToolExecutions = {
         ...prev.toolExecutions
       };
@@ -828,16 +867,20 @@ export function useToolStream() {
     const toolId = permission.toolId as string;
     const permissionId = permission.id as string;
     const executionId = permission.executionId as string;
-    // Unused variables below are needed for TypeScript type checking
-    const _args = permission.args as Record<string, unknown>;
-    const _timestamp = permission.timestamp as string;
+    const args = permission.args as Record<string, unknown>;
+    const timestamp = permission.timestamp as string;
     
-    console.log('Permission requested:', { permission, toolId, permissionId, executionId });
+    console.log('Permission requested:', { 
+      permissionId, 
+      toolId, 
+      executionId,
+      hasMapping: executionId ? 'yes' : 'no'
+    });
     
     // Find the related tool execution
     setState(prev => {
-      // First check for direct executionId match if available
-      if (executionId && prev.toolExecutions[executionId]) {
+      // Strategy 1: Try to find by executionId if available (direct match)
+      if (executionId && executionId in prev.toolExecutions) {
         console.log('Found exact execution ID match:', executionId);
         
         const matchingExecution = prev.toolExecutions[executionId];
@@ -850,6 +893,10 @@ export function useToolStream() {
           status: 'awaiting-permission' as const,
           preview: permission.preview as ToolPreviewData // Include the preview
         };
+        
+        // Set up mappings to link permission to execution
+        const mappings = { ...(prev.toolIdMappings || {}) };
+        mappings[`permission:${permissionId}`] = executionId;
         
         // Return updated state with the direct match
         const updatedToolExecutions = {
@@ -866,14 +913,54 @@ export function useToolStream() {
           ...prev,
           toolExecutions: updatedToolExecutions,
           activeToolCount: activeTools.length,
+          toolIdMappings: mappings
         };
       }
+      
+      // Strategy 2: Try finding by executionId in mappings
+      if (executionId && prev.toolIdMappings) {
+        const mappedId = prev.toolIdMappings[`executionId:${executionId}`];
+        if (mappedId && mappedId in prev.toolExecutions) {
+          console.log('Found execution ID through mapping:', mappedId);
+          
+          const matchingExecution = prev.toolExecutions[mappedId];
+          
+          // Update the tool execution with permission information
+          const updatedExecution: ToolExecution = {
+            ...matchingExecution,
+            requiresPermission: true,
+            permissionId: permissionId,
+            status: 'awaiting-permission' as const,
+            preview: permission.preview as ToolPreviewData
+          };
+          
+          // Update mappings to link permission with execution
+          const mappings = { ...prev.toolIdMappings };
+          mappings[`permission:${permissionId}`] = mappedId;
+          
+          const updatedToolExecutions = {
+            ...prev.toolExecutions,
+            [mappedId]: updatedExecution,
+          };
+          
+          // Count active tools
+          const activeTools = Object.values(updatedToolExecutions).filter(
+            t => t.status === 'running' || t.status === 'awaiting-permission'
+          );
+          
+          return {
+            ...prev,
+            toolExecutions: updatedToolExecutions,
+            activeToolCount: activeTools.length,
+            toolIdMappings: mappings
+          };
+        }
+      }
     
-      // Fallback to the existing matching logic if no executionId match
-      // Try to find matching tool execution with more flexible matching
+      // Strategy 3: Find matching running tool by toolId (most recent)
       const runningTools = Object.entries(prev.toolExecutions)
         .filter(([, execution]) => {
-          // Match exact toolId
+          // Match exact toolId or tool name
           const exactMatch = execution.tool === toolId || execution.toolName === toolId;
           
           // Match by lowercase (bash / Bash)
@@ -881,24 +968,13 @@ export function useToolStream() {
             execution.tool.toLowerCase() === toolId.toLowerCase() || 
             (execution.toolName && execution.toolName.toLowerCase() === toolId.toLowerCase());
           
-          // Match by substring (for partial matches like 'bash' in 'BashTool')
+          // Match by substring for partial matches
           const substringMatch = 
             execution.tool.toLowerCase().includes(toolId.toLowerCase()) || 
             (execution.toolName && execution.toolName.toLowerCase().includes(toolId.toLowerCase()));
           
           // Check status - only running tools can await permission
           const statusOk = execution.status === 'running';
-          
-          // Log matching attempt for debugging
-          console.log('Tool match check:', { 
-            toolExecution: execution.tool, 
-            toolName: execution.toolName,
-            targetTool: toolId,
-            exactMatch, 
-            lowercaseMatch, 
-            substringMatch,
-            statusOk
-          });
           
           return (exactMatch || lowercaseMatch || substringMatch) && statusOk;
         })
@@ -908,7 +984,7 @@ export function useToolStream() {
       
       if (runningTools.length > 0) {
         const [matchingExecutionId, matchingExecution] = runningTools[0];
-        console.log('Updating tool execution:', matchingExecutionId);
+        console.log('Found most recent running tool:', matchingExecutionId);
         
         // Update the tool execution with permission information and preview
         const updatedExecution: ToolExecution = {
@@ -919,7 +995,14 @@ export function useToolStream() {
           preview: permission.preview as ToolPreviewData // Include the preview data
         };
         
-        // Recalculate active tool count
+        // Set up mappings to link permission to execution
+        const mappings = { ...(prev.toolIdMappings || {}) };
+        mappings[`permission:${permissionId}`] = matchingExecutionId;
+        if (executionId) {
+          mappings[`executionId:${executionId}`] = matchingExecutionId;
+        }
+        
+        // Update tool executions map
         const updatedToolExecutions = {
           ...prev.toolExecutions,
           [matchingExecutionId]: updatedExecution,
@@ -934,81 +1017,181 @@ export function useToolStream() {
           ...prev,
           toolExecutions: updatedToolExecutions,
           activeToolCount: activeTools.length,
+          toolIdMappings: mappings
         };
-      } else {
-        console.warn('No matching running tool found for permission request:', toolId);
       }
       
-      return prev;
+      // Strategy 4: If no matching tool found, create a new one
+      // This is a fallback for permission requests without previous tool_execution_started event
+      console.log('No matching running tool found, creating new execution object');
+      
+      // Generate a stable ID for this permission request
+      const newExecutionId = executionId || `${toolId}-permission-${Date.now()}`;
+      
+      // Create a new tool execution for this permission
+      const newExecution: ToolExecution = {
+        id: newExecutionId,
+        tool: toolId,
+        toolName: toolId, // Use toolId as name if no better info
+        status: 'awaiting-permission',
+        requiresPermission: true,
+        permissionId: permissionId,
+        args: args || {},
+        startTime: timestamp ? new Date(timestamp).getTime() : Date.now(),
+        preview: permission.preview as ToolPreviewData // Include preview data
+      };
+      
+      // Set up mappings
+      const mappings = { ...(prev.toolIdMappings || {}) };
+      mappings[`permission:${permissionId}`] = newExecutionId;
+      if (executionId) {
+        mappings[`executionId:${executionId}`] = newExecutionId;
+      }
+      
+      // Add to tool executions map
+      const updatedToolExecutions = {
+        ...prev.toolExecutions,
+        [newExecutionId]: newExecution,
+      };
+      
+      // Count active tools
+      const activeTools = Object.values(updatedToolExecutions).filter(
+        t => t.status === 'running' || t.status === 'awaiting-permission'
+      );
+      
+      return {
+        ...prev,
+        toolExecutions: updatedToolExecutions,
+        activeToolCount: activeTools.length,
+        toolIdMappings: mappings
+      };
     });
   }, []);
   
   // Handle permission resolution events
   const handlePermissionResolved = useCallback((data: Record<string, unknown>) => {
     const permissionId = data.permissionId as string;
-    const granted = data.granted as boolean;
+    const toolId = data.toolId as string;
+    const executionId = data.executionId as string;
+    const granted = data.resolution as boolean;
     
-    console.log('Permission resolved:', { permissionId, granted, data });
+    console.log('Permission resolved:', { permissionId, toolId, executionId, granted, data });
     
     // Update any tool execution waiting for this permission
     setState(prev => {
       const updatedToolExecutions = { ...prev.toolExecutions };
       let updated = false;
+      let toolToUpdate = null;
+      let toolIdToUpdate = null;
       
-      // Find any tool execution with this permissionId
-      for (const toolId in updatedToolExecutions) {
-        const tool = updatedToolExecutions[toolId];
-        if (tool.permissionId === permissionId) {
-          console.log('Found tool waiting for permission:', toolId);
-          updated = true;
-          
-          // If denied, mark as error
-          if (!granted) {
-            updatedToolExecutions[toolId] = {
-              ...tool,
-              status: 'error',
-              error: { message: 'Permission denied' },
-              requiresPermission: false,
-              permissionId: undefined,
-            };
-            console.log('Permission denied, updated tool status to error');
-            // Note: We're only updating the visualization here.
-            // The error message to the user is not shown because we've suppressed
-            // permission errors in TerminalContext.handleProcessingError
-          } else {
-            // If granted, return to running state but preserve the preview
-            // IMPORTANT: keep the same object key to prevent component unmounting
-            updatedToolExecutions[toolId] = {
-              ...tool,
-              status: 'running',
-              requiresPermission: false,
-              permissionId: undefined,
-              // Preview is preserved through ...tool
-            };
-            
-            // Store this tool's ID to help match it when the execution completes
-            if (!prev.toolIdMappings) {
-              prev.toolIdMappings = {};
-            }
-            
-            // We'll store both permissionId->toolId and toolName+timestamp->toolId
-            // for robust mapping when completion events arrive
-            if (tool.permissionId) {
-              prev.toolIdMappings[`permission:${tool.permissionId}`] = toolId;
-            }
-            
-            console.log('Permission granted, updated tool status to running', {
-              toolId,
-              hasPreview: !!tool.preview,
-              previewType: tool.preview?.contentType,
-              preservedPreview: !!updatedToolExecutions[toolId].preview
-            });
+      // First try to find the tool by executionId if available
+      if (executionId && executionId in updatedToolExecutions) {
+        toolToUpdate = updatedToolExecutions[executionId];
+        toolIdToUpdate = executionId;
+        updated = true;
+        console.log('Found tool by executionId:', executionId);
+      }
+      
+      // If no match by executionId, try by permissionId
+      if (!updated) {
+        for (const id in updatedToolExecutions) {
+          const tool = updatedToolExecutions[id];
+          if (tool.permissionId === permissionId) {
+            toolToUpdate = tool;
+            toolIdToUpdate = id;
+            updated = true;
+            console.log('Found tool waiting for permission by permissionId:', id);
+            break;
           }
         }
       }
       
+      // If still no match, try by toolId for the most recent awaiting-permission tool
       if (!updated) {
-        console.warn('No tools found with matching permissionId:', permissionId);
+        const matchingTools = Object.entries(updatedToolExecutions)
+          .filter(([, tool]) => tool.tool === toolId && tool.status === 'awaiting-permission')
+          .sort(([, a], [, b]) => b.startTime - a.startTime);
+        
+        if (matchingTools.length > 0) {
+          const [id, tool] = matchingTools[0];
+          toolToUpdate = tool;
+          toolIdToUpdate = id;
+          updated = true;
+          console.log('Found tool by toolId (most recent):', id);
+        }
+      }
+      
+      // Update the tool if found
+      if (updated && toolToUpdate && toolIdToUpdate) {
+        // If denied, mark as error
+        if (!granted) {
+          updatedToolExecutions[toolIdToUpdate] = {
+            ...toolToUpdate,
+            status: 'error',
+            error: { message: 'Permission denied' },
+            requiresPermission: false,
+            permissionId: undefined,
+          };
+          console.log('Permission denied, updated tool status to error');
+          // Note: We're only updating the visualization here.
+          // The error message to the user is not shown because we've suppressed
+          // permission errors in TerminalContext.handleProcessingError
+        } else {
+          // If granted, return to running state but preserve the preview
+          // IMPORTANT: keep the same object key to prevent component unmounting
+          updatedToolExecutions[toolIdToUpdate] = {
+            ...toolToUpdate,
+            status: 'running',
+            requiresPermission: false,
+            permissionId: undefined,
+            // Preview is preserved through ...toolToUpdate
+          };
+          
+          // Store mappings to help match the tool when completion events arrive
+          const mappings = { ...(prev.toolIdMappings || {}) };
+          
+          // Map executionId -> toolId
+          if (executionId) {
+            mappings[`executionId:${executionId}`] = toolIdToUpdate;
+          }
+          
+          // Map permissionId -> toolId
+          if (permissionId) {
+            mappings[`permission:${permissionId}`] = toolIdToUpdate;
+          }
+          
+          // Map toolId+timestamp -> toolId (for completion events)
+          const timestamp = toolToUpdate.startTime;
+          if (toolId && timestamp) {
+            mappings[`${toolId}-${timestamp}`] = toolIdToUpdate;
+          }
+          
+          console.log('Permission granted, updated tool status to running', {
+            toolId: toolIdToUpdate,
+            executionId,
+            hasPreview: !!toolToUpdate.preview,
+            previewType: toolToUpdate.preview?.contentType,
+            preservedPreview: !!updatedToolExecutions[toolIdToUpdate].preview,
+            mappingsCreated: Object.keys(mappings).filter(k => !prev.toolIdMappings?.[k])
+          });
+          
+          return {
+            ...prev,
+            toolExecutions: updatedToolExecutions,
+            // Count active tools (running or awaiting permission)
+            activeToolCount: Object.values(updatedToolExecutions).filter(
+              t => t.status === 'running' || t.status === 'awaiting-permission'
+            ).length,
+            // Update mappings
+            toolIdMappings: mappings
+          };
+        }
+      } else {
+        console.warn(`No tools found with matching criteria:`, {
+          permissionId,
+          toolId,
+          executionId
+        });
       }
       
       // Recalculate active tool count

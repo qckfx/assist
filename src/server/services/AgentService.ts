@@ -504,11 +504,21 @@ export class AgentService extends EventEmitter {
     // Call the resolver
     request.resolver(granted);
     
-    // Emit the permission resolved event
+    // Find the associated executionId by looking at active tools
+    const activeTools = this.activeTools.get(request.sessionId) || [];
+    // Find most recent tool matching this toolId
+    const matchingTool = activeTools
+      .filter(t => t.toolId === request.toolId)
+      .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())[0];
+    
+    const executionId = matchingTool?.executionId;
+    
+    // Emit the permission resolved event with executionId
     this.emit(AgentServiceEvent.PERMISSION_RESOLVED, {
       permissionId,
       sessionId: request.sessionId,
       toolId: request.toolId,
+      executionId, // Add executionId to event data
       granted,
       timestamp: new Date().toISOString(),
     });
