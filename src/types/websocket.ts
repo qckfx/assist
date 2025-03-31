@@ -28,4 +28,6 @@ export enum WebSocketEvent {
   STREAM_CONTENT = 'stream_content',
   FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
   FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
+  TOOL_STATE_UPDATE = 'tool_state_update',
+  TOOL_HISTORY = 'tool_history',
 }

@@ -3,6 +3,9 @@
  * Using a more focused unit testing approach
  */
 
+// Import the Server type from http module for proper typing
+import { Server as HTTPServer } from 'http';
+
 // Place all jest.mock calls at the top before any imports or variable declarations
 // This is critical since these are hoisted to the top at runtime
 
@@ -131,10 +134,12 @@ describe('WebSocketService Preview Integration', () => {
     jest.requireMock('../AgentService').getAgentService.mockReturnValue(mockAgentEventEmitter);
     
     // Create service instance 
+    // Create a minimal mock server
     mockServer = { on: jest.fn() };
     
     // Create a new WebSocketService instance
-    _webSocketService = WebSocketService.create(mockServer as unknown);
+    // @ts-ignore - We're using a minimal mock that doesn't need all Server properties
+    _webSocketService = WebSocketService.create(mockServer as HTTPServer);
     
     // For debugging
     console.log('WebSocketService instance created');

@@ -133,3 +133,98 @@ export interface ErrorPreviewData extends ToolPreviewData {
     [key: string]: unknown;
   };
 }
+
+/**
+ * Interface for tool preview state used by the PreviewManager
+ */
+export interface ToolPreviewState {
+  /**
+   * Unique ID for this preview
+   */
+  id: string;
+  
+  /**
+   * Session ID this preview belongs to
+   */
+  sessionId: string;
+  
+  /**
+   * ID of the associated tool execution
+   */
+  executionId: string;
+  
+  /**
+   * ID of the associated permission request (if applicable)
+   */
+  permissionId?: string;
+  
+  /**
+   * Type of preview content
+   */
+  contentType: PreviewContentType;
+  
+  /**
+   * Brief content for summarized view
+   */
+  briefContent: string;
+  
+  /**
+   * Full content for expanded view
+   */
+  fullContent?: string;
+  
+  /**
+   * Any additional metadata for the preview
+   */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Interface for preview manager
+ */
+export interface PreviewManager {
+  /**
+   * Create a preview for a tool execution
+   */
+  createPreview(
+    sessionId: string,
+    executionId: string,
+    contentType: PreviewContentType,
+    briefContent: string,
+    fullContent?: string,
+    metadata?: Record<string, unknown>
+  ): ToolPreviewState;
+  
+  /**
+   * Create a preview for a permission request
+   */
+  createPermissionPreview(
+    sessionId: string,
+    executionId: string,
+    permissionId: string,
+    contentType: PreviewContentType,
+    briefContent: string,
+    fullContent?: string,
+    metadata?: Record<string, unknown>
+  ): ToolPreviewState;
+  
+  /**
+   * Get a preview by ID
+   */
+  getPreview(previewId: string): ToolPreviewState | undefined;
+  
+  /**
+   * Get a preview by execution ID
+   */
+  getPreviewForExecution(executionId: string): ToolPreviewState | undefined;
+  
+  /**
+   * Get all previews for a session
+   */
+  getPreviewsForSession(sessionId: string): ToolPreviewState[];
+  
+  /**
+   * Update an existing preview
+   */
+  updatePreview(previewId: string, updates: Partial<ToolPreviewState>): ToolPreviewState;
+}

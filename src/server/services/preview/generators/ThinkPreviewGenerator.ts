@@ -51,8 +51,8 @@ export class ThinkPreviewGenerator extends PreviewGenerator {
       
       if ('thought' in args && typeof args.thought === 'string') {
         thought = args.thought;
-      } else if (result && typeof result === 'object' && 'thought' in result && typeof (result as any).thought === 'string') {
-        thought = (result as any).thought;
+      } else if (result && typeof result === 'object' && 'thought' in result && typeof (result as Record<string, unknown>).thought === 'string') {
+        thought = (result as Record<string, unknown>).thought as string;
       } else {
         serverLogger.warn(`Think tool preview missing thought content`, {
           toolId: toolInfo.id,
@@ -71,7 +71,7 @@ export class ThinkPreviewGenerator extends PreviewGenerator {
       const truncated = lines.length > maxLines;
       
       // Generate brief content using the helper method
-      let briefContent = truncated 
+      const briefContent = truncated 
         ? this.truncateToLines(formattedThought, maxLines)
         : formattedThought;
 

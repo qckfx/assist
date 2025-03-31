@@ -40,7 +40,8 @@ export class FileEditPreviewGenerator extends PreviewGenerator {
       
       if (insertionIndex === 0) {
         // Content was appended at the end
-        const appendedContent = newString.substring(oldString.length);
+        // Calculate the appended content (uncomment if needed)
+        // const appendedContent = newString.substring(oldString.length);
         return diffLib.createPatch(
           fileName,
           oldString,
@@ -51,7 +52,8 @@ export class FileEditPreviewGenerator extends PreviewGenerator {
         );
       } else if (insertionIndex > 0) {
         // Content was prepended at the beginning or inserted in the middle
-        const prependedContent = newString.substring(0, insertionIndex);
+        // Calculate the prepended content (uncomment if needed)
+        // const prependedContent = newString.substring(0, insertionIndex);
         return diffLib.createPatch(
           fileName,
           oldString,
