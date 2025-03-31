@@ -31,10 +31,11 @@ The tool visualization feature consists of the following components:
 
 The `ToolVisualization` component renders a single tool execution with:
 
-- Visual status indicator (running, completed, error)
+- Visual status indicator (running, completed, error, aborted, awaiting-permission)
 - Tool name and parameter summary
 - Execution time (when available)
 - Error message (for failed tools)
+- Preview content with different view modes (brief, complete)
 
 ```tsx
 export interface ToolVisualizationProps {
@@ -42,8 +43,9 @@ export interface ToolVisualizationProps {
   className?: string;
   compact?: boolean;
   showExecutionTime?: boolean;
-  showExpandedParams?: boolean;
-  onToggleExpand?: () => void;
+  isDarkTheme?: boolean;
+  defaultViewMode?: PreviewMode;
+  onViewModeChange?: (toolId: string, mode: PreviewMode) => void;
 }
 ```
 
@@ -79,10 +81,10 @@ export interface ToolExecution {
   id: string;
   tool: string;
   toolName: string;
-  status: 'running' | 'completed' | 'error';
+  status: 'running' | 'completed' | 'error' | 'aborted' | 'awaiting-permission';
   args?: Record<string, unknown>;
   paramSummary?: string;
-  result?: any;
+  result?: unknown;
   error?: {
     message: string;
     stack?: string;
@@ -90,6 +92,14 @@ export interface ToolExecution {
   startTime: number;
   endTime?: number;
   executionTime?: number;
+  
+  // Preview data for tool visualization
+  preview?: ToolPreviewData;
+  viewMode?: PreviewMode;
+  
+  // Permission-related properties
+  requiresPermission?: boolean;
+  permissionId?: string;
 }
 ```
 

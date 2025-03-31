@@ -10,7 +10,8 @@ qckfx now provides real-time visualization of tool executions in the terminal UI
 - **Parameter Visualization**: View a concise summary of tool parameters
 - **Execution Timing**: See how long tools have been running or how long they took to complete
 - **Error Reporting**: Get clear error information when tools fail
-- **Expandable Details**: Click on parameter summaries to see full details
+- **Expandable Preview**: Cycle through different view modes (brief, complete) to see tool outputs
+- **Automatic Scrolling**: Terminal automatically scrolls to show new tool executions
 
 ## Using Tool Visualizations
 
@@ -84,7 +85,9 @@ The error tool visualization shows a red indicator with an error message:
 
 ## Keyboard Interaction
 
-- Click on the parameter summary to expand and see full details
+- Click on the view toggle button to cycle through view modes:
+  - Brief mode: Shows a compact preview of tool output
+  - Complete mode: Shows the full tool output with expanded details
 - The tool visualization automatically focuses on the most relevant information, with older tools being hidden when there are too many
 
 ## Related Settings
