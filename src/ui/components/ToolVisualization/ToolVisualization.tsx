@@ -3,7 +3,7 @@ import { cn } from '../../lib/utils';
 import { ToolExecution } from '../../hooks/useToolStream';
 import { ToolState } from '../../types/terminal';
 import { PreviewMode, PreviewContentType } from '../../../types/preview';
-import { ChevronDown, ChevronRight, Maximize2 } from 'lucide-react';
+import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 
 // Helper function to truncate strings
 const truncateString = (str: string, maxLength: number): string => {
@@ -111,17 +111,17 @@ const getToolDescription = (tool: ToolExecution): string => {
   return `Running ${tool.toolName}`;
 };
 
-// New helper to get appropriate icon for the current view mode
+// Helper to get appropriate icon for the current view mode
 const getViewModeIcon = (mode: PreviewMode) => {
   switch (mode) {
     case PreviewMode.RETRACTED:
-      return <ChevronRight size={14} />;
+      return <ChevronDown size={14} />; // Down arrow for consistency
     case PreviewMode.BRIEF:
-      return <ChevronDown size={14} />;
+      return <Maximize2 size={14} />; // Maximize to indicate expand to full view
     case PreviewMode.COMPLETE:
-      return <Maximize2 size={14} />;
+      return <Minimize2 size={14} />; // Minimize to indicate collapse
     default:
-      return <ChevronRight size={14} />;
+      return <ChevronDown size={14} />; // Default also down chevron
   }
 };
 
@@ -158,24 +158,39 @@ export function ToolVisualization({
     tool.viewMode || defaultViewMode
   );
   
-  // Update local state when tool's viewMode changes
+  // Update local state when tool's viewMode changes, but only once on initial render or explicit change
   useEffect(() => {
-    if (tool.viewMode && tool.viewMode !== viewMode) {
+    // Only update if tool.viewMode is defined and different from current viewMode
+    if (tool.viewMode !== undefined) {
       setViewMode(tool.viewMode);
     }
-  }, [tool.viewMode, viewMode]);
+  }, [tool.viewMode]); // Remove viewMode from dependency array to prevent immediate reversion
   
   // Handle cycling through view modes
-  const cycleViewMode = useCallback(() => {
+  const cycleViewMode = useCallback((e?: React.MouseEvent) => {
     // If tool is not completed or has no preview, do nothing
     if (toolState !== ToolState.COMPLETED || !tool.preview) {
       return;
     }
     
-    const nextMode = 
-      viewMode === PreviewMode.RETRACTED ? PreviewMode.BRIEF :
-      viewMode === PreviewMode.BRIEF ? PreviewMode.COMPLETE :
-      PreviewMode.RETRACTED;
+    // If event was provided, prevent default and stop propagation
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    // Modified behavior: Toggle between RETRACTED and BRIEF/COMPLETE
+    let nextMode;
+    if (viewMode === PreviewMode.RETRACTED) {
+      // If retracted, always go to BRIEF first
+      nextMode = PreviewMode.BRIEF;
+    } else if (viewMode === PreviewMode.BRIEF) {
+      // If in brief mode, expand to COMPLETE
+      nextMode = PreviewMode.COMPLETE;
+    } else {
+      // If in complete mode, collapse to RETRACTED
+      nextMode = PreviewMode.RETRACTED;
+    }
     
     setViewMode(nextMode);
     
@@ -273,12 +288,13 @@ export function ToolVisualization({
         {/* View mode toggle button */}
         {canExpandCollapse && (
           <button
-            onClick={cycleViewMode}
+            onClick={(e) => cycleViewMode(e)}
             className={cn(
               'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700',
               'transition-colors duration-200'
             )}
             aria-label={`Toggle view mode (currently ${viewMode})`}
+            data-testid="tool-view-mode-toggle"
           >
             {getViewModeIcon(viewMode)}
           </button>
