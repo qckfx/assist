@@ -20,10 +20,9 @@ interface ActiveToolExecution {
 }
 
 /**
- * Singleton service to manage WebSocket connections and events
+ * Service to manage WebSocket connections and events
  */
 export class WebSocketService {
-  private static instance: WebSocketService;
   private io: SocketIOServer;
   private agentService: AgentService;
   private sessionManager: SessionManager;
@@ -31,7 +30,7 @@ export class WebSocketService {
   // Map of sessionId -> Map of toolId -> active tool execution
   private activeTools: Map<string, Map<string, ActiveToolExecution>> = new Map();
 
-  private constructor(server: HTTPServer) {
+  constructor(server: HTTPServer) {
     // Set up debug mode before initializing socket.io
     if (process.env.NODE_ENV === 'development') {
       process.env.DEBUG = 'socket.io:*,engine.io:*';
@@ -73,16 +72,13 @@ export class WebSocketService {
   }
 
   /**
-   * Get the singleton instance of WebSocketService
+   * Create a new WebSocketService instance
+   * 
+   * @param server HTTP server instance
+   * @returns A new WebSocketService instance
    */
-  public static getInstance(server?: HTTPServer): WebSocketService {
-    if (!WebSocketService.instance) {
-      if (!server) {
-        throw new Error('Server instance required for first WebSocketService initialization');
-      }
-      WebSocketService.instance = new WebSocketService(server);
-    }
-    return WebSocketService.instance;
+  public static create(server: HTTPServer): WebSocketService {
+    return new WebSocketService(server);
   }
   
   /**

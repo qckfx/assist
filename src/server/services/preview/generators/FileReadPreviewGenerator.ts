@@ -167,7 +167,7 @@ export class FileReadPreviewGenerator extends PreviewGenerator {
    * Check if this generator can handle the tool and result
    */
   canHandle(tool: ToolInfo, result: unknown): boolean {
-    // Check for known file read tool IDs
+    // Check for known file read tool ID: 'file_read'
     const isFileReadId = tool.id === 'file_read';
     
     // Check result format

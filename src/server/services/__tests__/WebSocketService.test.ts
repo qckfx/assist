@@ -17,6 +17,7 @@ jest.mock('../AgentService', () => {
   
   // Add methods
   mockAgentService.getPermissionRequests = jest.fn().mockReturnValue([]);
+  mockAgentService.getToolArgs = jest.fn().mockReturnValue({});
   
   // Initialize the event emitter
   EventEmitter.call(mockAgentService);

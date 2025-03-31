@@ -7,8 +7,8 @@ describe('FileReadPreviewGenerator', () => {
   const generator = new FileReadPreviewGenerator();
   
   const mockReadTool = { 
-    id: 'FileReadTool', 
-    name: 'File Read',
+    id: 'file_read', 
+    name: 'FileReadTool',
     category: ToolCategory.READONLY,
     requiresPermission: false,
     parameters: {},
@@ -63,7 +63,7 @@ describe('FileReadPreviewGenerator', () => {
   
   it('should correctly identify if it can handle a tool', () => {
     expect(generator.canHandle(mockReadTool, mockResult)).toBe(true);
-    expect(generator.canHandle({ ...mockReadTool, id: 'OtherTool' }, mockResult)).toBe(true);
+    expect(generator.canHandle({ ...mockReadTool, id: 'OtherTool' }, mockResult)).toBe(false);
     // ToolInfo doesn't have a category field anymore
     expect(generator.canHandle({ id: 'bash', name: 'Bash' }, mockResult)).toBe(false);
     expect(generator.canHandle(mockReadTool, {})).toBe(false);

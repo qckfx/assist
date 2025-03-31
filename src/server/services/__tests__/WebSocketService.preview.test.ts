@@ -24,30 +24,24 @@ jest.mock('../../logger', () => ({
   }
 }));
 
-// Mock Socket.IO
+// Create mock server instance
+const mockSocketToEmit = jest.fn();
+const mockTo = jest.fn().mockReturnValue({ emit: mockSocketToEmit });
+const mockSocketOn = jest.fn();
+const mockSocketEmit = jest.fn();
+
+const mockServerInstance = {
+  engine: { on: jest.fn() },
+  close: jest.fn(cb => setTimeout(cb, 0)),
+  on: mockSocketOn,
+  to: mockTo,
+  emit: mockSocketEmit
+};
+
+// Mock Socket.IO - simplified approach
 jest.mock('socket.io', () => {
-  const mockSocketEmit = jest.fn();
-  const mockSocketJoin = jest.fn();
-  const mockSocketLeave = jest.fn();
-  const mockSocketOn = jest.fn();
-  const mockSocketToEmit = jest.fn();
-
-  // Mock Socket.IO rooms feature
-  const mockTo = jest.fn().mockReturnValue({
-    emit: mockSocketToEmit
-  });
-
-  // Return the mock Socket.IO constructor
   return {
-    Server: jest.fn().mockImplementation(() => ({
-      engine: {
-        on: jest.fn()
-      },
-      close: jest.fn(cb => setTimeout(cb, 0)),
-      on: mockSocketOn,
-      to: mockTo,
-      emit: mockSocketEmit
-    }))
+    Server: jest.fn().mockImplementation(() => mockServerInstance)
   };
 });
 
@@ -121,6 +115,10 @@ describe('WebSocketService Preview Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     
+    // Clear mock calls
+    mockTo.mockClear();
+    mockSocketToEmit.mockClear();
+    
     // Create mock agent service with the proper type
     mockAgentEventEmitter = new EventEmitter() as MockAgentService;
     
@@ -132,9 +130,14 @@ describe('WebSocketService Preview Integration', () => {
     // Configure the mock to return our event emitter
     require('../AgentService').getAgentService.mockReturnValue(mockAgentEventEmitter);
     
-    // Create service instance
+    // Create service instance 
     mockServer = { on: jest.fn() };
-    webSocketService = WebSocketService.getInstance(mockServer as any);
+    
+    // Create a new WebSocketService instance
+    webSocketService = WebSocketService.create(mockServer as any);
+    
+    // For debugging
+    console.log('WebSocketService instance created');
   });
   
   afterEach(() => {
@@ -143,8 +146,7 @@ describe('WebSocketService Preview Integration', () => {
   });
   
   it('should add preview data to tool execution completed events', async () => {
-    // Get Socket.IO instance
-    const socketIoInstance = (socketIo.Server as unknown as jest.Mock).mock.results[0].value;
+    // Use the shared mockServerInstance directly
     
     // Setup test data
     const testTool = { id: 'file_read', name: 'File Read' };
@@ -171,8 +173,8 @@ describe('WebSocketService Preview Integration', () => {
     );
     
     // Verify socket emit was called with preview data
-    expect(socketIoInstance.to).toHaveBeenCalledWith(sessionId);
-    expect(socketIoInstance.to().emit).toHaveBeenCalledWith(
+    expect(mockServerInstance.to).toHaveBeenCalledWith(sessionId);
+    expect(mockServerInstance.to().emit).toHaveBeenCalledWith(
       WebSocketEvent.TOOL_EXECUTION_COMPLETED,
       expect.objectContaining({
         preview: expect.objectContaining({
@@ -184,8 +186,10 @@ describe('WebSocketService Preview Integration', () => {
   });
   
   it('should add error preview data to tool execution error events', async () => {
-    // Get Socket.IO instance
-    const socketIoInstance = (socketIo.Server as unknown as jest.Mock).mock.results[0].value;
+    // Use the shared mockServerInstance directly
+    
+    // Print event listener count for debugging
+    console.log(`Event listeners for TOOL_EXECUTION_ERROR: ${mockAgentEventEmitter.listenerCount(mockEventEnum.TOOL_EXECUTION_ERROR)}`);
     
     // Setup test data
     const testTool = { id: 'file_read', name: 'File Read' };
@@ -194,6 +198,13 @@ describe('WebSocketService Preview Integration', () => {
       message: 'Test error',
       stack: 'Error: Test error\n  at ...'
     };
+    
+    // Add a direct listener for debugging
+    mockAgentEventEmitter.on(mockEventEnum.TOOL_EXECUTION_ERROR, (data) => {
+      console.log('Mock event emitter received TOOL_EXECUTION_ERROR event:', data);
+    });
+    
+    console.log('Triggering TOOL_EXECUTION_ERROR event');
     
     // Trigger the tool execution error event
     mockAgentEventEmitter.emit(mockEventEnum.TOOL_EXECUTION_ERROR, {
@@ -204,6 +215,11 @@ describe('WebSocketService Preview Integration', () => {
       timestamp: new Date().toISOString()
     });
     
+    // Wait for async operations to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    console.log('Preview service generateErrorPreview call count:', (previewService.generateErrorPreview as jest.Mock).mock.calls.length);
+    
     // Verify error preview generator was called
     expect(previewService.generateErrorPreview).toHaveBeenCalledWith(
       { id: 'file_read', name: 'File Read' },
@@ -212,8 +228,8 @@ describe('WebSocketService Preview Integration', () => {
     );
     
     // Verify socket emit was called with error preview data
-    expect(socketIoInstance.to).toHaveBeenCalledWith(sessionId);
-    expect(socketIoInstance.to().emit).toHaveBeenCalledWith(
+    expect(mockServerInstance.to).toHaveBeenCalledWith(sessionId);
+    expect(mockServerInstance.to().emit).toHaveBeenCalledWith(
       WebSocketEvent.TOOL_EXECUTION_ERROR,
       expect.objectContaining({
         preview: expect.objectContaining({
@@ -225,8 +241,7 @@ describe('WebSocketService Preview Integration', () => {
   });
   
   it('should handle errors in preview generation', async () => {
-    // Get Socket.IO instance
-    const socketIoInstance = (socketIo.Server as unknown as jest.Mock).mock.results[0].value;
+    // Use the shared mockServerInstance directly
     
     // Setup preview service to return null
     (previewService.generatePreview as jest.Mock).mockResolvedValueOnce(null);
@@ -249,8 +264,8 @@ describe('WebSocketService Preview Integration', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
     
     // Verify socket emit was called without preview data
-    expect(socketIoInstance.to).toHaveBeenCalledWith(sessionId);
-    expect(socketIoInstance.to().emit).toHaveBeenCalledWith(
+    expect(mockServerInstance.to).toHaveBeenCalledWith(sessionId);
+    expect(mockServerInstance.to().emit).toHaveBeenCalledWith(
       WebSocketEvent.TOOL_EXECUTION_COMPLETED,
       expect.objectContaining({
         preview: null  // Should pass null preview when generation fails

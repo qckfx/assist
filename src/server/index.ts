@@ -238,7 +238,9 @@ export async function startServer(config: ServerConfig): Promise<{
           serverLogger.info(`Server started at ${url}`);
           
           // Initialize WebSocketService after server is listening
-          WebSocketService.getInstance(httpServer);
+          const webSocketService = WebSocketService.create(httpServer);
+          // Store the instance in the app for use during shutdown
+          app.locals.webSocketService = webSocketService;
           serverLogger.info('WebSocket service initialized');
           
           resolve({ server, url });
@@ -263,8 +265,12 @@ export async function startServer(config: ServerConfig): Promise<{
         
         // Close WebSocket connections
         try {
-          const webSocketService = WebSocketService.getInstance();
-          await webSocketService.close();
+          const webSocketService = app.locals.webSocketService;
+          if (webSocketService) {
+            await webSocketService.close();
+          } else {
+            serverLogger.warn('WebSocket service not found during shutdown');
+          }
         } catch (error) {
           serverLogger.warn('Error closing WebSocket service:', error);
         }
