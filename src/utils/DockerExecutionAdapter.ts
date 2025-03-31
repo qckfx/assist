@@ -35,6 +35,29 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
   ) {
     this.containerManager = containerManager;
     this.logger = options?.logger;
+    
+    // Start container initialization immediately in the background
+    this.initializeContainer();
+  }
+  
+  /**
+   * Initialize the Docker container in the background
+   * This allows eager initialization without blocking construction
+   */
+  private initializeContainer(): void {
+    this.logger?.info('Starting Docker container initialization in the background', LogCategory.SYSTEM);
+    
+    this.containerManager.ensureContainer()
+      .then(container => {
+        if (container) {
+          this.logger?.info('Docker container initialized successfully', LogCategory.SYSTEM);
+        } else {
+          this.logger?.warn('Docker container initialization failed', LogCategory.SYSTEM);
+        }
+      })
+      .catch(error => {
+        this.logger?.error(`Error initializing Docker container: ${(error as Error).message}`, error, LogCategory.SYSTEM);
+      });
   }
 
   /**
