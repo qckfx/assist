@@ -154,18 +154,20 @@ export class AgentService extends EventEmitter {
       this.setE2BSandboxId(session.id, config.e2bSandboxId);
     }
     
-    // Create the execution adapter eagerly (synchronously before returning)
-    serverLogger.info(`Eagerly creating ${adapterType} execution adapter for session ${session.id}`);
-    try {
-      await this.createExecutionAdapterForSession(session.id, {
-        type: adapterType,
-        e2bSandboxId: config?.e2bSandboxId
-      });
-      serverLogger.info(`Docker container initialization completed for session ${session.id}`);
-    } catch (error) {
-      serverLogger.error(`Failed to create execution adapter for session ${session.id}`, error);
-    }
+    // Start execution adapter creation immediately (fire and forget)
+    serverLogger.info(`Starting ${adapterType} execution adapter initialization for session ${session.id}`);
     
+    // Fire and forget - don't wait for container initialization
+    this.createExecutionAdapterForSession(session.id, {
+      type: adapterType,
+      e2bSandboxId: config?.e2bSandboxId
+    }).then(() => {
+      serverLogger.info(`Execution adapter initialization completed for session ${session.id}`);
+    }).catch(error => {
+      serverLogger.error(`Failed to create execution adapter for session ${session.id}`, error);
+    });
+    
+    // Return the session immediately without waiting for adapter initialization
     return session;
   }
 
@@ -737,6 +739,10 @@ export class AgentService extends EventEmitter {
   }
   
   
+  // Static cache to track Docker initialization status
+  private static dockerInitializing = false;
+  private static dockerInitializationPromise: Promise<boolean> | null = null;
+
   /**
    * Create an execution adapter for a session with the specified type
    */
@@ -763,6 +769,50 @@ export class AgentService extends EventEmitter {
         adapterOptions.e2b = {
           sandboxId: options.e2bSandboxId
         };
+      }
+      
+      // For Docker, check if we need to initialize the container right away
+      // This is a performance optimization for the first tool call
+      if (options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) {
+        // Only pre-initialize if Docker initialization isn't already in progress
+        if (!AgentService.dockerInitializing) {
+          AgentService.dockerInitializing = true;
+          
+          // Start Docker initialization early for a smoother experience
+          AgentService.dockerInitializationPromise = new Promise((resolve) => {
+            // Use an immediately-invoked async function to avoid async executor
+            (async () => {
+              try {
+                // Use the containerManager directly for faster initialization
+                serverLogger.info(`Pre-initializing Docker container for session ${sessionId}...`, 'system');
+                
+                // Create temp adapter and initialize container (returns immediately with background task)
+                const { adapter: dockerAdapter } = await createExecutionAdapter({
+                  type: 'docker',
+                  autoFallback: false,
+                  logger: serverLogger
+                });
+                
+                // Force container initialization to complete before first tool call
+                if ('initializeContainer' in dockerAdapter) {
+                  await (dockerAdapter as { initializeContainer: () => Promise<unknown> }).initializeContainer();
+                  serverLogger.info('Docker container pre-initialization complete', 'system');
+                }
+                
+                resolve(true);
+              } catch (error) {
+                serverLogger.warn(`Docker pre-initialization failed: ${(error as Error).message}`, 'system');
+                resolve(false);
+              }
+            })();
+          });
+        }
+      }
+      
+      // Wait for Docker initialization if it's in progress and we're using Docker
+      if ((options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) && 
+          AgentService.dockerInitializationPromise) {
+        await AgentService.dockerInitializationPromise;
       }
       
       // Create the execution adapter

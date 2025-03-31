@@ -1,6 +1,5 @@
 import React from 'react';
 import { render } from '@testing-library/react';
-import { vi } from 'vitest';
 import { ToolVisualization } from '../ToolVisualization';
 
 // Note: In a real implementation, we would use jest-axe for a11y testing

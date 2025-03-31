@@ -1,7 +1,7 @@
 /**
  * Unit tests for PreviewService
  */
-import { PreviewService, ToolInfo, previewService } from '../PreviewService';
+import { ToolInfo, previewService } from '../PreviewService';
 import { PreviewContentType } from '../../../../types/preview';
 import { previewGeneratorRegistry } from '../PreviewGeneratorRegistry';
 

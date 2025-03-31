@@ -93,10 +93,9 @@ jest.mock('../preview', () => {
 // Import modules after mocks are defined
 import { EventEmitter } from 'events';
 import { WebSocketEvent } from '../../../types/websocket';
-import { PreviewContentType, ToolPreviewData } from '../../../types/preview';
+import { PreviewContentType } from '../../../types/preview';
 import { WebSocketService } from '../WebSocketService';
 import { previewService } from '../preview';
-import * as socketIo from 'socket.io';
 
 // Create a custom interface for our mocked AgentService
 interface MockAgentService extends EventEmitter {
@@ -107,8 +106,8 @@ interface MockAgentService extends EventEmitter {
 
 // After all imports, create and configure mock objects 
 describe('WebSocketService Preview Integration', () => {
-  let webSocketService: WebSocketService;
-  let mockServer: any;
+  let _webSocketService: WebSocketService;
+  let mockServer: Record<string, unknown>;
   let mockAgentEventEmitter: MockAgentService;
   const sessionId = 'test-session';
   
@@ -128,13 +127,14 @@ describe('WebSocketService Preview Integration', () => {
     mockAgentEventEmitter.getActiveTools = jest.fn().mockReturnValue([]);
     
     // Configure the mock to return our event emitter
-    require('../AgentService').getAgentService.mockReturnValue(mockAgentEventEmitter);
+    // Use dynamic import instead of require
+    jest.requireMock('../AgentService').getAgentService.mockReturnValue(mockAgentEventEmitter);
     
     // Create service instance 
     mockServer = { on: jest.fn() };
     
     // Create a new WebSocketService instance
-    webSocketService = WebSocketService.create(mockServer as any);
+    _webSocketService = WebSocketService.create(mockServer as unknown);
     
     // For debugging
     console.log('WebSocketService instance created');

@@ -9,8 +9,7 @@ import {
   ModelProviderRequest, 
   ContentBlockWithCache,
   ToolWithCache,
-  SystemWithCache,
-  SystemContentBlock
+  SystemWithCache
 } from '../types';
 import { LogCategory } from '../types/logger';
 import { Logger } from '../utils/logger';

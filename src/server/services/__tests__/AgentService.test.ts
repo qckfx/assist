@@ -172,8 +172,8 @@ describe('AgentService', () => {
   });
 
   describe('startSession', () => {
-    it('should create a new session', () => {
-      const session = agentService.startSession();
+    it('should create a new session', async () => {
+      const session = await agentService.startSession();
 
       expect(sessionManager.createSession).toHaveBeenCalled();
       expect(session).toHaveProperty('id', 'mock-session-id');
