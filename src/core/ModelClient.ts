@@ -18,6 +18,18 @@ import { createDefaultPromptManager, PromptManager } from './PromptManager';
 import { isSessionAborted } from '../utils/sessionUtils';
 
 /**
+ * Helper function to get sessionId from SessionState
+ * @param sessionState The session state
+ * @returns The session ID as a string
+ */
+function getSessionId(sessionState: SessionState): string {
+  if (!sessionState.id) {
+    console.warn('ModelClient: Session state missing ID property', sessionState);
+  }
+  return (sessionState.id as string) || 'unknown-session';
+}
+
+/**
  * Creates a client for interacting with the language model
  * @param config - Configuration options
  * @returns The model client interface
@@ -95,7 +107,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         const toolUse = response.content && response.content.find(c => c.type === "tool_use");
         
         // Add the assistant's tool use response to the conversation history only if not aborted
-        if (sessionState.conversationHistory && toolUse && !isSessionAborted(sessionState)) {
+        if (sessionState.conversationHistory && toolUse && !isSessionAborted(getSessionId(sessionState))) {
           sessionState.conversationHistory.push({
             role: "assistant",
             content: [
@@ -117,12 +129,12 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
               toolUseId: toolUse.id || "", // Save this for returning results
             },
             toolChosen: true,
-            aborted: isSessionAborted(sessionState) // Check current abort status
+            aborted: isSessionAborted(getSessionId(sessionState)) // Check current abort status
           };
         }
       }
       
-      return {response: response, toolChosen: false, aborted: isSessionAborted(sessionState)};
+      return {response: response, toolChosen: false, aborted: isSessionAborted(getSessionId(sessionState))};
     },
     
     /**

@@ -27,6 +27,7 @@ import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
 import { serverLogger } from '../logger';
+import { setSessionAborted } from '../../utils/sessionUtils';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
 
 /**
@@ -592,6 +593,12 @@ export class AgentService extends EventEmitter {
     // Create a new session
     const session = sessionManager.createSession();
     
+    // Ensure session state exists and has the sessionId
+    if (!session.state) {
+      session.state = { conversationHistory: [] };
+    }
+    session.state.id = session.id;
+    
     // Set execution adapter type if specified
     const adapterType = config?.executionAdapterType || 'docker';
     this.setExecutionAdapterType(session.id, adapterType);
@@ -1119,6 +1126,9 @@ export class AgentService extends EventEmitter {
       );
       
       try {
+        // Ensure the session state includes the sessionId for the new abort system
+        session.state.id = sessionId;
+        
         // Process the query with our registered callbacks
         const result = await this.agent.processQuery(query, session.state);
   
@@ -1485,15 +1495,13 @@ export class AgentService extends EventEmitter {
     // Create abort timestamp
     const abortTimestamp = Date.now();
     
-    // Directly modify the session state in place instead of creating a new object
-    // This ensures all references to this session state object see the changes
-    if (!session.state) {
-      session.state = { conversationHistory: [] }; // Ensure state exists with required properties
-    }
+    // No need to ensure session state exists anymore for aborting
     
-    // Set the abort flags directly on the existing state object
-    session.state.__aborted = true;
-    session.state.__abortTimestamp = abortTimestamp;
+    // Use the centralized session abort mechanism
+    // This will update the abort registry and emit events
+    setSessionAborted(sessionId);
+
+    serverLogger.info('abortOperation', { sessionId, session });
     
     // Get active tools for this session before we mark it as not processing
     const activeTools = this.getActiveTools(sessionId);

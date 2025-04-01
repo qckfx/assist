@@ -12,7 +12,7 @@ import {
 import { ToolCall, ConversationMessage, SessionState } from '../types/model';
 import { LogCategory, createLogger, LogLevel } from '../utils/logger';
 
-import { isSessionAborted } from '../utils/sessionUtils';
+import { isSessionAborted, clearSessionAborted, AgentEvents, AgentEventType } from '../utils/sessionUtils';
 
 /**
  * Creates a standard response for aborted operations
@@ -90,6 +90,13 @@ function summarizeArgs(args: Record<string, unknown>): string {
  * @returns The agent runner interface
  */
 export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
+  // Listen for abort events just for logging purposes
+  const removeAbortListener = AgentEvents.on(
+    AgentEventType.ABORT_SESSION,
+    (sessionId: string) => {
+      console.log(`AgentRunner received abort event for session: ${sessionId}`);
+    }
+  );
   // Validate required dependencies
   if (!config.modelClient) throw new Error('AgentRunner requires a modelClient');
   if (!config.toolRegistry) throw new Error('AgentRunner requires a toolRegistry');
@@ -101,9 +108,11 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
   const permissionManager = config.permissionManager;
   const executionAdapter = config.executionAdapter;
   const logger = config.logger || createLogger({
-    level: LogLevel.INFO,
+    level: LogLevel.DEBUG,
     prefix: 'AgentRunner'
   });
+  
+  // No need for a separate helper function anymore
   
   // Return the public interface
   return {
@@ -117,6 +126,18 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
      * history before this call is made.
      */
     async processQuery(query: string, sessionState: SessionState): Promise<ProcessQueryResult> {
+      // Extract the sessionId from the state
+      const sessionId = sessionState.id as string;
+      
+      if (!sessionId) {
+        logger.error('Cannot process query: Missing sessionId in session state', LogCategory.SYSTEM);
+        return {
+          error: 'Missing sessionId in session state',
+          sessionState,
+          done: true,
+          aborted: false
+        };
+      }
       try {
         // Initialize tracking variables
         let currentQuery = query;
@@ -136,15 +157,15 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         
         // Always add the user query to conversation history after an abort
         // or if it's the first message or if the last message wasn't from the user
-        if (sessionState.__aborted === true || 
+        if (isSessionAborted(sessionId) || 
             sessionState.conversationHistory.length === 0 || 
             sessionState.conversationHistory[sessionState.conversationHistory.length - 1].role !== 'user') {
           
           // Reset abort status if it was previously set
-          if (sessionState.__aborted === true) {
+          if (isSessionAborted(sessionId)) {
             logger.info("Clearing abort status as new user message received", LogCategory.SYSTEM);
-            sessionState.__aborted = false;
-            delete sessionState.__abortTimestamp;
+            // Clear from the centralized registry
+            clearSessionAborted(sessionId);
           }
           
           sessionState.conversationHistory.push({
@@ -166,7 +187,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         // Loop until we get a final response or reach max iterations
         while (iterations < maxIterations) {
           // Add this check at the beginning of each iteration
-          if (isSessionAborted(sessionState)) {
+          if (isSessionAborted(sessionId)) {
             logger.info("Operation aborted - stopping processing", LogCategory.SYSTEM);
             return createAbortResponse(toolResults, iterations, sessionState);
           }
@@ -185,7 +206,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             );
             
             // Check if the operation was aborted during the model call
-            if (toolCallChat.aborted || isSessionAborted(sessionState)) {
+            if (toolCallChat.aborted || isSessionAborted(sessionId)) {
               logger.info("Operation aborted during or after LLM response - stopping processing", LogCategory.SYSTEM);
               
               // Add an aborted tool result to the conversation if a tool was chosen but not executed
@@ -250,7 +271,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             delete sessionState.lastToolError;
             
             // Check for abort before executing the tool
-            if (isSessionAborted(sessionState)) {
+            if (isSessionAborted(sessionId)) {
               logger.info("Operation aborted before tool execution - stopping processing", LogCategory.SYSTEM);
               
               // Add an aborted tool result
@@ -382,7 +403,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             sessionState.lastResult = result;
             
             // After tool execution, check for abort again
-            if (isSessionAborted(sessionState)) {
+            if (isSessionAborted(sessionId)) {
               logger.info("Operation aborted after tool execution - stopping processing", LogCategory.SYSTEM);
               
               // In this case, we've already executed the tool and have its result
@@ -403,6 +424,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               
               // If for some reason the tool result wasn't added, add it now
               if (!hasToolResultMessage && sessionState.conversationHistory && toolCall.toolUseId) {
+                logger.info('Adding tool result to conversation history', LogCategory.SYSTEM);
                 sessionState.conversationHistory.push({
                   role: "user",
                   content: [
@@ -464,7 +486,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         }
         
         // Before generating final response, check for abort
-        if (isSessionAborted(sessionState)) {
+        if (isSessionAborted(sessionId)) {
           logger.info("Operation aborted before final response - stopping processing", LogCategory.SYSTEM);
           return createAbortResponse(toolResults, iterations, sessionState);
         }
@@ -485,25 +507,25 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           );
           
           // Check for abort after final response generation
-          if (isSessionAborted(sessionState)) {
+          if (isSessionAborted(sessionId)) {
             logger.info("Operation aborted during final response generation - stopping processing", LogCategory.SYSTEM);
             return createAbortResponse(toolResults, iterations, sessionState);
           }
         }
 
         // Add the assistant's response to conversation history ONLY if not aborted
-        if (!isSessionAborted(sessionState) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
+        if (!isSessionAborted(sessionId) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
           (sessionState.conversationHistory as ConversationMessage[]).push({
             role: 'assistant',
             content: finalResponse.content
           });
-        } else if (isSessionAborted(sessionState)) {
+        } else if (isSessionAborted(sessionId)) {
           logger.info("Skipping assistant response because session was aborted", LogCategory.SYSTEM);
         }
         
         // Extract the text response from the first content item
         let responseText = '';
-        if (!isSessionAborted(sessionState) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
+        if (!isSessionAborted(sessionId) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
           const firstContent = finalResponse.content[0];
           if (firstContent.type === 'text' && firstContent.text) {
             responseText = firstContent.text;
@@ -518,15 +540,17 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           response: responseText,
           sessionState,
           done: true,
-          aborted: isSessionAborted(sessionState)
+          aborted: isSessionAborted(sessionId)
         };
       } catch (error: unknown) {
         logger.error('Error in processQuery:', error, LogCategory.SYSTEM);
+        // No need to clean up anymore - single source of truth
+        
         return {
           error: (error as Error).message,
           sessionState,
           done: true,
-          aborted: isSessionAborted(sessionState)
+          aborted: isSessionAborted(sessionId)
         };
       }
     },

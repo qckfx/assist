@@ -1,18 +1,57 @@
 /**
  * Utility functions for working with session state
  */
+import { EventEmitter } from 'events';
 import { SessionState } from "../types/model";
+
+/**
+ * Event emitter for agent-wide events
+ * This provides a centralized event system that doesn't rely on object references
+ */
+export const AgentEvents = new EventEmitter();
+
+/**
+ * Event types for agent operations
+ */
+export enum AgentEventType {
+  ABORT_SESSION = 'abort_session'
+}
 
 /**
  * Check if a session has been aborted
  * This function is used to check if an operation should be stopped mid-execution.
- * Note: The abort flag is reset when a new user message is processed in AgentService.processQuery
  * 
- * @param sessionState The session state object to check
+ * @param sessionId The session ID to check
  * @returns Whether the session has been aborted
  */
-export function isSessionAborted(sessionState: SessionState): boolean {
-  return sessionState.__aborted === true;
+export function isSessionAborted(sessionId: string): boolean {
+  // Check for aborted events in the session registry - the single source of truth
+  return abortedSessions.has(sessionId);
+}
+
+/**
+ * Track aborted sessions with timestamps
+ */
+export const abortedSessions = new Map<string, number>();
+
+/**
+ * Mark a session as aborted
+ * @param sessionId The session ID to abort
+ */
+export function setSessionAborted(sessionId: string): void {
+  // Update the centralized abort registry with the current timestamp
+  abortedSessions.set(sessionId, Date.now());
+  
+  // Emit abort event for all listeners
+  AgentEvents.emit(AgentEventType.ABORT_SESSION, sessionId);
+}
+
+/**
+ * Clear aborted status for a session
+ * @param sessionId The session ID to clear
+ */
+export function clearSessionAborted(sessionId: string): void {
+  abortedSessions.delete(sessionId);
 }
 
 /**
