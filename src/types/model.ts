@@ -103,7 +103,12 @@ export interface ModelClientConfig {
 export interface ModelClient {
   formatToolsForClaude(toolDescriptions: ToolDescription[]): unknown[];
   getToolCall(query: string, toolDescriptions: ToolDescription[], sessionState?: SessionState): Promise<ToolCallResponse>;
-  generateResponse(query: string, toolDescriptions: ToolDescription[], sessionState?: SessionState): Promise<Anthropic.Messages.Message>;
+  generateResponse(
+    query: string, 
+    toolDescriptions: ToolDescription[], 
+    sessionState?: SessionState, 
+    options?: { tool_choice?: { type: string } }
+  ): Promise<Anthropic.Messages.Message>;
 }
 
 // TokenManager interface for conversation compression

@@ -131,6 +131,9 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           sessionState.conversationHistory = [];
         }
         
+        // Always reset the tool limit reached flag at the start of processing a new query
+        sessionState.toolLimitReached = false;
+        
         // Always add the user query to conversation history after an abort
         // or if it's the first message or if the last message wasn't from the user
         if (sessionState.__aborted === true || 
@@ -468,12 +471,17 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         
         // If we reached max iterations without a response, generate one
         if (!finalResponse) {
-          logger.debug('Reached maximum iterations, generating response', LogCategory.MODEL);
+          logger.info(`Reached maximum iterations (${maxIterations}), generating final response with tool usage disabled`, LogCategory.MODEL);
           
+          // Set a flag to indicate we reached the tool limit
+          sessionState.toolLimitReached = true;
+          
+          // Generate a response with tool usage explicitly disabled
           finalResponse = await modelClient.generateResponse(
             query,
             toolRegistry.getToolDescriptions(),
-            sessionState
+            sessionState,
+            { tool_choice: { type: "none" } }  // Explicitly disable tool usage for this response
           );
           
           // Check for abort after final response generation

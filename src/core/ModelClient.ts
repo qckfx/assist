@@ -134,7 +134,8 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
     async generateResponse(
       query: string, 
       toolDescriptions: ToolDescription[], 
-      sessionState: SessionState = { conversationHistory: [] }
+      sessionState: SessionState = { conversationHistory: [] },
+      options?: { tool_choice?: { type: string } }
     ): Promise<Anthropic.Messages.Message> {
       // Format tools for Claude
       const claudeTools = this.formatToolsForClaude(toolDescriptions);
@@ -149,6 +150,11 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         systemMessage,
         temperature
       };
+      
+      // Add optional tool_choice if provided
+      if (options?.tool_choice) {
+        prompt.tool_choice = options.tool_choice;
+      }
       
       const response = await modelProvider(prompt);
       
