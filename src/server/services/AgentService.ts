@@ -1522,6 +1522,16 @@ export class AgentService extends EventEmitter {
         try {
           // Abort the execution in the manager (this will emit events)
           this.toolExecutionManager.abortExecution(tool.executionId);
+          
+          // Also remove it from the active tools list to prevent further processing
+          this.activeTools.set(
+            sessionId, 
+            (this.activeTools.get(sessionId) || []).filter(t => t.executionId !== tool.executionId)
+          );
+          
+          // Clean up stored arguments
+          this.activeToolArgs.delete(`${sessionId}:${tool.toolId}`);
+          this.activeToolArgs.delete(`${sessionId}:${tool.executionId}`);
         } catch (error) {
           // If abortion in manager fails, fall back to old behavior
           serverLogger.warn(`Failed to abort tool execution ${tool.executionId}: ${(error as Error).message}`);
