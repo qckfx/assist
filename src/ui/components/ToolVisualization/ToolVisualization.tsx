@@ -499,22 +499,78 @@ function PreviewContent({
       const filePath = metadata?.filePath as string || '';
       const changesSummary = metadata?.changesSummary as { additions: number, deletions: number } || { additions: 0, deletions: 0 };
       const isEmptyFile = metadata?.isEmptyFile === true;
+      const isFileEdit = metadata?.isFileEdit === true;
+      const isPlaceholder = metadata?.isPlaceholder === true;
+      
+      // Log all metadata to help debug
+      console.log('Diff preview metadata details:', {
+        filePath,
+        contentType,
+        isEmptyFile,
+        isFileEdit,
+        isPlaceholder,
+        changesSummary,
+        metadataKeys: metadata ? Object.keys(metadata) : [],
+        fullMetadata: metadata
+      });
       
       // Extract original and modified text from metadata
       const oldString = metadata?.oldString as string || '';
       const newString = metadata?.newString as string || '';
       
+      console.log('Diff strings:', {
+        oldStringExists: !!oldString,
+        newStringExists: !!newString,
+        oldStringLength: oldString?.length,
+        newStringLength: newString?.length,
+        oldStringEmpty: oldString === '',
+        newStringEmpty: newString === ''
+      });
+      
       // Handle empty file or placeholder cases
-      if (isEmptyFile || (oldString === '' && newString === '')) {
-        // Check if this is a file edit placeholder
-        const isFileEdit = metadata?.isFileEdit === true;
-        const isPlaceholder = metadata?.isPlaceholder === true;
+      if (isEmptyFile || (isPlaceholder && isFileEdit)) {
+        // This is a special case for file edits with placeholder content
+        if (isFileEdit) {
+          console.log('Rendering file edit placeholder for:', filePath);
+          
+          // For file edits, if we have placeholder strings, try to use Monaco diff viewer
+          if (oldString && newString && oldString !== newString) {
+            console.log('Using Monaco diff viewer for placeholder content');
+            return (
+              <div 
+                className={baseStyles}
+                style={{ maxHeight: 'none' }}
+                data-testid="preview-content-diff-placeholder"
+              >
+                <div className={`mb-2 font-medium ${isDarkTheme ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                  {filePath} (Preview)
+                </div>
+                <MonacoDiffViewer
+                  originalText={oldString}
+                  modifiedText={newString}
+                  fileName={filePath}
+                  isDarkTheme={isDarkTheme}
+                  height={viewMode === PreviewMode.COMPLETE ? '500px' : '150px'}
+                />
+              </div>
+            );
+          }
+          
+          // Fallback to simple message
+          return (
+            <div 
+              className={`${baseStyles} text-center italic`}
+              style={{ maxHeight }}
+              data-testid="preview-content-diff-empty"
+            >
+              <div className={isDarkTheme ? 'text-gray-300' : 'text-gray-700'}>
+                {filePath ? `Editing file: ${filePath}` : 'Editing file'}
+              </div>
+            </div>
+          );
+        }
         
-        // Change message based on operation type
-        const message = isFileEdit 
-          ? (filePath ? `Editing file: ${filePath}` : 'Editing file')
-          : (filePath ? `Creating empty file: ${filePath}` : 'Creating empty file');
-        
+        // For empty file creation
         return (
           <div 
             className={`${baseStyles} text-center italic`}
@@ -522,7 +578,7 @@ function PreviewContent({
             data-testid="preview-content-diff-empty"
           >
             <div className={isDarkTheme ? 'text-gray-300' : 'text-gray-700'}>
-              {message}
+              {filePath ? `Creating empty file: ${filePath}` : 'Creating empty file'}
             </div>
           </div>
         );

@@ -144,10 +144,11 @@ export class PreviewService {
             });
             
             // Create a more appropriate placeholder preview for file edits
-            return {
+            const previewData = {
               contentType: PreviewContentType.DIFF,
               briefContent: `File: ${filePath}\n\n[Editing existing file]`,
-              hasFullContent: false,
+              hasFullContent: true, // Set to true to give MonacoDiffViewer a chance to initialize
+              fullContent: `File: ${filePath}\n\n[Editing existing file contents]`, // Provide fallback content
               metadata: {
                 toolName: toolInfo.name,
                 toolId: toolInfo.id,
@@ -158,9 +159,21 @@ export class PreviewService {
                 changesSummary: {
                   additions: 1,
                   deletions: 1
-                }
+                },
+                // Add empty strings for oldString and newString to force proper diff handling
+                oldString: 'Original content not available',
+                newString: 'Modified content will be shown after approval'
               }
             };
+            
+            serverLogger.debug(`Generated placeholder FileEdit preview for ${filePath}`, {
+              hasFullContent: previewData.hasFullContent,
+              briefContentLength: previewData.briefContent.length,
+              fullContentLength: previewData.fullContent?.length,
+              metadata: Object.keys(previewData.metadata)
+            });
+            
+            return previewData;
           }
           
           if ((searchCode !== undefined || searchCode === '') && (replaceCode !== undefined || replaceCode === '')) {
@@ -209,23 +222,38 @@ export class PreviewService {
               hasFullContent: true
             });
             
-            return {
+            const previewData = {
               contentType: PreviewContentType.DIFF,
               briefContent: formattedDiff,
               hasFullContent: true,
+              fullContent: formattedDiff, // Include the full diff
               metadata: {
                 toolName: toolInfo.name,
                 toolId: toolInfo.id,
                 filePath,
                 isPermissionPreview: true,
+                isFileEdit: true, // Mark as file edit operation
                 changesSummary: {
                   additions: newLines.length,
                   deletions: oldLines.length
                 },
                 oldLines: oldLines,
-                newLines: newLines
+                newLines: newLines,
+                // Include oldString and newString to help diff rendering
+                oldString: searchCode,
+                newString: replaceCode
               }
             };
+            
+            serverLogger.debug(`Generated real diff preview for ${filePath}`, {
+              hasFullContent: previewData.hasFullContent,
+              briefContentLength: previewData.briefContent.length,
+              oldStringLength: searchCode.length,
+              newStringLength: replaceCode.length,
+              metadata: Object.keys(previewData.metadata)
+            });
+            
+            return previewData;
           }
         }
       }
