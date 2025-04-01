@@ -50,6 +50,11 @@ export interface ToolExecutionState {
   result?: unknown;
   
   /**
+   * ID of the associated tool_use block from the model's response
+   */
+  toolUseId?: string;
+  
+  /**
    * Error details if the tool execution failed
    */
   error?: {
