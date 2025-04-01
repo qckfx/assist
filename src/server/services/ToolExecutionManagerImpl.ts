@@ -7,11 +7,13 @@ import {
   ToolExecutionEvent,
   PermissionRequestState
 } from '../../types/tool-execution';
+import { SessionStatePersistence } from './SessionStatePersistence';
+import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { serverLogger } from '../logger';
-import { getToolStatePersistence } from './ToolStatePersistence';
 
 /**
  * Implementation of ToolExecutionManager that stores state in memory
+ * with persistence support
  */
 export class ToolExecutionManagerImpl implements ToolExecutionManager {
   private executions: Map<string, ToolExecutionState> = new Map();
@@ -22,7 +24,16 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   private eventEmitter = new EventEmitter();
   
   // Add persistence support
-  private persistence = getToolStatePersistence();
+  private persistence: SessionStatePersistence;
+  
+  /**
+   * Create a new ToolExecutionManagerImpl
+   * @param persistenceService Optional persistence service to use
+   */
+  constructor(persistenceService?: SessionStatePersistence) {
+    // Use provided persistence service or get singleton instance
+    this.persistence = persistenceService || getSessionStatePersistence();
+  }
 
   /**
    * Create a new tool execution
@@ -358,43 +369,59 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   
   /**
    * Save all data for a session
+   * @param sessionId Session identifier
    */
   async saveSessionData(sessionId: string): Promise<void> {
     try {
-      // Get all executions for the session
-      const executions = this.getExecutionsForSession(sessionId);
+      // Load existing session data or create a new one
+      let sessionData = await this.persistence.loadSession(sessionId);
+      const now = new Date().toISOString();
       
-      // Get all permissions for the session
-      const permissions = this.getPermissionRequestsForSession(sessionId);
+      if (!sessionData) {
+        // Create a new session data object
+        sessionData = {
+          id: sessionId,
+          name: `Session ${sessionId}`,
+          createdAt: now,
+          updatedAt: now,
+          messages: [],
+          toolExecutions: [],
+          permissionRequests: [],
+          previews: [],
+          sessionState: { conversationHistory: [] }
+        };
+      }
       
-      // Persist the data
-      await this.persistence.persistToolExecutions(sessionId, executions);
-      await this.persistence.persistPermissionRequests(sessionId, permissions);
+      // Update the tool executions and permission requests
+      sessionData.toolExecutions = this.getExecutionsForSession(sessionId);
+      sessionData.permissionRequests = this.getPermissionRequestsForSession(sessionId);
+      sessionData.updatedAt = now;
       
-      serverLogger.debug(`Saved tool state data for session ${sessionId}`);
+      // Save the updated session data
+      await this.persistence.saveSession(sessionData);
+      
+      serverLogger.debug(`Saved tool execution data for session ${sessionId}`);
     } catch (error) {
-      serverLogger.error(`Failed to save tool state data for session ${sessionId}:`, error);
+      serverLogger.error(`Failed to save tool execution data for session ${sessionId}:`, error);
     }
   }
   
   /**
    * Load data for a session
+   * @param sessionId Session identifier
    */
   async loadSessionData(sessionId: string): Promise<void> {
     try {
-      // Load executions
-      const executions = await this.persistence.loadToolExecutions(sessionId);
+      // Load the session data
+      const sessionData = await this.persistence.loadSession(sessionId);
       
-      // Load permissions
-      const permissions = await this.persistence.loadPermissionRequests(sessionId);
-      
-      // Restore the data (only if we have executions)
-      if (executions.length > 0) {
+      // Restore the data (only if we have a session)
+      if (sessionData) {
         // First, clear any existing data for this session
         this.clearSessionData(sessionId);
         
         // Add executions to the manager
-        for (const execution of executions) {
+        for (const execution of sessionData.toolExecutions) {
           this.executions.set(execution.id, execution);
           
           // Add to session executions
@@ -405,7 +432,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
         }
         
         // Add permissions to the manager
-        for (const permission of permissions) {
+        for (const permission of sessionData.permissionRequests) {
           this.permissionRequests.set(permission.id, permission);
           
           // Add to session permissions
@@ -420,15 +447,16 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
           }
         }
         
-        serverLogger.info(`Loaded tool state data for session ${sessionId}: ${executions.length} executions, ${permissions.length} permissions`);
+        serverLogger.info(`Loaded tool execution data for session ${sessionId}: ${sessionData.toolExecutions.length} executions, ${sessionData.permissionRequests.length} permissions`);
       }
     } catch (error) {
-      serverLogger.error(`Failed to load tool state data for session ${sessionId}:`, error);
+      serverLogger.error(`Failed to load tool execution data for session ${sessionId}:`, error);
     }
   }
   
   /**
    * Clear all data for a session
+   * @param sessionId Session identifier
    */
   clearSessionData(sessionId: string): void {
     // Get all execution IDs for the session
@@ -463,13 +491,18 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   
   /**
    * Delete session data from persistence
+   * @param sessionId Session identifier
    */
   async deleteSessionData(sessionId: string): Promise<void> {
     try {
-      await this.persistence.deleteSessionData(sessionId);
-      serverLogger.debug(`Deleted persisted tool state data for session ${sessionId}`);
+      // Clear in-memory data first
+      this.clearSessionData(sessionId);
+      
+      // Then delete persisted data
+      await this.persistence.deleteSession(sessionId);
+      serverLogger.debug(`Deleted persisted tool execution data for session ${sessionId}`);
     } catch (error) {
-      serverLogger.error(`Failed to delete persisted tool state data for session ${sessionId}:`, error);
+      serverLogger.error(`Failed to delete persisted tool execution data for session ${sessionId}:`, error);
     }
   }
 
@@ -487,7 +520,11 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
 
 /**
  * Create a new ToolExecutionManager
+ * @param persistenceService Optional persistence service to use
+ * @returns New ToolExecutionManager instance
  */
-export function createToolExecutionManager(): ToolExecutionManager {
-  return new ToolExecutionManagerImpl();
+export function createToolExecutionManager(
+  persistenceService?: SessionStatePersistence
+): ToolExecutionManager {
+  return new ToolExecutionManagerImpl(persistenceService);
 }
