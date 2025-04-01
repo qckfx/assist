@@ -504,8 +504,17 @@ function PreviewContent({
       const oldString = metadata?.oldString as string || '';
       const newString = metadata?.newString as string || '';
       
-      // Handle empty file case
+      // Handle empty file or placeholder cases
       if (isEmptyFile || (oldString === '' && newString === '')) {
+        // Check if this is a file edit placeholder
+        const isFileEdit = metadata?.isFileEdit === true;
+        const isPlaceholder = metadata?.isPlaceholder === true;
+        
+        // Change message based on operation type
+        const message = isFileEdit 
+          ? (filePath ? `Editing file: ${filePath}` : 'Editing file')
+          : (filePath ? `Creating empty file: ${filePath}` : 'Creating empty file');
+        
         return (
           <div 
             className={`${baseStyles} text-center italic`}
@@ -513,7 +522,7 @@ function PreviewContent({
             data-testid="preview-content-diff-empty"
           >
             <div className={isDarkTheme ? 'text-gray-300' : 'text-gray-700'}>
-              {filePath ? `Creating empty file: ${filePath}` : 'Creating empty file'}
+              {message}
             </div>
           </div>
         );

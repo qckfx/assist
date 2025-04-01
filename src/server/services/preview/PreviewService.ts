@@ -120,20 +120,44 @@ export class PreviewService {
             filePath
           });
           
-          // Special case for empty file creation
-          if (searchCode === '' && replaceCode === '') {
+          // Log the exact values to debug the issue
+          serverLogger.debug('FileEditTool preview detailed args:', {
+            searchCode,
+            replaceCode,
+            searchCodeType: typeof searchCode,
+            replaceCodeType: typeof replaceCode,
+            searchCodeEmpty: searchCode === '',
+            replaceCodeEmpty: replaceCode === '',
+            searchCodeUndefined: searchCode === undefined,
+            replaceCodeUndefined: replaceCode === undefined
+          });
+          
+          // FileEditTool requires both searchCode and replaceCode to be valid
+          // Sometimes when the args are serialized during permission requests,
+          // the values might be empty strings or undefined
+          if (!searchCode || !replaceCode || searchCode === '' || replaceCode === '') {
+            serverLogger.warn(`FileEditTool preview received invalid search or replace code for ${filePath}`, {
+              hasSearchCode: !!searchCode,
+              hasReplaceCode: !!replaceCode,
+              searchCodeEmpty: searchCode === '',
+              replaceCodeEmpty: replaceCode === ''
+            });
+            
+            // Create a more appropriate placeholder preview for file edits
             return {
               contentType: PreviewContentType.DIFF,
-              briefContent: `File: ${filePath}\n\n+ [Creating empty file]`,
+              briefContent: `File: ${filePath}\n\n[Editing existing file]`,
               hasFullContent: false,
               metadata: {
                 toolName: toolInfo.name,
                 toolId: toolInfo.id,
                 filePath,
                 isPermissionPreview: true,
+                isPlaceholder: true,
+                isFileEdit: true, // Mark as file edit operation
                 changesSummary: {
-                  additions: 0,
-                  deletions: 0
+                  additions: 1,
+                  deletions: 1
                 }
               }
             };
