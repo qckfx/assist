@@ -356,67 +356,72 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       
       // If we found a history array, process it
       if (historyToProcess && historyToProcess.length > 0) {
-        // Get the last message from history
-        const lastMessage = historyToProcess[historyToProcess.length - 1];
-        console.log('Last message:', JSON.stringify(lastMessage, null, 2));
+        console.log('Processing full conversation history of', historyToProcess.length, 'messages');
         
-        // Only process if it's an assistant message
-        if (lastMessage && lastMessage.role === 'assistant') {
-          let textContent = '';
-          
-          // Debug content structure
-          console.log('Assistant message content type:', 
-            Array.isArray(lastMessage.content) ? 'array' : typeof lastMessage.content);
-          
-          // Handle different formats of message content
-          if (Array.isArray(lastMessage.content)) {
-            // For array content, extract all text blocks
-            console.log('Content array length:', lastMessage.content.length);
+        // First, clear existing messages to avoid duplicates, but keep the welcome message
+        dispatch({ type: 'CLEAR_MESSAGES' });
+        
+        // Re-add initial greeting 
+        dispatch({ 
+          type: 'ADD_MESSAGE', 
+          payload: {
+            id: 'greeting',
+            content: 'How can I help you today?',
+            type: 'assistant',
+            timestamp: new Date(),
+          }
+        });
+        
+        // Process each message in the history
+        const messagesToAdd = [];
+        
+        for (const message of historyToProcess) {
+          // Only process user and assistant messages
+          if (message && (message.role === 'user' || message.role === 'assistant')) {
+            let textContent = '';
             
-            // Extract text content based on content structure
-            textContent = lastMessage.content
-              .filter(item => {
-                // Log item type for debugging
-                console.log('Content item type:', 
-                  typeof item, 
-                  typeof item === 'object' ? Object.keys(item) : '');
-                
-                // Check for { type: 'text', text: string } format
-                if (typeof item === 'object' && item !== null && 'type' in item && item.type === 'text' && 'text' in item) {
-                  return true;
-                }
-                // Check for simple string content
-                return typeof item === 'string';
-              })
-              .map(item => {
-                if (typeof item === 'string') return item;
-                if (typeof item === 'object' && 'text' in item) return item.text;
-                return '';
-              })
-              .join('\n');
-          } else if (typeof lastMessage.content === 'string') {
-            // Handle simple string content
-            textContent = lastMessage.content;
-          }
-          
-          console.log('Extracted text content:', textContent.substring(0, 100) + (textContent.length > 100 ? '...' : ''));
-          
-          if (textContent.trim()) {
-            console.log('Adding assistant message to terminal');
-            dispatch({ 
-              type: 'ADD_MESSAGE', 
-              payload: {
-                id: generateUniqueId('assistant'),
+            // Handle different formats of message content
+            if (Array.isArray(message.content)) {
+              // For array content, extract all text blocks
+              textContent = message.content
+                .filter(item => {
+                  // Check for { type: 'text', text: string } format
+                  if (typeof item === 'object' && item !== null && 'type' in item && item.type === 'text' && 'text' in item) {
+                    return true;
+                  }
+                  // Check for simple string content
+                  return typeof item === 'string';
+                })
+                .map(item => {
+                  if (typeof item === 'string') return item;
+                  if (typeof item === 'object' && 'text' in item) return item.text;
+                  return '';
+                })
+                .join('\n');
+            } else if (typeof message.content === 'string') {
+              // Handle simple string content
+              textContent = message.content;
+            }
+            
+            // Only add if there's actual content
+            if (textContent.trim()) {
+              messagesToAdd.push({
+                id: generateUniqueId(message.role),
                 content: textContent,
-                type: 'assistant',
-                timestamp: new Date()
-              }
-            });
-          } else {
-            console.log('No text content found in assistant message');
+                type: message.role,
+                // Try to use the message's timestamp if available, fallback to current time
+                timestamp: message.timestamp ? new Date(message.timestamp) : new Date()
+              });
+            }
           }
+        }
+        
+        // Add all messages at once to avoid too many re-renders
+        if (messagesToAdd.length > 0) {
+          console.log('Adding', messagesToAdd.length, 'messages from history');
+          dispatch({ type: 'ADD_MESSAGES', payload: messagesToAdd });
         } else {
-          console.log('Last message is not from assistant or is invalid');
+          console.log('No valid messages found in history');
         }
       } else {
         console.log('No history or empty history in session data');
