@@ -84,6 +84,7 @@ export class WebSocketService {
 
     this.setupSocketHandlers();
     this.setupAgentEventListeners();
+    this.setupSessionEventForwarding();
 
     serverLogger.info('WebSocketService initialized');
   }
@@ -280,6 +281,17 @@ export class WebSocketService {
               });
             });
           }
+          
+          // Send list of persisted sessions
+          try {
+            this.agentService.listPersistedSessions().then(sessions => {
+              socket.emit(WebSocketEvent.SESSION_LIST_UPDATED, { sessions });
+            }).catch(error => {
+              serverLogger.error('Error sending persisted sessions list:', error);
+            });
+          } catch (error) {
+            serverLogger.error('Error sending persisted sessions list:', error);
+          }
         } catch (error) {
           serverLogger.error(`Error in JOIN_SESSION handler:`, error);
           socket.emit(WebSocketEvent.ERROR, {
@@ -342,6 +354,54 @@ export class WebSocketService {
           });
         }
       });
+      
+      // Handle session management actions
+      
+      // Session save request
+      socket.on('save_session', async (data, callback) => {
+        try {
+          const { sessionId } = data;
+          await this.agentService.saveSessionState(sessionId);
+          
+          // Update session list
+          const sessions = await this.agentService.listPersistedSessions();
+          this.broadcastEvent(WebSocketEvent.SESSION_LIST_UPDATED, { sessions });
+          
+          if (callback) callback({ success: true });
+        } catch (error) {
+          if (callback) callback({ success: false, error: (error as Error).message });
+        }
+      });
+      
+      // Session delete request
+      socket.on('delete_session', async (data, callback) => {
+        try {
+          const { sessionId } = data;
+          const success = await this.agentService.deletePersistedSession(sessionId);
+          
+          // Update session list
+          const sessions = await this.agentService.listPersistedSessions();
+          this.broadcastEvent(WebSocketEvent.SESSION_LIST_UPDATED, { sessions });
+          
+          if (callback) callback({ success });
+        } catch (error) {
+          if (callback) callback({ success: false, error: (error as Error).message });
+        }
+      });
+      
+      // Session list request
+      socket.on('list_sessions', async (data, callback) => {
+        try {
+          const sessions = await this.agentService.listPersistedSessions();
+          
+          if (callback) callback({ success: true, sessions });
+          
+          // Also broadcast to all clients
+          this.broadcastEvent(WebSocketEvent.SESSION_LIST_UPDATED, { sessions });
+        } catch (error) {
+          if (callback) callback({ success: false, error: (error as Error).message });
+        }
+      });
 
       // Handle disconnects
       socket.on(WebSocketEvent.DISCONNECT, (reason) => {
@@ -383,6 +443,31 @@ export class WebSocketService {
   /**
    * Setup listeners for AgentService events
    */
+  /**
+   * Set up event forwarding for session-related events
+   */
+  private setupSessionEventForwarding(): void {
+    // Forward session events
+    this.agentService.on(AgentServiceEvent.SESSION_SAVED, (data) => {
+      this.broadcastEvent(WebSocketEvent.SESSION_SAVED, data);
+    });
+    
+    this.agentService.on(AgentServiceEvent.SESSION_LOADED, (data) => {
+      this.broadcastEvent(WebSocketEvent.SESSION_LOADED, data);
+    });
+    
+    this.agentService.on(AgentServiceEvent.SESSION_DELETED, (data) => {
+      this.broadcastEvent(WebSocketEvent.SESSION_DELETED, data);
+    });
+  }
+  
+  /**
+   * Broadcast an event to all connected clients
+   */
+  private broadcastEvent(event: WebSocketEvent, data: Record<string, unknown>): void {
+    this.io.emit(event, data);
+  }
+
   private setupAgentEventListeners(): void {
     // Processing started - only send the processing event
     this.agentService.on(AgentServiceEvent.PROCESSING_STARTED, ({ sessionId }) => {

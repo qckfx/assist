@@ -30,6 +30,12 @@ export enum WebSocketEvent {
   FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
   TOOL_STATE_UPDATE = 'tool_state_update',
   TOOL_HISTORY = 'tool_history',
+  
+  // Session management events
+  SESSION_SAVED = 'session:saved',
+  SESSION_LOADED = 'session:loaded',
+  SESSION_LIST_UPDATED = 'session:list:updated',
+  SESSION_DELETED = 'session:deleted'
 }
 
 /**
@@ -85,5 +91,45 @@ export interface WebSocketEventMap {
         metadata?: Record<string, unknown>;
       };
     }>;
+  };
+  
+  // Session events
+  [WebSocketEvent.SESSION_SAVED]: {
+    sessionId: string;
+    timestamp: string;
+  };
+  
+  [WebSocketEvent.SESSION_LOADED]: {
+    sessionId: string;
+    timestamp: string;
+  };
+  
+  [WebSocketEvent.SESSION_LIST_UPDATED]: {
+    sessions: Array<{
+      id: string;
+      createdAt: string;
+      lastActiveAt: string;
+      messageCount: number;
+      toolCount: number;
+      initialQuery?: string;
+      lastMessage?: {
+        role: 'user' | 'assistant';
+        content: string;
+        timestamp: string;
+      };
+      repositoryInfo?: {
+        repoName: string;
+        commitHash: string;
+        branch: string;
+        remoteUrl?: string;
+        isDirty?: boolean;
+        workingDirectory?: string;
+      };
+    }>;
+  };
+  
+  [WebSocketEvent.SESSION_DELETED]: {
+    sessionId: string;
+    timestamp: string;
   };
 }

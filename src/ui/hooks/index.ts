@@ -21,6 +21,7 @@ export * from './usePermissionManager';
 export * from './useFastEditMode';
 export * from './useFastEditModeKeyboardShortcut';
 export * from './useAbortShortcuts';
+export * from './useSessionManager';
 
 // Default exports
 export { default as useKeyboardShortcuts } from './useKeyboardShortcuts';
@@ -37,3 +38,4 @@ export { default as usePermissionManager } from './usePermissionManager';
 export { default as useFastEditMode } from './useFastEditMode';
 export { default as useFastEditModeKeyboardShortcut } from './useFastEditModeKeyboardShortcut';
 export { default as useAbortShortcuts } from './useAbortShortcuts';
+export { default as useSessionManager } from './useSessionManager';

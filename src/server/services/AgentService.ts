@@ -53,6 +53,11 @@ export enum AgentServiceEvent {
   // Fast Edit Mode events
   FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
   FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
+  
+  // Session events
+  SESSION_SAVED = 'session:saved',
+  SESSION_LOADED = 'session:loaded',
+  SESSION_DELETED = 'session:deleted'
 }
 
 /**
@@ -652,6 +657,12 @@ export class AgentService extends EventEmitter {
       // Save session metadata
       await this.saveSessionMetadata(sessionId);
       
+      // Emit event
+      this.emit(AgentServiceEvent.SESSION_SAVED, {
+        sessionId,
+        timestamp: new Date().toISOString()
+      });
+      
       serverLogger.info(`Saved complete session state for session ${sessionId}`);
     } catch (error) {
       serverLogger.error(`Failed to save session state for session ${sessionId}:`, error);
@@ -827,6 +838,12 @@ export class AgentService extends EventEmitter {
       
       // Store in memory cache
       this.sessionMessages.set(sessionId, messages);
+      
+      // Emit event
+      this.emit(AgentServiceEvent.SESSION_LOADED, {
+        sessionId,
+        timestamp: new Date().toISOString()
+      });
       
       serverLogger.debug(`Loaded ${messages.length} messages for session ${sessionId}`);
     } catch (error) {
@@ -1646,6 +1663,12 @@ export class AgentService extends EventEmitter {
       // Remove from memory caches
       this.sessionMessages.delete(sessionId);
       this.sessionRepositoryInfo.delete(sessionId);
+      
+      // Emit event
+      this.emit(AgentServiceEvent.SESSION_DELETED, {
+        sessionId,
+        timestamp: new Date().toISOString()
+      });
       
       return true;
     } catch (error) {

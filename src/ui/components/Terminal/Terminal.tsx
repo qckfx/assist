@@ -21,6 +21,8 @@ import { useToolPreferencesContext } from '@/context/ToolPreferencesContext';
 // We'll use this component in the future
 import _ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
 import { PreviewMode } from '../../../types/preview';
+// Import the SessionManager
+import { SessionManager } from '../SessionManagement';
 
 export interface TerminalProps {
   className?: string;
@@ -231,6 +233,14 @@ export function Terminal({
 
   // Register Fast Edit Mode keyboard shortcut (Shift+Tab)
   useFastEditModeKeyboardShortcut(sessionId, !inputDisabled);
+  
+  // Add state for session manager
+  const [showSessionManager, setShowSessionManager] = useState(false);
+  
+  // Toggle session manager
+  const toggleSessionManager = () => {
+    setShowSessionManager(!showSessionManager);
+  };
 
   // Handle tool view mode changes with preference persistence
   const handleViewModeChange = React.useCallback((toolId: string, mode: PreviewMode) => {
@@ -321,6 +331,19 @@ export function Terminal({
           )}
         </div>
         <div className="flex items-center space-x-2">
+          <button
+            className="hover:text-white text-sm group relative"
+            onClick={toggleSessionManager}
+            aria-label="Session Management"
+            data-testid="show-session-manager"
+            aria-haspopup="dialog"
+            aria-expanded={showSessionManager}
+          >
+            💾
+            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              {showSessionManager ? 'Close Sessions' : 'Sessions'}
+            </span>
+          </button>
           <button
             className="hover:text-white text-sm group relative"
             onClick={() => setShowSettings(true)}
@@ -450,6 +473,11 @@ export function Terminal({
         onClose={() => setShowSettings(false)}
         ariaLabelledBy={`${ids.terminal}-settings-title`}
       />
+      {showSessionManager && (
+        <div className="terminal-session-manager">
+          <SessionManager />
+        </div>
+      )}
       <Announcer messages={messages} />
       
       {/* Hidden elements for screen reader description */}

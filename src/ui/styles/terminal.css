@@ -188,3 +188,23 @@
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Session manager panel */
+.terminal-session-manager {
+  position: absolute;
+  top: 40px; /* Height of the toolbar */
+  right: 0;
+  width: 400px;
+  height: calc(100% - 40px);
+  background-color: var(--terminal-background);
+  border-left: 1px solid var(--terminal-border);
+  overflow-y: auto;
+  z-index: 10;
+}
+
+/* Add responsive styles for session manager */
+@media (max-width: 768px) {
+  .terminal-session-manager {
+    width: 100%;
+  }
+}
