@@ -97,7 +97,7 @@ export const permissionRequestQuerySchema = z.object({
  */
 export const permissionResolutionSchema = z.object({
   sessionId: z.string().uuid(),
-  permissionId: z.string(),
+  executionId: z.string(),  // Changed from permissionId to executionId
   granted: z.boolean(),
 });
 
@@ -108,7 +108,7 @@ export const permissionRequestsResponseSchema = z.object({
   sessionId: z.string().uuid(),
   permissionRequests: z.array(
     z.object({
-      permissionId: z.string(),
+      executionId: z.string(),  // Changed from permissionId to executionId
       toolId: z.string(),
       args: z.record(z.any()),
       timestamp: z.string().datetime(),
@@ -121,7 +121,7 @@ export const permissionRequestsResponseSchema = z.object({
  */
 export const permissionResolutionResponseSchema = z.object({
   sessionId: z.string().uuid(),
-  permissionId: z.string(),
+  executionId: z.string(),  // Changed from permissionId to executionId
   granted: z.boolean(),
   resolved: z.boolean(),
 });

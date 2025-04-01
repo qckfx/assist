@@ -58,7 +58,7 @@ export interface PermissionRequest {
 
 export interface PermissionResolveRequest {
   sessionId: string;
-  permissionId: string;
+  executionId: string;  // Changed from permissionId to executionId
   granted: boolean;
 }
 
@@ -211,7 +211,7 @@ export interface WebSocketEventMap {
       executionId?: string;
     };
   };
-  [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };
+  [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; executionId: string; resolution: boolean; };
   [WebSocketEvent.SESSION_UPDATED]: SessionData;
   [WebSocketEvent.STREAM_CONTENT]: { sessionId: string; content: string; };
   [WebSocketEvent.FAST_EDIT_MODE_ENABLED]: { sessionId: string; enabled: true; };

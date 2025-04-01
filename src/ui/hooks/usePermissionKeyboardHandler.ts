@@ -5,28 +5,37 @@ import apiClient from '../services/apiClient';
 /**
  * Hook for handling keyboard events for permission requests
  */
-export function usePermissionKeyboardHandler({
-  sessionId,
-}: {
-  sessionId?: string;
-}) {
+export function usePermissionKeyboardHandler() {
   const { getActiveTools } = useToolStream();
   
   // Get pending permissions from active tools
-  const pendingPermissions = getActiveTools()
-    .filter(tool => tool.status === 'awaiting-permission' && tool.permissionId)
+  const activeTools = getActiveTools();
+  console.log('Active tools:', activeTools.map(t => ({ 
+    id: t.id, 
+    toolName: t.toolName, 
+    status: t.status
+  })));
+  
+  const pendingPermissions = activeTools
+    .filter(tool => {
+      const isPending = tool.status === 'awaiting-permission';
+      console.log(`Tool ${tool.id} (${tool.toolName}) permission check:`, { 
+        status: tool.status, 
+        isPending 
+      });
+      return isPending;
+    })
     .map(tool => ({
-      id: tool.permissionId!,
+      executionId: tool.id,
       toolId: tool.tool,
-      toolName: tool.toolName,
-      executionId: tool.id
+      toolName: tool.toolName
     }));
   
   // Resolve permission on the server - use apiClient instead of socket.emit
-  const resolvePermission = useCallback(async (permissionId: string, granted: boolean) => {
+  const resolvePermission = useCallback(async (executionId: string, granted: boolean) => {
     try {
-      console.log('Using apiClient to resolve permission:', { permissionId, granted });
-      const response = await apiClient.resolvePermission(permissionId, granted);
+      console.log('Using apiClient to resolve permission for execution:', { executionId, granted });
+      const response = await apiClient.resolvePermission(executionId, granted);
       return response.success;
     } catch (error) {
       console.error('Error resolving permission via apiClient:', error);
@@ -47,7 +56,7 @@ export function usePermissionKeyboardHandler({
       console.log('🔑 Keyboard event with pending permissions:', { 
         key: event.key, 
         pendingCount: pendingPermissions.length,
-        pendingPermissions: pendingPermissions.map(p => ({ id: p.id, toolId: p.toolId }))
+        pendingPermissions: pendingPermissions.map(p => ({ executionId: p.executionId, toolId: p.toolId }))
       });
       
       // Get the first pending permission
@@ -55,7 +64,7 @@ export function usePermissionKeyboardHandler({
       
       // If 'y' is pressed, grant permission
       if (event.key.toLowerCase() === 'y') {
-        console.log('🔑 Granting permission for', permission.id);
+        console.log('🔑 Granting permission for execution', permission.executionId);
         
         // Display visual feedback that the key was pressed
         const permissionElement = document.querySelector(`[data-testid="permission-banner"]`);
@@ -64,7 +73,7 @@ export function usePermissionKeyboardHandler({
           permissionElement.textContent = 'Permission granted - processing...';
         }
         
-        resolvePermission(permission.id, true)
+        resolvePermission(permission.executionId, true)
           .then((success) => {
             console.log(`🔑 Permission granted for ${permission.toolId}, success: ${success}`);
           })
@@ -79,7 +88,7 @@ export function usePermissionKeyboardHandler({
       } 
       // For any other key, deny permission
       else if (event.key.length === 1) { // Only handle printable characters
-        console.log('🔑 Denying permission for', permission.id);
+        console.log('🔑 Denying permission for execution', permission.executionId);
         
         // Display visual feedback that the key was pressed
         const permissionElement = document.querySelector(`[data-testid="permission-banner"]`);
@@ -88,7 +97,7 @@ export function usePermissionKeyboardHandler({
           permissionElement.textContent = 'Permission denied - canceling...';
         }
         
-        resolvePermission(permission.id, false)
+        resolvePermission(permission.executionId, false)
           .then((success) => {
             console.log(`🔑 Permission denied for ${permission.toolId}, success: ${success}`);
           })

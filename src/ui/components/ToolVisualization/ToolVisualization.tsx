@@ -401,10 +401,18 @@ export function ToolVisualization({
       )}
       
       {/* Permission request banner */}
-      {tool.status === 'awaiting-permission' && tool.permissionId && toolState !== ToolState.ABORTED && (
+      {console.log('Permission banner condition values:', {
+        toolId: tool.id,
+        status: tool.status,
+        toolState,
+        isAborted: toolState === ToolState.ABORTED,
+        conditionValue: (tool.status === 'awaiting-permission' && toolState !== ToolState.ABORTED)
+      })}
+      {tool.status === 'awaiting-permission' && toolState !== ToolState.ABORTED && (
         <div 
           className={`mt-1 ${isDarkTheme ? 'bg-amber-900 text-amber-100 border-amber-700' : 'bg-amber-100 text-amber-800 border-amber-300'} px-2 py-1 rounded-md text-xs border`}
           data-testid="permission-banner"
+          data-execution-id={tool.id}
         >
           <div className="font-semibold">Permission Required - Type 'y' to allow</div>
         </div>

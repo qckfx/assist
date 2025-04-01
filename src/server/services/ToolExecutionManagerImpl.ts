@@ -261,6 +261,24 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   }
 
   /**
+   * Resolve a permission request by execution ID
+   * 
+   * This is the preferred way to resolve permissions as it allows the client to
+   * simply pass the execution ID they already know, rather than requiring a lookup
+   * of the permission ID first.
+   */
+  resolvePermissionByExecutionId(executionId: string, granted: boolean): PermissionRequestState {
+    // Get the permission ID for this execution
+    const permissionId = this.executionPermissions.get(executionId);
+    if (!permissionId) {
+      throw new Error(`No permission request found for execution: ${executionId}`);
+    }
+    
+    // Resolve the permission using the existing method
+    return this.resolvePermission(permissionId, granted);
+  }
+
+  /**
    * Resolve a permission request
    */
   resolvePermission(permissionId: string, granted: boolean): PermissionRequestState {

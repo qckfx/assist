@@ -156,7 +156,7 @@ export const apiClient = {
   /**
    * Resolve a permission request
    */
-  resolvePermission: (permissionId: string, granted: boolean, providedSessionId?: string) => {
+  resolvePermission: (executionId: string, granted: boolean, providedSessionId?: string) => {
     // Try to get session ID from different sources
     // 1. Use provided sessionId if available
     // 2. Try sessionStorage
@@ -171,9 +171,9 @@ export const apiClient = {
     }
     
     // Log the request for debugging
-    console.log('Resolving permission request:', { 
+    console.log('Resolving permission request for execution:', { 
       sessionId, 
-      permissionId, 
+      executionId, 
       granted,
       source: providedSessionId ? 'provided' : (sessionStorage.getItem('currentSessionId') ? 'sessionStorage' : 'localStorage')
     });
@@ -181,7 +181,7 @@ export const apiClient = {
     // Ensure all fields are correctly formatted
     const requestData: PermissionResolveRequest = {
       sessionId: sessionId,
-      permissionId: permissionId,
+      executionId: executionId, // Now using consistent naming
       granted: granted
     };
     

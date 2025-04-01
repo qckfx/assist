@@ -1196,7 +1196,40 @@ export class AgentService extends EventEmitter {
   }
 
   /**
-   * Resolve a permission request
+   * Resolve a permission request by execution ID
+   * 
+   * This is the new recommended approach that directly uses the execution ID
+   * instead of requiring a separate permission ID lookup.
+   */
+  public resolvePermissionByExecutionId(executionId: string, granted: boolean): boolean {
+    try {
+      // Directly use the new ToolExecutionManager method for simplicity
+      this.toolExecutionManager.resolvePermissionByExecutionId(executionId, granted);
+      
+      // Get the permission request to handle legacy code
+      const permissionRequest = this.toolExecutionManager.getPermissionRequestForExecution(executionId);
+      if (permissionRequest) {
+        // Look up the request in the legacy map as well (backward compatibility)
+        const legacyRequest = this.permissionRequests.get(permissionRequest.id);
+        if (legacyRequest) {
+          // Remove the request from the map
+          this.permissionRequests.delete(permissionRequest.id);
+          
+          // Call the resolver function
+          legacyRequest.resolver(granted);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      serverLogger.error(`Error resolving permission for execution: ${executionId}`, error);
+      return false;
+    }
+  }
+  
+  /**
+   * Resolve a permission request (legacy method using permission ID)
+   * @deprecated Use resolvePermissionByExecutionId instead
    */
   public resolvePermission(permissionId: string, granted: boolean): boolean {
     const request = this.permissionRequests.get(permissionId);
@@ -1606,6 +1639,14 @@ export class AgentService extends EventEmitter {
       serverLogger.error(`Error getting preview for execution ${executionId}:`, error);
       return undefined;
     }
+  }
+  
+  /**
+   * Get permission request for a specific tool execution
+   */
+  public getPermissionRequestForExecution(executionId: string): PermissionRequestState | null {
+    const request = this.toolExecutionManager.getPermissionRequestForExecution(executionId);
+    return request || null;
   }
   
   /**

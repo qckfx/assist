@@ -906,58 +906,33 @@ export class WebSocketService {
     args?: Record<string, unknown>;
     timestamp?: string;
   }): void {
-    const { sessionId, permissionId, toolId, toolName, executionId, args, timestamp } = data;
+    const { sessionId, executionId } = data;
     
-    if (executionId) {
-      // Get the full execution state
-      const execution = this.agentService.getToolExecution(executionId);
-      
-      if (!execution) {
-        serverLogger.warn(`Tool execution not found for permission request: ${executionId}`);
-        // Fall back to the original event format
-        this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, {
-          sessionId,
-          permission: data
-        });
-        return;
-      }
-      
-      // Convert to client format
-      const clientData = this.convertExecutionToClientFormat(execution);
-      
-      // Emit both formats
-      this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, {
-        sessionId,
-        permission: data
-      });
-      this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-        sessionId,
-        tool: clientData
-      });
-    } else {
-      // For backward compatibility with tests
-      // Generate a preview for the permission request
-      const preview = previewService.generatePermissionPreview(
-        {
-          id: toolId,
-          name: toolName || toolId
-        },
-        args || {}
-      );
-      
-      // Format the permission object according to the expected UI format
-      this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, { 
-        sessionId,
-        permission: {
-          id: permissionId,
-          toolId: toolId,
-          toolName: toolName || toolId,
-          args: args,
-          timestamp: timestamp,
-          preview
-        },
-      });
+    // Get the full execution state
+    const execution = this.agentService.getToolExecution(executionId!);
+    
+    if (!execution) {
+      serverLogger.warn(`Tool execution not found for permission request: ${executionId}`);
+      return;
     }
+    
+    // Convert to client format
+    const clientData = this.convertExecutionToClientFormat(execution);
+    
+    // Send permission requested event with the execution ID
+    this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, {
+      sessionId,
+      permission: {
+        ...data,
+        executionId: executionId
+      }
+    });
+    
+    // Also send the tool state update
+    this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
+      sessionId,
+      tool: clientData
+    });
   }
   
   /**
@@ -971,45 +946,31 @@ export class WebSocketService {
     granted: boolean;
     timestamp?: string;
   }): void {
-    const { sessionId, permissionId, executionId, granted } = data;
+    const { sessionId, executionId, granted } = data;
     
-    if (executionId) {
-      // Get the full execution state
-      const execution = this.agentService.getToolExecution(executionId);
-      
-      if (!execution) {
-        serverLogger.warn(`Tool execution not found for permission resolution: ${executionId}`);
-        // Fall back to the original event format
-        this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, {
-          sessionId,
-          permissionId,
-          resolution: granted
-        });
-        return;
-      }
-      
-      // Convert to client format
-      const clientData = this.convertExecutionToClientFormat(execution);
-      
-      // Emit both formats
-      this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, {
-        sessionId,
-        permissionId,
-        resolution: granted
-      });
-      this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-        sessionId,
-        tool: clientData
-      });
-    } else {
-      // For backward compatibility with tests
-      // Map AgentService's "granted" property to WebSocketEvent's "resolution" property
-      this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, { 
-        sessionId,
-        permissionId,
-        resolution: granted
-      });
+    // Get the full execution state
+    const execution = this.agentService.getToolExecution(executionId!);
+    
+    if (!execution) {
+      serverLogger.warn(`Tool execution not found for permission resolution: ${executionId}`);
+      return;
     }
+    
+    // Convert to client format
+    const clientData = this.convertExecutionToClientFormat(execution);
+    
+    // Emit consistent events using executionId
+    this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, {
+      sessionId,
+      executionId,
+      resolution: granted
+    });
+    
+    // Also emit the updated tool state
+    this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
+      sessionId,
+      tool: clientData
+    });
   }
   
   /**
@@ -1096,7 +1057,7 @@ export class WebSocketService {
           });
           clientData.preview = this.convertPreviewToClientFormat(preview);
         }
-      } catch (error) {
+      } catch {
         // Just log at debug level since this is an opportunistic attempt
         serverLogger.debug(`No preview found for execution ${execution.id} without previewId`);
       }
