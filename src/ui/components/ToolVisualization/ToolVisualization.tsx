@@ -322,14 +322,7 @@ export function ToolVisualization({
         </div>
         
         {/* View mode toggle button */}
-        {console.log('View mode toggle rendering check:', {
-          toolId: tool.id,
-          toolState,
-          status: tool.status,
-          hasPreview: !!tool.preview,
-          canExpandCollapse,
-          viewMode
-        })}
+        {/* Removed console.log statement */}
         {canExpandCollapse && (
           <button
             onClick={(e) => {
@@ -354,16 +347,6 @@ export function ToolVisualization({
       </div>
       
       {/* Preview content - show if preview data exists for completed, running, or awaiting permission tools */}
-      {/* Add debug logging for conditional rendering */}
-      {console.log('Preview render condition:', {
-        toolId: tool.id,
-        hasPreview,
-        previewType: tool.preview?.contentType,
-        toolState,
-        status: tool.status,
-        viewMode,
-        shouldRender: hasPreview && (toolState === ToolState.COMPLETED || toolState === ToolState.RUNNING || tool.status === 'awaiting-permission') && viewMode !== PreviewMode.RETRACTED
-      })}
       {hasPreview && (toolState === ToolState.COMPLETED || toolState === ToolState.RUNNING || tool.status === 'awaiting-permission') && viewMode !== PreviewMode.RETRACTED && (
         <div 
           className={cn(

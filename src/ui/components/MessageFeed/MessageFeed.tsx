@@ -34,6 +34,8 @@ export interface MessageFeedProps {
   isDarkTheme?: boolean; // Add terminal theme property
   onToolViewModeChange?: (toolId: string, mode: PreviewMode) => void;
   defaultToolViewMode?: PreviewMode;
+  onNewSession?: () => void; // Add this new prop
+  showNewSessionMessage?: boolean; // Add this to control visibility
 }
 
 export function MessageFeed({
@@ -146,7 +148,7 @@ export function MessageFeed({
               type={message.type}
               timestamp={message.timestamp}
               enableAnsiColors={enableAnsiColors && message.type === 'assistant'}
-              ariaLabel={`${message.type === 'user' ? 'You' : message.type === 'assistant' ? 'Assistant' : message.type}: ${message.content}`}
+              ariaLabel={`${message.type} message content`}
             />
           </div>
         );
@@ -159,7 +161,7 @@ export function MessageFeed({
             className="w-4/5 self-start mt-2 mb-2 ml-2" // Left-aligned, not centered
             data-testid={`tool-${tool.id}`}
             role="listitem"
-            aria-label={`Tool execution: ${tool.toolName}`}
+            aria-label={`Tool execution: ${tool.toolName || tool.id}`}
           >
             <ToolVisualization
               tool={tool}

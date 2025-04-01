@@ -454,10 +454,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
         } 
       });
     
-    const permissionResolvedWrapper = (data: { sessionId: string, permissionId: string, resolution: boolean }) => 
+    const permissionResolvedWrapper = (data: { sessionId: string, executionId: string, resolution: boolean }) => 
       handlePermissionResolved({ 
         _sessionId: data.sessionId, 
-        permissionId: data.permissionId, 
+        permissionId: data.executionId, // Map executionId to permissionId for compatibility
         resolution: data.resolution 
       });
     
