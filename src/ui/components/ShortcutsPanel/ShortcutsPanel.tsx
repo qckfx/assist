@@ -82,10 +82,17 @@ export function ShortcutsPanel({
                 </div>
               ))}
               {/* Add Fast Edit Mode shortcut */}
-              <div className="flex justify-between py-2 border-b border-gray-800 last:border-0">
+              <div className="flex justify-between py-2 border-b border-gray-800">
                 <span className="text-gray-300">Toggle Fast Edit Mode</span>
                 <kbd className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300 font-mono">
                   Shift + Tab
+                </kbd>
+              </div>
+              {/* Add New Session shortcut */}
+              <div className="flex justify-between py-2 border-b border-gray-800 last:border-0">
+                <span className="text-gray-300">Create New Session</span>
+                <kbd className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300 font-mono">
+                  {typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'} + .
                 </kbd>
               </div>
             </>
