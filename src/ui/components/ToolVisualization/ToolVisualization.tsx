@@ -355,9 +355,10 @@ export function ToolVisualization({
       
       {/* Preview content - show if preview data exists for completed, running, or awaiting permission tools */}
       {/* Add debug logging for conditional rendering */}
-      {process.env.NODE_ENV === 'development' && console.log('Preview render condition:', {
+      {console.log('Preview render condition:', {
         toolId: tool.id,
         hasPreview,
+        previewType: tool.preview?.contentType,
         toolState,
         status: tool.status,
         viewMode,

@@ -91,6 +91,24 @@ export function useToolStream() {
   const handleToolStateUpdate = useCallback((data: { sessionId: string; tool: ToolExecution }) => {
     const { tool } = data;
     
+    // Add logging to see what's coming from the server
+    console.log('Tool state update received:', {
+      toolId: tool.id,
+      toolName: tool.toolName,
+      status: tool.status,
+      hasPreview: !!tool.preview,
+      previewType: tool.preview?.contentType
+    });
+
+    if (tool.preview) {
+      console.log('Preview data for tool:', {
+        toolId: tool.id,
+        contentType: tool.preview.contentType,
+        briefContentLength: tool.preview.briefContent?.length,
+        fullContentLength: tool.preview.fullContent?.length
+      });
+    }
+    
     setState(prev => {
       // Create new tool executions map with the updated tool
       const toolExecutions = {

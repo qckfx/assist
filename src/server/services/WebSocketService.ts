@@ -1016,6 +1016,14 @@ export class WebSocketService {
    * Convert a tool execution state to the format expected by clients
    */
   private convertExecutionToClientFormat(execution: ToolExecutionState): Record<string, unknown> {
+    // Add extra logging for debugging
+    serverLogger.debug(`Converting execution to client format: ${execution.id}`, {
+      status: execution.status,
+      toolId: execution.toolId,
+      hasPreviewId: !!execution.previewId,
+      previewId: execution.previewId
+    });
+    
     // Map ToolExecutionStatus to client status string
     const statusMap: Record<ToolExecutionStatus, string> = {
       [ToolExecutionStatus.PENDING]: 'pending',
@@ -1059,17 +1067,38 @@ export class WebSocketService {
     }
     
     // Add preview if available
+    // First, try to use the preview ID if it exists
     if (execution.previewId) {
       try {
-        // Here we'd need access to the PreviewManager which might be better
-        // passed as a dependency. For simplicity in this example, we're using
-        // the AgentService as a proxy.
+        serverLogger.debug(`Execution ${execution.id} has previewId: ${execution.previewId}`);
         const preview = this.getPreviewForExecution(execution.id);
         if (preview) {
+          serverLogger.debug(`Preview found for execution ${execution.id}:`, {
+            previewId: preview.id,
+            contentType: preview.contentType
+          });
           clientData.preview = this.convertPreviewToClientFormat(preview);
+        } else {
+          serverLogger.warn(`No preview found for execution ${execution.id} despite having previewId: ${execution.previewId}`);
         }
       } catch (error) {
         serverLogger.error(`Error getting preview for execution ${execution.id}:`, error);
+      }
+    } else {
+      // Try to get preview even if there's no previewId - sometimes it might exist
+      try {
+        serverLogger.debug(`Execution ${execution.id} has no previewId, trying to find preview anyway`);
+        const preview = this.getPreviewForExecution(execution.id);
+        if (preview) {
+          serverLogger.debug(`Preview found for execution ${execution.id} despite no previewId:`, {
+            previewId: preview.id,
+            contentType: preview.contentType
+          });
+          clientData.preview = this.convertPreviewToClientFormat(preview);
+        }
+      } catch (error) {
+        // Just log at debug level since this is an opportunistic attempt
+        serverLogger.debug(`No preview found for execution ${execution.id} without previewId`);
       }
     }
     
@@ -1090,11 +1119,27 @@ export class WebSocketService {
   
   /**
    * Get a preview for an execution
-   * This is a temporary method until we have proper DI for the PreviewManager
+   * Retrieves the preview associated with a tool execution from the AgentService
    */
-  private getPreviewForExecution(_executionId: string): ToolPreviewState | null {
-    // This would be replaced with a direct call to the PreviewManager
-    // For now, we'd need to extend the AgentService to expose this method
-    return null;
+  private getPreviewForExecution(executionId: string): ToolPreviewState | null {
+    try {
+      // Use the AgentService to get the preview for this execution
+      const preview = this.agentService.getPreviewForExecution(executionId);
+      
+      if (preview) {
+        serverLogger.debug(`Found preview for execution ${executionId}`, {
+          previewId: preview.id,
+          contentType: preview.contentType,
+          hasFullContent: !!preview.fullContent
+        });
+        return preview;
+      } else {
+        serverLogger.debug(`No preview found for execution ${executionId}`);
+        return null;
+      }
+    } catch (error) {
+      serverLogger.error(`Error retrieving preview for execution ${executionId}:`, error);
+      return null;
+    }
   }
 }

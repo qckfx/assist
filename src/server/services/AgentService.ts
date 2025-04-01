@@ -1277,18 +1277,33 @@ export class AgentService extends EventEmitter {
         name: execution.toolName
       };
       
+      serverLogger.debug(`Generating preview for tool execution: ${executionId}`, {
+        toolId,
+        toolName: execution.toolName,
+        hasResult: !!result
+      });
+      
       // Asynchronously generate the preview
       previewService.generatePreview(toolInfo, args, result)
         .then(previewData => {
-          if (!previewData) return;
+          if (!previewData) {
+            serverLogger.warn(`No preview data generated for execution ${executionId}`);
+            return;
+          }
+          
+          serverLogger.debug(`Preview generated for execution ${executionId}:`, {
+            contentType: previewData.contentType,
+            hasBriefContent: !!previewData.briefContent,
+            hasFullContent: previewData.hasFullContent
+          });
           
           // Create a preview in the manager
           // For TypeScript compatibility - check if there's full content available
           const fullContent = previewData.hasFullContent 
             ? (previewData as unknown as { fullContent: string }).fullContent
             : undefined;
-            
-          this.previewManager.createPreview(
+          
+          const preview = this.previewManager.createPreview(
             execution.sessionId,
             executionId,
             previewData.contentType,
@@ -1296,6 +1311,15 @@ export class AgentService extends EventEmitter {
             fullContent,
             previewData.metadata
           );
+          
+          serverLogger.debug(`Preview created and stored for execution ${executionId}:`, {
+            previewId: preview.id,
+            executionId: preview.executionId
+          });
+          
+          // Also update the execution to link to the preview
+          this.toolExecutionManager.updateExecution(executionId, { previewId: preview.id });
+          serverLogger.debug(`Updated execution ${executionId} with previewId: ${preview.id}`);
         })
         .catch(error => {
           serverLogger.error(`Error generating preview for ${executionId}:`, error);
@@ -1333,9 +1357,24 @@ export class AgentService extends EventEmitter {
         name: execution.toolName
       };
       
+      serverLogger.debug(`Generating permission preview for execution: ${executionId}`, {
+        toolId,
+        toolName: execution.toolName,
+        permissionId: permission.id
+      });
+      
       // Generate the permission preview
       const previewData = previewService.generatePermissionPreview(toolInfo, args);
-      if (!previewData) return;
+      if (!previewData) {
+        serverLogger.warn(`No preview data generated for permission request: ${permission.id}`);
+        return;
+      }
+      
+      serverLogger.debug(`Permission preview generated for execution ${executionId}:`, {
+        contentType: previewData.contentType,
+        hasBriefContent: !!previewData.briefContent,
+        hasFullContent: previewData.hasFullContent
+      });
       
       // Create a preview in the manager
       // For TypeScript compatibility - check if there's full content available
@@ -1343,7 +1382,7 @@ export class AgentService extends EventEmitter {
         ? (previewData as unknown as { fullContent: string }).fullContent
         : undefined;
         
-      this.previewManager.createPermissionPreview(
+      const preview = this.previewManager.createPermissionPreview(
         execution.sessionId,
         executionId,
         permission.id,
@@ -1352,6 +1391,16 @@ export class AgentService extends EventEmitter {
         fullContent,
         previewData.metadata
       );
+      
+      serverLogger.debug(`Permission preview created and stored for execution ${executionId}:`, {
+        previewId: preview.id,
+        executionId: preview.executionId,
+        permissionId: permission.id
+      });
+      
+      // Also update the execution to link to the preview
+      this.toolExecutionManager.updateExecution(executionId, { previewId: preview.id });
+      serverLogger.debug(`Updated execution ${executionId} with permission preview ID: ${preview.id}`);
     } catch (error) {
       serverLogger.error(`Error in generatePermissionPreview:`, error);
     }
@@ -1545,6 +1594,18 @@ export class AgentService extends EventEmitter {
    */
   public getToolExecution(executionId: string): ToolExecutionState | undefined {
     return this.toolExecutionManager.getExecution(executionId);
+  }
+  
+  /**
+   * Get a preview for a specific tool execution
+   */
+  public getPreviewForExecution(executionId: string): ToolPreviewState | undefined {
+    try {
+      return this.previewManager.getPreviewForExecution(executionId);
+    } catch (error) {
+      serverLogger.error(`Error getting preview for execution ${executionId}:`, error);
+      return undefined;
+    }
   }
   
   /**

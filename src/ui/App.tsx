@@ -7,11 +7,14 @@ import WebSocketTerminal from '@/components/WebSocketTerminal';
 import { ToolPreferencesProvider } from '@/context/ToolPreferencesContext';
 
 function App() {
+  // Get the stored session ID from localStorage
+  const storedSessionId = typeof localStorage !== 'undefined' ? localStorage.getItem('sessionId') || undefined : undefined;
+  
   return (
     <ThemeProvider defaultTheme="dark">
       <WebSocketProvider>
         <TerminalProvider>
-          <WebSocketTerminalProvider>
+          <WebSocketTerminalProvider initialSessionId={storedSessionId}>
             <ToolPreferencesProvider>
               <Layout>
                 <div className="flex items-center justify-center h-full p-4" style={{ height: "calc(100vh - 120px)" }}>
