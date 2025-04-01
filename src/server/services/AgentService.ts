@@ -602,8 +602,28 @@ export class AgentService extends EventEmitter {
       serverLogger.error(`Failed to create execution adapter for session ${session.id}`, error);
     });
     
+    // Load any persisted tool state
+    try {
+      await this.toolExecutionManager.loadSessionData(session.id);
+      await this.previewManager.loadSessionData(session.id);
+    } catch (error) {
+      serverLogger.warn(`Failed to load persisted tool state for session ${session.id}:`, error);
+    }
+    
     // Return the session immediately without waiting for adapter initialization
     return session;
+  }
+  
+  /**
+   * Save tool state for a session
+   */
+  public async saveToolState(sessionId: string): Promise<void> {
+    try {
+      await this.toolExecutionManager.saveSessionData(sessionId);
+      await this.previewManager.saveSessionData(sessionId);
+    } catch (error) {
+      serverLogger.error(`Failed to save tool state for session ${sessionId}:`, error);
+    }
   }
 
   /**
@@ -806,6 +826,9 @@ export class AgentService extends EventEmitter {
           sessionId,
           response: result.response,
         });
+        
+        // After successful query processing, save the tool state
+        await this.saveToolState(sessionId);
 
         return {
           response: result.response || '',

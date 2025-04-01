@@ -154,3 +154,27 @@ export async function getStatus(req: Request, res: Response, next: NextFunction)
   }
 }
 
+/**
+ * Save tool state for a session
+ * @route POST /api/sessions/:sessionId/tools/save
+ */
+export async function saveToolState(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { sessionId } = req.params;
+    const agentService = getAgentService();
+    
+    // Verify the session exists
+    try {
+      sessionManager.getSession(sessionId);
+    } catch {
+      res.status(404).json({ success: false, message: 'Session not found' });
+      return;
+    }
+    
+    await agentService.saveToolState(sessionId);
+    res.status(200).json({ success: true, message: 'Tool state saved successfully' });
+  } catch (error) {
+    next(error);
+  }
+}
+

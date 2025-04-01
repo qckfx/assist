@@ -5,6 +5,7 @@ import {
   PreviewManager 
 } from '../../types/preview';
 import { serverLogger } from '../logger';
+import { getToolStatePersistence } from './ToolStatePersistence';
 
 /**
  * Implementation of PreviewManager that stores previews in memory
@@ -13,6 +14,9 @@ export class PreviewManagerImpl implements PreviewManager {
   private previews: Map<string, ToolPreviewState> = new Map();
   private sessionPreviews: Map<string, Set<string>> = new Map();
   private executionPreviews: Map<string, string> = new Map();
+  
+  // Add persistence support
+  private persistence = getToolStatePersistence();
 
   /**
    * Create a preview for a tool execution
@@ -133,6 +137,80 @@ export class PreviewManagerImpl implements PreviewManager {
     });
 
     return updatedPreview;
+  }
+  
+  /**
+   * Save all previews for a session
+   */
+  async saveSessionData(sessionId: string): Promise<void> {
+    try {
+      // Get all previews for the session
+      const previews = this.getPreviewsForSession(sessionId);
+      
+      // Persist the previews
+      await this.persistence.persistPreviews(sessionId, previews);
+      
+      serverLogger.debug(`Saved ${previews.length} previews for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save previews for session ${sessionId}:`, error);
+    }
+  }
+  
+  /**
+   * Load previews for a session
+   */
+  async loadSessionData(sessionId: string): Promise<void> {
+    try {
+      // Load previews
+      const previews = await this.persistence.loadPreviews(sessionId);
+      
+      // Restore the data (only if we have previews)
+      if (previews.length > 0) {
+        // First, clear any existing previews for this session
+        this.clearSessionData(sessionId);
+        
+        // Add previews to the manager
+        for (const preview of previews) {
+          this.previews.set(preview.id, preview);
+          
+          // Add to session previews
+          if (!this.sessionPreviews.has(sessionId)) {
+            this.sessionPreviews.set(sessionId, new Set());
+          }
+          this.sessionPreviews.get(sessionId)!.add(preview.id);
+          
+          // Link execution to preview
+          this.executionPreviews.set(preview.executionId, preview.id);
+        }
+        
+        serverLogger.info(`Loaded ${previews.length} previews for session ${sessionId}`);
+      }
+    } catch (error) {
+      serverLogger.error(`Failed to load previews for session ${sessionId}:`, error);
+    }
+  }
+  
+  /**
+   * Clear all previews for a session
+   */
+  clearSessionData(sessionId: string): void {
+    // Get all preview IDs for the session
+    const previewIds = this.sessionPreviews.get(sessionId) || new Set();
+    
+    // Remove all previews
+    for (const id of previewIds) {
+      // Get the preview to find the execution ID
+      const preview = this.previews.get(id);
+      if (preview) {
+        // Remove the link from execution to preview
+        this.executionPreviews.delete(preview.executionId);
+      }
+      
+      this.previews.delete(id);
+    }
+    
+    // Remove session from previews map
+    this.sessionPreviews.delete(sessionId);
   }
 
   /**

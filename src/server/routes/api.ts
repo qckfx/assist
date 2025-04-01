@@ -74,6 +74,11 @@ router.post('/permissions/fast-edit-mode', validateBody(fastEditModeToggleSchema
  */
 router.get('/permissions/fast-edit-mode', validateQuery(fastEditModeQuerySchema), permissionController.getFastEditMode);
 
+/**
+ * @route   POST /api/sessions/:sessionId/tools/save
+ * @desc    Save tool state for a session
+ */
+router.post('/sessions/:sessionId/tools/save', apiController.saveToolState);
 
 /**
  * @route   GET /api/docs
