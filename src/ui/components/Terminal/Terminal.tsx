@@ -23,6 +23,8 @@ import _ToolVisualization from '@/components/ToolVisualization/ToolVisualization
 import { PreviewMode } from '../../../types/preview';
 // Import the SessionManager
 import { SessionManager } from '../SessionManagement';
+// Import the API client
+import apiClient from '@/services/apiClient';
 
 export interface TerminalProps {
   className?: string;
@@ -181,6 +183,55 @@ export function Terminal({
   // Define keyboard shortcuts - use metaKey (cmd) on macOS
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   
+  // Get createSession from WebSocketTerminal context
+  const { createSession } = wsTerminalContext;
+  
+  // Create a new session handler
+  const handleNewSession = async () => {
+    try {
+      // Show a toast message
+      setSaveMessage('Creating new session...');
+      
+      // Create a loading toast notification
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-14 left-0 right-0 mx-auto w-max bg-black/90 text-white px-4 py-2 rounded-md shadow-lg z-50 flex items-center';
+      toast.innerHTML = `
+        <span class="inline-block animate-spin mr-2">⟳</span>
+        <span>Creating new session...</span>
+      `;
+      document.body.appendChild(toast);
+      
+      // Save current session first if we have one
+      if (sessionId) {
+        await saveSession();
+      }
+      
+      // Create a new session
+      const newSessionId = await createSession();
+      if (newSessionId) {
+        console.log('Created new session:', newSessionId);
+        
+        // Store the new session ID and reload
+        localStorage.setItem('sessionId', newSessionId);
+        
+        // Update the toast
+        toast.innerHTML = `
+          <span class="mr-2">✓</span>
+          <span>New session created, redirecting...</span>
+        `;
+        
+        // Brief delay before reloading to let the user see the message
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error creating new session:', error);
+      setSaveMessage('Failed to create new session');
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+  };
+  
   const shortcuts: KeyboardShortcut[] = [
     {
       key: 'k',
@@ -211,6 +262,13 @@ export function Terminal({
       action: () => setShowSettings(!showSettings),
       description: `${isMac ? 'Cmd' : 'Ctrl'}+,: Open settings`,
     },
+    // Add new session shortcut (Cmd+. or Ctrl+.)
+    {
+      key: '.',
+      [isMac ? 'metaKey' : 'ctrlKey']: true,
+      action: handleNewSession,
+      description: `${isMac ? 'Cmd' : 'Ctrl'}+.: New session`,
+    },
     // Add abort shortcuts
     {
       key: 'c',
@@ -236,10 +294,64 @@ export function Terminal({
   
   // Add state for session manager
   const [showSessionManager, setShowSessionManager] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   
   // Toggle session manager
   const toggleSessionManager = () => {
     setShowSessionManager(!showSessionManager);
+  };
+  
+  // Close the session manager if Escape is pressed
+  useEffect(() => {
+    if (!showSessionManager) return;
+    
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowSessionManager(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showSessionManager]);
+  
+  // Save current session
+  const saveSession = async () => {
+    if (!sessionId) {
+      setSaveMessage("No active session to save");
+      setTimeout(() => setSaveMessage(null), 3000);
+      return;
+    }
+    
+    setIsSaving(true);
+    setSaveMessage("Saving...");
+    
+    try {
+      // Use the apiClient to save the session
+      console.log('Saving session via apiClient:', sessionId);
+      
+      const response = await apiClient.saveSession(sessionId);
+      console.log('Session save response:', response);
+      
+      if (response.success) {
+        setSaveMessage("Session saved");
+        
+        // Store the session ID in localStorage for persistence
+        localStorage.setItem('sessionId', sessionId);
+        console.log('Stored session ID in localStorage:', sessionId);
+      } else {
+        setSaveMessage("Failed to save");
+      }
+    } catch (error) {
+      console.error('Failed to save session:', error);
+      setSaveMessage("Error saving session");
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
   };
 
   // Handle tool view mode changes with preference persistence
@@ -333,15 +445,37 @@ export function Terminal({
         <div className="flex items-center space-x-2">
           <button
             className="hover:text-white text-sm group relative"
+            onClick={handleNewSession}
+            aria-label="New Session"
+            data-testid="new-session"
+          >
+            ➕
+            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              New Session ({isMac ? 'Cmd' : 'Ctrl'}+.)
+            </span>
+          </button>
+          <button
+            className="hover:text-white text-sm group relative"
+            onClick={saveSession}
+            aria-label="Save Current Session"
+            data-testid="quick-save-session"
+          >
+            💾
+            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              Save Session
+            </span>
+          </button>
+          <button
+            className="hover:text-white text-sm group relative"
             onClick={toggleSessionManager}
             aria-label="Session Management"
             data-testid="show-session-manager"
             aria-haspopup="dialog"
             aria-expanded={showSessionManager}
           >
-            💾
+            📋
             <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-              {showSessionManager ? 'Close Sessions' : 'Sessions'}
+              {showSessionManager ? 'Close Sessions' : 'Session List'}
             </span>
           </button>
           <button
@@ -372,6 +506,19 @@ export function Terminal({
           </button>
         </div>
       </div>
+      {/* Save message toast */}
+      {saveMessage && (
+        <div className="absolute top-14 left-4 bg-black/80 text-white px-3 py-2 rounded text-sm z-50">
+          {isSaving ? (
+            <span className="flex items-center">
+              <span className="inline-block mr-2 animate-spin">⟳</span> {saveMessage}
+            </span>
+          ) : (
+            <span>{saveMessage}</span>
+          )}
+        </div>
+      )}
+      
       <div 
         className="flex flex-col flex-grow overflow-auto terminal-scrollbar"
         style={{ 
@@ -475,7 +622,7 @@ export function Terminal({
       />
       {showSessionManager && (
         <div className="terminal-session-manager">
-          <SessionManager />
+          <SessionManager onClose={() => setShowSessionManager(false)} />
         </div>
       )}
       <Announcer messages={messages} />

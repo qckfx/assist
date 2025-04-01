@@ -156,12 +156,17 @@ export const apiClient = {
   /**
    * Resolve a permission request
    */
-  resolvePermission: (permissionId: string, granted: boolean) => {
-    // Need to get the current session from sessionStorage
-    const sessionId = sessionStorage.getItem('currentSessionId');
+  resolvePermission: (permissionId: string, granted: boolean, providedSessionId?: string) => {
+    // Try to get session ID from different sources
+    // 1. Use provided sessionId if available
+    // 2. Try sessionStorage
+    // 3. Try localStorage (as fallback)
+    const sessionId = providedSessionId || 
+                      sessionStorage.getItem('currentSessionId') || 
+                      localStorage.getItem('sessionId');
     
     if (!sessionId) {
-      console.error('No session ID found in sessionStorage');
+      console.error('No session ID found in any source (provided, sessionStorage, localStorage)');
       return Promise.reject(new Error('No session ID found'));
     }
     
@@ -169,7 +174,8 @@ export const apiClient = {
     console.log('Resolving permission request:', { 
       sessionId, 
       permissionId, 
-      granted
+      granted,
+      source: providedSessionId ? 'provided' : (sessionStorage.getItem('currentSessionId') ? 'sessionStorage' : 'localStorage')
     });
     
     // Ensure all fields are correctly formatted
@@ -212,6 +218,30 @@ export const apiClient = {
     apiRequest<{ sessionId: string; fastEditMode: boolean }>(
       `${API_ENDPOINTS.FAST_EDIT_MODE}?sessionId=${encodeURIComponent(sessionId)}`
     ),
+  
+  /**
+   * List all persisted sessions
+   */
+  listSessions: () => 
+    apiRequest<{ sessions: any[] }>(API_ENDPOINTS.SESSIONS_LIST),
+  
+  /**
+   * Save a session state
+   */
+  saveSession: (sessionId: string) => {
+    // Replace :sessionId in the endpoint pattern with the actual ID
+    const endpoint = API_ENDPOINTS.SESSIONS_SAVE.replace(':sessionId', sessionId);
+    return apiRequest<{ success: boolean; message: string }>(endpoint, 'POST');
+  },
+  
+  /**
+   * Delete a persisted session
+   */
+  deleteSession: (sessionId: string) => {
+    // Replace :sessionId in the endpoint pattern with the actual ID
+    const endpoint = API_ENDPOINTS.SESSIONS_DELETE.replace(':sessionId', sessionId);
+    return apiRequest<{ success: boolean; message: string }>(endpoint, 'DELETE');
+  },
 };
 
 export default apiClient;

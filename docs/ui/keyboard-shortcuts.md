@@ -14,6 +14,8 @@ The QCKFX Terminal UI supports the following keyboard shortcuts for efficient in
 | `Ctrl + k` | Clear terminal (Windows/Linux) |
 | `Cmd + /` | Focus command input (macOS) |
 | `Ctrl + /` | Focus command input (Windows/Linux) |
+| `Cmd + .` | Create new session (macOS) |
+| `Ctrl + .` | Create new session (Windows/Linux) |
 
 ## Input Field Shortcuts
 
