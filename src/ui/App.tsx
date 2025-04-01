@@ -17,12 +17,10 @@ function SessionComponent() {
   // State to track if this is a fresh load of an existing session
   const [showNewSessionHint, setShowNewSessionHint] = useState(true);
   
-  // Set localStorage based on URL parameter
+  // Check if session exists and handle UI state
   useEffect(() => {
     if (sessionId) {
       console.log('[SessionComponent] Loading session from URL parameter:', sessionId);
-      localStorage.setItem('sessionId', sessionId);
-      sessionStorage.setItem('currentSessionId', sessionId);
       
       // Check if the user has previously dismissed session prompts today
       const lastPromptTime = localStorage.getItem('sessionPromptDismissed');
@@ -33,7 +31,7 @@ function SessionComponent() {
         setShowSessionPrompt(true);
       }
       
-      // Try fetching the session to verify it exists
+      // Try fetching the session to verify it exists - this is just a validation check
       const testUrl = `/api/sessions/${sessionId}/state/save`;
       
       fetch(testUrl, { method: 'POST' })
@@ -171,23 +169,41 @@ function NewSessionComponent() {
   );
 }
 
+// Session wrapper to extract session ID from URL params
+// and provide it to the WebSocketTerminalProvider
+function SessionWrapper() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  
+  return (
+    <WebSocketTerminalProvider initialSessionId={sessionId}>
+      <ToolPreferencesProvider>
+        <Layout>
+          <SessionComponent />
+        </Layout>
+      </ToolPreferencesProvider>
+    </WebSocketTerminalProvider>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
       <ThemeProvider defaultTheme="dark">
         <WebSocketProvider>
           <TerminalProvider>
-            <WebSocketTerminalProvider>
-              <ToolPreferencesProvider>
-                <Layout>
-                  <Routes>
-                    <Route path="/" element={<NewSessionComponent />} />
-                    <Route path="/sessions/:sessionId" element={<SessionComponent />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </Layout>
-              </ToolPreferencesProvider>
-            </WebSocketTerminalProvider>
+            <Routes>
+              <Route path="/" element={
+                <WebSocketTerminalProvider>
+                  <ToolPreferencesProvider>
+                    <Layout>
+                      <NewSessionComponent />
+                    </Layout>
+                  </ToolPreferencesProvider>
+                </WebSocketTerminalProvider>
+              } />
+              <Route path="/sessions/:sessionId" element={<SessionWrapper />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </TerminalProvider>
         </WebSocketProvider>
       </ThemeProvider>
