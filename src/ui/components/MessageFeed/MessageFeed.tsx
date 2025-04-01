@@ -48,7 +48,9 @@ export function MessageFeed({
   showToolsInline = true,
   isDarkTheme = false, // Default to light theme
   onToolViewModeChange,
-  defaultToolViewMode
+  defaultToolViewMode,
+  onNewSession,
+  showNewSessionMessage = false
 }: MessageFeedProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -192,6 +194,34 @@ export function MessageFeed({
       role="list"
     >
       {renderTimelineItems()}
+      
+      {/* New session message at the bottom */}
+      {showNewSessionMessage && onNewSession && (
+        <div 
+          className="self-center w-full my-3 bg-gray-800/40 rounded-md px-4 py-3 border border-gray-700/30 text-sm text-center"
+          role="status"
+          aria-live="polite"
+          data-testid="new-session-hint"
+        >
+          <div className="flex flex-col gap-2 items-center">
+            <div>
+              <button 
+                onClick={onNewSession}
+                className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer inline-flex items-center"
+              >
+                <span className="mr-1">+</span> Start a new session
+              </button>
+              <span className="ml-2 text-gray-500 text-xs">
+                (or press {navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}+.)
+              </span>
+            </div>
+            <div className="text-gray-400 text-sm">
+              <span>Or just type a message to continue this session</span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div ref={messagesEndRef} />
     </div>
   );

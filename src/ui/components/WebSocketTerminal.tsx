@@ -18,6 +18,8 @@ interface WebSocketTerminalProps {
   autoConnect?: boolean;
   showConnectionStatus?: boolean;
   showTypingIndicator?: boolean;
+  showNewSessionHint?: boolean;
+  onUserInput?: () => void;
 }
 
 /**
@@ -29,6 +31,8 @@ export function WebSocketTerminal({
   autoConnect = true,
   showConnectionStatus = true,
   showTypingIndicator = true,
+  showNewSessionHint = false,
+  onUserInput,
 }: WebSocketTerminalProps) {
   const {
     handleCommand,
@@ -45,7 +49,7 @@ export function WebSocketTerminal({
   const [hasConnected, setHasConnected] = useState(false);
   
   // Add keyboard handler for permission requests
-  usePermissionKeyboardHandler({ sessionId });
+  usePermissionKeyboardHandler();
   
   // Add keyboard handler for abort operations
   useAbortShortcuts(isConnected);
@@ -70,6 +74,17 @@ export function WebSocketTerminal({
     }
   }, [autoConnect, hasConnected]);
   
+  // Create a wrapper for handleCommand that notifies parent component of user input
+  const handleCommandWithNotification = (command: string) => {
+    // Call the parent's onUserInput callback if provided
+    if (onUserInput) {
+      onUserInput();
+    }
+    
+    // Call the original handleCommand function
+    handleCommand(command);
+  };
+
   return (
     <div className="relative w-full max-w-full flex flex-col" style={{ height: "calc(100% - 20px)" }} data-testid="websocket-terminal">
       {/* Connection indicator now integrated directly in the Terminal title bar */}
@@ -77,7 +92,7 @@ export function WebSocketTerminal({
       <Terminal
         className={className}
         messages={state.messages}
-        onCommand={handleCommand}
+        onCommand={handleCommandWithNotification}
         inputDisabled={!isConnected && hasConnected}
         fullScreen={fullScreen}
         onClear={clearMessages}
@@ -86,6 +101,7 @@ export function WebSocketTerminal({
         showTypingIndicator={showTypingIndicator}
         showToolVisualizations={true}
         connectionStatus={connectionStatus}
+        showNewSessionHint={showNewSessionHint}
       />
       
       {/* Typing indicator is now handled inside the Terminal component */}

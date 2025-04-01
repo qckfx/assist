@@ -106,8 +106,17 @@ export async function startServer(config: ServerConfig): Promise<{
         next();
       });
 
-      // Use history API fallback for SPA
-      app.use(history());
+      // Use history API fallback for SPA with custom rules for session routes
+      app.use(history({
+        // Define specific routes to rewrite to index.html
+        rewrites: [
+          // Capture session routes
+          { 
+            from: /^\/sessions\/.*$/,
+            to: '/index.html'
+          }
+        ]
+      }));
       
       // Serve static files after the history middleware
       app.use(express.static(staticFilesPath, {

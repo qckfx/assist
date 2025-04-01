@@ -162,6 +162,9 @@ export function WebSocketTerminalProvider({
         sessionStorage.setItem('currentSessionId', newSessionId);
         console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
         
+        // Store in localStorage as a fallback
+        localStorage.setItem('sessionId', newSessionId);
+        
         // Update session state
         setSessionId(newSessionId);
         sessionIdRef.current = newSessionId;
@@ -170,6 +173,9 @@ export function WebSocketTerminalProvider({
         if (isConnected && typeof connectToSession === 'function') {
           connectToSession(newSessionId);
         }
+        
+        // Update URL to include session ID without page reload
+        window.history.pushState({}, '', `/sessions/${newSessionId}`);
         
         // Don't show session ID to users - they don't need to see this
         return newSessionId;
@@ -184,7 +190,7 @@ export function WebSocketTerminalProvider({
     } finally {
       setProcessing(false);
     }
-  }, [addSystemMessage, addErrorMessage, setProcessing, isConnected, connectToSession]);
+  }, [addErrorMessage, setProcessing, isConnected, connectToSession]);
   
   // Get the tool stream for abort processing
   const toolStream = useToolStream();

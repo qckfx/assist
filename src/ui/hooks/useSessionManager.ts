@@ -216,12 +216,11 @@ export default function useSessionManager() {
     }
   };
   
-  // Load a session
+  // Load a session - now navigates to the session URL instead of reloading
   const loadSession = useCallback((sessionId: string) => {
     console.log('Loading session:', sessionId);
     
-    // For loading a session, we'll use the existing session management
-    // by setting the session ID in local storage and reloading the page
+    // Set the session ID in local storage for backup/fallback
     localStorage.setItem('sessionId', sessionId);
     console.log('Stored session ID in localStorage:', sessionId);
     
@@ -229,8 +228,8 @@ export default function useSessionManager() {
     sessionStorage.setItem('currentSessionId', sessionId);
     console.log('Stored session ID in sessionStorage:', sessionId);
     
-    // Show a confirmation before reload (optional)
-    window.location.reload();
+    // Navigate to the session URL
+    window.location.href = `/sessions/${sessionId}`;
     
     return Promise.resolve(true);
   }, []);

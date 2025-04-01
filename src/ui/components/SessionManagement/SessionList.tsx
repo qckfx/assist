@@ -49,16 +49,17 @@ export function SessionList({ onSessionSelect }: SessionListProps) {
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState<string | null>(null);
   
-  // Handle session selection
+  // Handle session selection - now uses URL-based navigation
   const handleSessionSelect = (sessionId: string) => {
     // Set this session as loading
     setLoadingSession(sessionId);
     
-    // Small delay to show the loading state before the page reloads
+    // Small delay to show the loading state before navigation
     setTimeout(() => {
       if (onSessionSelect) {
         onSessionSelect(sessionId);
       } else {
+        // Use the loadSession function which now uses URL-based navigation
         loadSession(sessionId);
       }
     }, 800); // Slightly longer delay to ensure users see the loading state

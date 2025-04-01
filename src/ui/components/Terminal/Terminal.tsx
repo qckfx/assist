@@ -45,6 +45,7 @@ export interface TerminalProps {
   showTypingIndicator?: boolean;
   showToolVisualizations?: boolean;
   connectionStatus?: string;
+  showNewSessionHint?: boolean;
 }
 
 export function Terminal({
@@ -61,6 +62,7 @@ export function Terminal({
   showConnectionIndicator = true,
   showTypingIndicator = true,
   showToolVisualizations = true,
+  showNewSessionHint = false,
   // Not used with the new indicator
   connectionStatus: _connectionStatus,
 }: TerminalProps) {
@@ -554,6 +556,8 @@ export function Terminal({
                 isDarkTheme={shouldUseDarkTerminal}
                 onToolViewModeChange={handleViewModeChange}
                 defaultToolViewMode={preferences.defaultViewMode}
+                onNewSession={handleNewSession}
+                showNewSessionMessage={showNewSessionHint && messages.length > 1}
               />
             );
           })()}
