@@ -491,17 +491,19 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           }
         }
 
-        // Add the assistant's response to conversation history
-        if (finalResponse && finalResponse.content && finalResponse.content.length > 0) {
+        // Add the assistant's response to conversation history ONLY if not aborted
+        if (!isSessionAborted(sessionState) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
           (sessionState.conversationHistory as ConversationMessage[]).push({
             role: 'assistant',
             content: finalResponse.content
           });
+        } else if (isSessionAborted(sessionState)) {
+          logger.info("Skipping assistant response because session was aborted", LogCategory.SYSTEM);
         }
         
         // Extract the text response from the first content item
         let responseText = '';
-        if (finalResponse && finalResponse.content && finalResponse.content.length > 0) {
+        if (!isSessionAborted(sessionState) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
           const firstContent = finalResponse.content[0];
           if (firstContent.type === 'text' && firstContent.text) {
             responseText = firstContent.text;

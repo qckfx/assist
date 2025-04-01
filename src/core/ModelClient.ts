@@ -15,6 +15,7 @@ import {
 import { ToolDescription } from '../types/registry';
 import { trackTokenUsage } from '../utils/TokenManager';
 import { createDefaultPromptManager, PromptManager } from './PromptManager';
+import { isSessionAborted } from '../utils/sessionUtils';
 
 /**
  * Creates a client for interacting with the language model
@@ -93,8 +94,8 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         // Extract the tool use from the response
         const toolUse = response.content && response.content.find(c => c.type === "tool_use");
         
-        // Add the assistant's tool use response to the conversation history
-        if (sessionState.conversationHistory && toolUse) {
+        // Add the assistant's tool use response to the conversation history only if not aborted
+        if (sessionState.conversationHistory && toolUse && !isSessionAborted(sessionState)) {
           sessionState.conversationHistory.push({
             role: "assistant",
             content: [
@@ -116,12 +117,12 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
               toolUseId: toolUse.id || "", // Save this for returning results
             },
             toolChosen: true,
-            aborted: false // Explicitly set aborted flag to false
+            aborted: isSessionAborted(sessionState) // Check current abort status
           };
         }
       }
       
-      return {response: response, toolChosen: false};
+      return {response: response, toolChosen: false, aborted: isSessionAborted(sessionState)};
     },
     
     /**
