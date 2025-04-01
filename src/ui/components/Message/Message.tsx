@@ -172,7 +172,48 @@ export function Message({
           }}
           aria-hidden="true"
         >
-          {timestamp.toLocaleTimeString()}
+          {(() => {
+            const now = new Date();
+            const messageDate = new Date(timestamp);
+            
+            // Check if the message is more than 1 day old
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const msDiff = now.getTime() - messageDate.getTime();
+            const isOlderThanOneDay = msDiff > msPerDay;
+            
+            // Check if message is from today (same calendar date)
+            const isToday = now.toDateString() === messageDate.toDateString();
+            
+            // Check if message is from yesterday
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const isYesterday = yesterday.toDateString() === messageDate.toDateString();
+            
+            // Format time consistently
+            const formattedTime = messageDate.toLocaleTimeString(undefined, {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+            
+            if (isToday) {
+              // Messages from today: "Today at 3:45 PM"
+              return `Today at ${formattedTime}`;
+            } else if (isYesterday) {
+              // Messages from yesterday: "Yesterday at 3:45 PM"
+              return `Yesterday at ${formattedTime}`;
+            } else if (isOlderThanOneDay) {
+              // Format: "Apr 2, 2025 at 3:45 PM"
+              return `${messageDate.toLocaleDateString(undefined, { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric' 
+              })} at ${formattedTime}`;
+            } else {
+              // Show only time for other messages from today
+              return formattedTime;
+            }
+          })()}
         </div>
       )}
     </div>
