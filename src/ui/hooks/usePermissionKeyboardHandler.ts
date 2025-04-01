@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { useToolStream } from './useToolStream';
-import { useWebSocket } from './useWebSocket';
+import apiClient from '../services/apiClient';
 
 /**
  * Hook for handling keyboard events for permission requests
@@ -11,7 +11,6 @@ export function usePermissionKeyboardHandler({
   sessionId?: string;
 }) {
   const { getActiveTools } = useToolStream();
-  const { socket } = useWebSocket();
   
   // Get pending permissions from active tools
   const pendingPermissions = getActiveTools()
@@ -23,24 +22,17 @@ export function usePermissionKeyboardHandler({
       executionId: tool.id
     }));
   
-  // Resolve permission on the server
-  const resolvePermission = useCallback((permissionId: string, granted: boolean) => {
-    if (!socket || !sessionId) {
-      console.error('Cannot resolve permission: no socket or session ID');
-      return Promise.reject(new Error('No socket or session ID'));
+  // Resolve permission on the server - use apiClient instead of socket.emit
+  const resolvePermission = useCallback(async (permissionId: string, granted: boolean) => {
+    try {
+      console.log('Using apiClient to resolve permission:', { permissionId, granted });
+      const response = await apiClient.resolvePermission(permissionId, granted);
+      return response.success;
+    } catch (error) {
+      console.error('Error resolving permission via apiClient:', error);
+      return false;
     }
-    
-    return new Promise<boolean>((resolve) => {
-      // Emit permission resolution event to server
-      socket.emit('resolve_permission', {
-        sessionId,
-        permissionId,
-        granted
-      }, (response: { success: boolean }) => {
-        resolve(response.success);
-      });
-    });
-  }, [socket, sessionId]);
+  }, []);
 
   // Handle keyboard events for permission requests
   const handleKeyDown = useCallback(
@@ -52,9 +44,10 @@ export function usePermissionKeyboardHandler({
         event.preventDefault();
       }
       
-      console.log('Keyboard event with pending permissions:', { 
+      console.log('🔑 Keyboard event with pending permissions:', { 
         key: event.key, 
-        pendingCount: pendingPermissions.length 
+        pendingCount: pendingPermissions.length,
+        pendingPermissions: pendingPermissions.map(p => ({ id: p.id, toolId: p.toolId }))
       });
       
       // Get the first pending permission
@@ -62,24 +55,50 @@ export function usePermissionKeyboardHandler({
       
       // If 'y' is pressed, grant permission
       if (event.key.toLowerCase() === 'y') {
-        console.log('Granting permission for', permission.id);
+        console.log('🔑 Granting permission for', permission.id);
+        
+        // Display visual feedback that the key was pressed
+        const permissionElement = document.querySelector(`[data-testid="permission-banner"]`);
+        if (permissionElement) {
+          permissionElement.classList.add('bg-green-200', 'dark:bg-green-900');
+          permissionElement.textContent = 'Permission granted - processing...';
+        }
+        
         resolvePermission(permission.id, true)
           .then((success) => {
-            console.log(`Permission granted for ${permission.toolId}, success: ${success}`);
+            console.log(`🔑 Permission granted for ${permission.toolId}, success: ${success}`);
           })
           .catch(err => {
-            console.error('Error in permission grant:', err);
+            console.error('🔑 Error in permission grant:', err);
+            // Revert visual feedback if there was an error
+            if (permissionElement) {
+              permissionElement.classList.remove('bg-green-200', 'dark:bg-green-900');
+              permissionElement.textContent = 'Permission Required - Type \'y\' to allow';
+            }
           });
       } 
       // For any other key, deny permission
       else if (event.key.length === 1) { // Only handle printable characters
-        console.log('Denying permission for', permission.id);
+        console.log('🔑 Denying permission for', permission.id);
+        
+        // Display visual feedback that the key was pressed
+        const permissionElement = document.querySelector(`[data-testid="permission-banner"]`);
+        if (permissionElement) {
+          permissionElement.classList.add('bg-red-200', 'dark:bg-red-900');
+          permissionElement.textContent = 'Permission denied - canceling...';
+        }
+        
         resolvePermission(permission.id, false)
           .then((success) => {
-            console.log(`Permission denied for ${permission.toolId}, success: ${success}`);
+            console.log(`🔑 Permission denied for ${permission.toolId}, success: ${success}`);
           })
           .catch(err => {
-            console.error('Error in permission denial:', err);
+            console.error('🔑 Error in permission denial:', err);
+            // Revert visual feedback if there was an error
+            if (permissionElement) {
+              permissionElement.classList.remove('bg-red-200', 'dark:bg-red-900');
+              permissionElement.textContent = 'Permission Required - Type \'y\' to allow';
+            }
           });
       }
     },
