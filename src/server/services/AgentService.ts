@@ -3,6 +3,7 @@
  */
 import { EventEmitter } from 'events';
 import { Anthropic } from '@anthropic-ai/sdk';
+import crypto from 'crypto';
 import {
   createAgent,
   createAnthropicProvider,
@@ -18,6 +19,7 @@ import {
   ToolExecutionEvent,
   PermissionRequestState
 } from '../../types/tool-execution';
+import { StoredMessage, RepositoryInfo, SessionListEntry } from '../../types/session';
 import { createToolExecutionManager, ToolExecutionManagerImpl } from './ToolExecutionManagerImpl';
 import { createPreviewManager, PreviewManagerImpl } from './PreviewManagerImpl';
 import { Session, sessionManager } from './SessionManager';
@@ -25,6 +27,7 @@ import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
 import { serverLogger } from '../logger';
+import { getSessionStatePersistence } from './sessionPersistenceProvider';
 
 /**
  * Events emitted by the agent service
@@ -157,6 +160,10 @@ export class AgentService extends EventEmitter {
   private previewManager: PreviewManagerImpl;
   // Store reference to the current agent
   private agent: Agent | null = null;
+  
+  // Add new properties to store messages and repository info
+  private sessionMessages: Map<string, StoredMessage[]> = new Map();
+  private sessionRepositoryInfo: Map<string, RepositoryInfo> = new Map();
   
   /**
    * Creates a concise summary of tool arguments for display
@@ -602,12 +609,25 @@ export class AgentService extends EventEmitter {
       serverLogger.error(`Failed to create execution adapter for session ${session.id}`, error);
     });
     
+    // Capture repository information if available
+    this.captureRepositoryInfo(session.id)
+      .then(repoInfo => {
+        if (repoInfo) {
+          this.sessionRepositoryInfo.set(session.id, repoInfo);
+          serverLogger.debug(`Captured repository information for session ${session.id}`);
+        }
+      })
+      .catch(error => {
+        serverLogger.debug(`Unable to capture repository information: ${error.message}`);
+      });
+    
     // Load any persisted tool state
     try {
       await this.toolExecutionManager.loadSessionData(session.id);
       await this.previewManager.loadSessionData(session.id);
+      await this.loadSessionMessages(session.id);
     } catch (error) {
-      serverLogger.warn(`Failed to load persisted tool state for session ${session.id}:`, error);
+      serverLogger.warn(`Failed to load persisted session state for session ${session.id}:`, error);
     }
     
     // Return the session immediately without waiting for adapter initialization
@@ -615,16 +635,303 @@ export class AgentService extends EventEmitter {
   }
   
   /**
-   * Save tool state for a session
+   * Save complete session state including messages, repository info, and tool state
    */
-  public async saveToolState(sessionId: string): Promise<void> {
+  public async saveSessionState(sessionId: string): Promise<void> {
     try {
+      // Save tool executions and previews
       await this.toolExecutionManager.saveSessionData(sessionId);
       await this.previewManager.saveSessionData(sessionId);
+      
+      // Save message history
+      await this.saveSessionMessages(sessionId);
+      
+      // Save repository information if available
+      await this.saveRepositoryInfo(sessionId);
+      
+      // Save session metadata
+      await this.saveSessionMetadata(sessionId);
+      
+      serverLogger.info(`Saved complete session state for session ${sessionId}`);
     } catch (error) {
-      serverLogger.error(`Failed to save tool state for session ${sessionId}:`, error);
+      serverLogger.error(`Failed to save session state for session ${sessionId}:`, error);
     }
   }
+  
+  /**
+   * Extract messages from conversation history into storable format
+   */
+  private extractStorableMessages(
+    conversationHistory: Anthropic.Messages.MessageParam[]
+  ): StoredMessage[] {
+    const messages: StoredMessage[] = [];
+    let sequence = 0;
+    
+    // Generate predictable IDs for messages based on content hash
+    const generateMessageId = (role: string, content: string, sequence: number): string => {
+      const hash = crypto.createHash('md5').update(`${role}-${content}-${sequence}`).digest('hex');
+      return `msg-${hash.substring(0, 8)}`;
+    };
+    
+    // Process each message in the conversation history
+    for (const message of conversationHistory) {
+      // Skip system messages
+      // Using a type assertion to handle 'system' role
+      if ((message.role as string) === 'system') continue;
+      
+      // Extract content text
+      let content = '';
+      let toolCalls: StoredMessage['toolCalls'] = undefined;
+      
+      // Process content blocks if available
+      if (Array.isArray(message.content)) {
+        // For each content block
+        for (const block of message.content) {
+          if (typeof block === 'string') {
+            // Append string content
+            content += block;
+          } else if (block.type === 'text') {
+            // Append text content
+            content += block.text;
+          } else if (block.type === 'tool_use') {
+            // Handle tool use blocks
+            if (!toolCalls) toolCalls = [];
+            
+            // Add tool call reference
+            toolCalls.push({
+              executionId: block.id,
+              toolName: block.name,
+              index: toolCalls.length,
+              isBatchedCall: block.name === 'BatchTool'
+            });
+          }
+        }
+      } else if (typeof message.content === 'string') {
+        // Handle plain string content
+        content = message.content;
+      }
+      
+      // Create the stored message
+      const storedMessage: StoredMessage = {
+        id: generateMessageId(message.role, content, sequence),
+        role: message.role as 'user' | 'assistant',
+        timestamp: new Date().toISOString(), // We don't have timestamps in the original messages
+        content,
+        toolCalls,
+        sequence: sequence++
+      };
+      
+      messages.push(storedMessage);
+    }
+    
+    return messages;
+  }
+  
+  /**
+   * Enrich messages with tool summary information for quick rendering
+   */
+  private enrichMessagesWithToolSummaries(
+    messages: StoredMessage[],
+    toolExecutions: ToolExecutionState[]
+  ): StoredMessage[] {
+    // Build a map of execution IDs to tool details
+    const executionMap = new Map<string, {
+      toolName: string;
+      status: string;
+      args: Record<string, unknown>;
+    }>();
+    
+    // Populate the map
+    for (const execution of toolExecutions) {
+      executionMap.set(execution.id, {
+        toolName: execution.toolName,
+        status: execution.status,
+        args: execution.args
+      });
+    }
+    
+    // Update each message's tool calls with more details
+    return messages.map(message => {
+      if (!message.toolCalls) {
+        return message;
+      }
+      
+      // Update each tool call with additional details
+      const updatedToolCalls = message.toolCalls.map(toolCall => {
+        const executionDetails = executionMap.get(toolCall.executionId);
+        if (!executionDetails) {
+          return toolCall;
+        }
+        
+        return {
+          ...toolCall,
+          toolName: executionDetails.toolName,
+          index: toolCall.index,
+          isBatchedCall: toolCall.isBatchedCall
+        };
+      });
+      
+      return {
+        ...message,
+        toolCalls: updatedToolCalls
+      };
+    });
+  }
+  
+  /**
+   * Save session messages to persistence
+   */
+  private async saveSessionMessages(sessionId: string): Promise<void> {
+    try {
+      // Get session
+      const session = sessionManager.getSession(sessionId);
+      if (!session.state?.conversationHistory) {
+        return;
+      }
+      
+      // Extract storable messages from conversation history
+      const messages = this.extractStorableMessages(session.state.conversationHistory);
+      
+      // Enrich with tool details
+      const toolExecutions = this.toolExecutionManager.getExecutionsForSession(sessionId);
+      const enrichedMessages = this.enrichMessagesWithToolSummaries(messages, toolExecutions);
+      
+      // Save messages to memory cache
+      this.sessionMessages.set(sessionId, enrichedMessages);
+      
+      // Get the persistence service
+      const persistence = getSessionStatePersistence();
+      
+      // Save to persistence
+      await persistence.persistMessages(sessionId, enrichedMessages);
+      
+      serverLogger.debug(`Saved ${enrichedMessages.length} messages for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save messages for session ${sessionId}:`, error);
+    }
+  }
+  
+  /**
+   * Load session messages from persistence
+   */
+  private async loadSessionMessages(sessionId: string): Promise<void> {
+    try {
+      // Get the persistence service
+      const persistence = getSessionStatePersistence();
+      
+      // Load messages
+      const messages = await persistence.loadMessages(sessionId);
+      if (messages.length === 0) {
+        return;
+      }
+      
+      // Store in memory cache
+      this.sessionMessages.set(sessionId, messages);
+      
+      serverLogger.debug(`Loaded ${messages.length} messages for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to load messages for session ${sessionId}:`, error);
+    }
+  }
+  
+  /**
+   * Capture Git repository information for a session
+   */
+  private async captureRepositoryInfo(sessionId: string): Promise<RepositoryInfo | null> {
+    try {
+      // Get the persistence service
+      const persistence = getSessionStatePersistence();
+      
+      // Capture repo info
+      const repoInfo = await persistence.captureRepositoryInfo();
+      if (!repoInfo) {
+        return null;
+      }
+      
+      // Store in memory cache
+      this.sessionRepositoryInfo.set(sessionId, repoInfo);
+      
+      return repoInfo;
+    } catch (error) {
+      serverLogger.error(`Failed to capture repository information for session ${sessionId}:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Save repository information for a session
+   */
+  private async saveRepositoryInfo(sessionId: string): Promise<void> {
+    try {
+      // Get repo info from memory cache
+      const repoInfo = this.sessionRepositoryInfo.get(sessionId);
+      if (!repoInfo) {
+        return;
+      }
+      
+      // Get the persistence service
+      const persistence = getSessionStatePersistence();
+      
+      // Save to persistence
+      await persistence.persistRepositoryInfo(sessionId, repoInfo);
+      
+      serverLogger.debug(`Saved repository information for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save repository information for session ${sessionId}:`, error);
+    }
+  }
+  
+  /**
+   * Save session metadata
+   */
+  private async saveSessionMetadata(sessionId: string): Promise<void> {
+    try {
+      // Get session
+      const session = sessionManager.getSession(sessionId);
+      
+      // Get messages
+      const messages = this.sessionMessages.get(sessionId) || [];
+      
+      // Get repository info
+      const repoInfo = this.sessionRepositoryInfo.get(sessionId);
+      
+      // Get tool executions count
+      const toolExecutions = this.toolExecutionManager.getExecutionsForSession(sessionId);
+      
+      // Find the initial query (first user message)
+      const initialMessage = messages.find(msg => msg.role === 'user');
+      
+      // Get the last message
+      const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
+      
+      // Build metadata
+      const metadata = {
+        id: sessionId,
+        createdAt: session.createdAt.toISOString(),
+        lastActiveAt: session.lastActiveAt.toISOString(),
+        messageCount: messages.length,
+        toolCount: toolExecutions.length,
+        initialQuery: initialMessage?.content,
+        lastMessage: lastMessage && {
+          role: lastMessage.role,
+          content: lastMessage.content.substring(0, 100), // Preview
+          timestamp: lastMessage.timestamp
+        },
+        repositoryInfo: repoInfo
+      };
+      
+      // Get the persistence service
+      const persistence = getSessionStatePersistence();
+      
+      // Save to persistence
+      await persistence.persistSessionMetadata(sessionId, metadata);
+      
+      serverLogger.debug(`Saved metadata for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save metadata for session ${sessionId}:`, error);
+    }
+  }
+  
 
   /**
    * Process a query for a specific session
@@ -827,8 +1134,8 @@ export class AgentService extends EventEmitter {
           response: result.response,
         });
         
-        // After successful query processing, save the tool state
-        await this.saveToolState(sessionId);
+        // After successful query processing, save the complete session state
+        await this.saveSessionState(sessionId);
 
         return {
           response: result.response || '',
@@ -1304,6 +1611,46 @@ export class AgentService extends EventEmitter {
       return session.state.e2bSandboxId;
     } catch {
       return undefined;
+    }
+  }
+  
+  /**
+   * List all persisted sessions
+   */
+  public async listPersistedSessions(): Promise<SessionListEntry[]> {
+    try {
+      // Get the persistence service
+      const persistence = getSessionStatePersistence();
+      
+      // Get session list entries
+      const sessions = await persistence.listSessions();
+      
+      return sessions;
+    } catch (error) {
+      serverLogger.error('Failed to list persisted sessions:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Delete a persisted session
+   */
+  public async deletePersistedSession(sessionId: string): Promise<boolean> {
+    try {
+      // Get the persistence service
+      const persistence = getSessionStatePersistence();
+      
+      // Delete the session data
+      await persistence.deleteSessionData(sessionId);
+      
+      // Remove from memory caches
+      this.sessionMessages.delete(sessionId);
+      this.sessionRepositoryInfo.delete(sessionId);
+      
+      return true;
+    } catch (error) {
+      serverLogger.error(`Failed to delete persisted session ${sessionId}:`, error);
+      return false;
     }
   }
   

@@ -1,7 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { 
-  ToolExecutionState
+  ToolExecutionState,
+  PermissionRequestState
 } from '../../types/tool-execution';
 import { SessionState } from '../../types/model';
 import {
@@ -11,6 +12,7 @@ import {
   RepositoryInfo,
   SessionPersistenceEvent
 } from '../../types/session';
+import { ToolPreviewState } from '../../types/preview';
 import { serverLogger } from '../logger';
 import { EventEmitter } from 'events';
 
@@ -251,6 +253,329 @@ export class SessionStatePersistence extends EventEmitter {
   }
   
   /**
+   * Persist tool executions for a session
+   */
+  async persistToolExecutions(sessionId: string, executions: ToolExecutionState[]): Promise<void> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      await fs.mkdir(sessionDir, { recursive: true });
+      
+      const filePath = path.join(sessionDir, 'tool-executions.json');
+      await fs.writeFile(filePath, JSON.stringify(executions, null, 2));
+      
+      serverLogger.debug(`Saved ${executions.length} tool executions for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save tool executions for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Load tool executions for a session
+   */
+  async loadToolExecutions(sessionId: string): Promise<ToolExecutionState[]> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      const filePath = path.join(sessionDir, 'tool-executions.json');
+      
+      try {
+        await fs.access(filePath);
+      } catch {
+        return []; // File doesn't exist, return empty array
+      }
+      
+      const data = await fs.readFile(filePath, 'utf-8');
+      const executions = JSON.parse(data) as ToolExecutionState[];
+      
+      serverLogger.debug(`Loaded ${executions.length} tool executions for session ${sessionId}`);
+      return executions;
+    } catch (error) {
+      serverLogger.error(`Failed to load tool executions for session ${sessionId}:`, error);
+      return [];
+    }
+  }
+  
+  /**
+   * Persist permission requests for a session
+   */
+  async persistPermissionRequests(sessionId: string, requests: PermissionRequestState[]): Promise<void> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      await fs.mkdir(sessionDir, { recursive: true });
+      
+      const filePath = path.join(sessionDir, 'permission-requests.json');
+      await fs.writeFile(filePath, JSON.stringify(requests, null, 2));
+      
+      serverLogger.debug(`Saved ${requests.length} permission requests for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save permission requests for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Load permission requests for a session
+   */
+  async loadPermissionRequests(sessionId: string): Promise<PermissionRequestState[]> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      const filePath = path.join(sessionDir, 'permission-requests.json');
+      
+      try {
+        await fs.access(filePath);
+      } catch {
+        return []; // File doesn't exist, return empty array
+      }
+      
+      const data = await fs.readFile(filePath, 'utf-8');
+      const requests = JSON.parse(data) as PermissionRequestState[];
+      
+      serverLogger.debug(`Loaded ${requests.length} permission requests for session ${sessionId}`);
+      return requests;
+    } catch (error) {
+      serverLogger.error(`Failed to load permission requests for session ${sessionId}:`, error);
+      return [];
+    }
+  }
+  
+  /**
+   * Persist tool previews for a session
+   */
+  async persistPreviews(sessionId: string, previews: ToolPreviewState[]): Promise<void> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      await fs.mkdir(sessionDir, { recursive: true });
+      
+      const filePath = path.join(sessionDir, 'previews.json');
+      await fs.writeFile(filePath, JSON.stringify(previews, null, 2));
+      
+      serverLogger.debug(`Saved ${previews.length} previews for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save previews for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Load tool previews for a session
+   */
+  async loadPreviews(sessionId: string): Promise<ToolPreviewState[]> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      const filePath = path.join(sessionDir, 'previews.json');
+      
+      try {
+        await fs.access(filePath);
+      } catch {
+        return []; // File doesn't exist, return empty array
+      }
+      
+      const data = await fs.readFile(filePath, 'utf-8');
+      const previews = JSON.parse(data) as ToolPreviewState[];
+      
+      serverLogger.debug(`Loaded ${previews.length} previews for session ${sessionId}`);
+      return previews;
+    } catch (error) {
+      serverLogger.error(`Failed to load previews for session ${sessionId}:`, error);
+      return [];
+    }
+  }
+  
+  /**
+   * Persist messages for a session
+   */
+  async persistMessages(sessionId: string, messages: StoredMessage[]): Promise<void> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      await fs.mkdir(sessionDir, { recursive: true });
+      
+      const filePath = path.join(sessionDir, 'messages.json');
+      await fs.writeFile(filePath, JSON.stringify(messages, null, 2));
+      
+      serverLogger.debug(`Saved ${messages.length} messages for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save messages for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Load messages for a session
+   */
+  async loadMessages(sessionId: string): Promise<StoredMessage[]> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      const filePath = path.join(sessionDir, 'messages.json');
+      
+      try {
+        await fs.access(filePath);
+      } catch {
+        return []; // File doesn't exist, return empty array
+      }
+      
+      const data = await fs.readFile(filePath, 'utf-8');
+      const messages = JSON.parse(data) as StoredMessage[];
+      
+      serverLogger.debug(`Loaded ${messages.length} messages for session ${sessionId}`);
+      return messages;
+    } catch (error) {
+      serverLogger.error(`Failed to load messages for session ${sessionId}:`, error);
+      return [];
+    }
+  }
+  
+  /**
+   * Persist repository information for a session
+   */
+  async persistRepositoryInfo(sessionId: string, repoInfo: RepositoryInfo): Promise<void> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      await fs.mkdir(sessionDir, { recursive: true });
+      
+      const filePath = path.join(sessionDir, 'repository-info.json');
+      await fs.writeFile(filePath, JSON.stringify(repoInfo, null, 2));
+      
+      serverLogger.debug(`Saved repository information for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save repository information for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Load repository information for a session
+   */
+  async loadRepositoryInfo(sessionId: string): Promise<RepositoryInfo | null> {
+    await this.initialize();
+    
+    try {
+      const sessionDir = this.getSessionDir(sessionId);
+      const filePath = path.join(sessionDir, 'repository-info.json');
+      
+      try {
+        await fs.access(filePath);
+      } catch {
+        return null; // File doesn't exist
+      }
+      
+      const data = await fs.readFile(filePath, 'utf-8');
+      const repoInfo = JSON.parse(data) as RepositoryInfo;
+      
+      serverLogger.debug(`Loaded repository information for session ${sessionId}`);
+      return repoInfo;
+    } catch (error) {
+      serverLogger.error(`Failed to load repository information for session ${sessionId}:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Persist session metadata
+   */
+  async persistSessionMetadata(sessionId: string, metadata: Record<string, unknown>): Promise<void> {
+    await this.initialize();
+    
+    try {
+      // Create metadata directory
+      const metadataDir = this.getSessionsMetadataDir();
+      await fs.mkdir(metadataDir, { recursive: true });
+      
+      // Write to metadata file
+      const metadataPath = this.getSessionMetadataPath(sessionId);
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      
+      serverLogger.debug(`Saved metadata for session ${sessionId}`);
+    } catch (error) {
+      serverLogger.error(`Failed to save metadata for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Load session metadata
+   */
+  async loadSessionMetadata(sessionId: string): Promise<Record<string, unknown> | null> {
+    await this.initialize();
+    
+    try {
+      const metadataPath = this.getSessionMetadataPath(sessionId);
+      
+      try {
+        await fs.access(metadataPath);
+      } catch {
+        return null; // File doesn't exist
+      }
+      
+      const data = await fs.readFile(metadataPath, 'utf-8');
+      const metadata = JSON.parse(data);
+      
+      serverLogger.debug(`Loaded metadata for session ${sessionId}`);
+      return metadata;
+    } catch (error) {
+      serverLogger.error(`Failed to load metadata for session ${sessionId}:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Delete all data for a session
+   */
+  async deleteSessionData(sessionId: string): Promise<void> {
+    await this.initialize();
+    
+    try {
+      // Delete session directory
+      const sessionDir = this.getSessionDir(sessionId);
+      try {
+        await fs.rm(sessionDir, { recursive: true, force: true });
+      } catch {
+        // Directory might not exist, which is fine
+      }
+      
+      // Delete metadata file
+      const metadataPath = this.getSessionMetadataPath(sessionId);
+      try {
+        await fs.unlink(metadataPath);
+      } catch {
+        // File might not exist, which is fine
+      }
+      
+      serverLogger.debug(`Deleted all data for session ${sessionId}`);
+      
+      // Emit the deleted event
+      this.emit(SessionPersistenceEvent.SESSION_DELETED, { sessionId });
+    } catch (error) {
+      serverLogger.error(`Failed to delete data for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get the session directory path
+   */
+  getSessionDir(sessionId: string): string {
+    return path.join(this.dataDir, sessionId);
+  }
+  
+  /**
    * Helper method to extract messages from the Anthropic message format
    */
   extractMessages(
@@ -323,10 +648,13 @@ export class SessionStatePersistence extends EventEmitter {
   /**
    * Helper method to capture repository information
    */
-  async captureRepositoryInfo(workingDir: string): Promise<RepositoryInfo | undefined> {
+  async captureRepositoryInfo(workingDir?: string): Promise<RepositoryInfo | null> {
     try {
+      // Use current working directory if none specified
+      const dir = workingDir || process.cwd();
+      
       // Check if .git directory exists to determine if this is a git repository
-      const gitDir = path.join(workingDir, '.git');
+      const gitDir = path.join(dir, '.git');
       let isGitRepository = false;
       
       try {
@@ -338,7 +666,7 @@ export class SessionStatePersistence extends EventEmitter {
       }
       
       const repoInfo: RepositoryInfo = {
-        workingDirectory: workingDir,
+        workingDirectory: dir,
         isGitRepository
       };
       
@@ -352,12 +680,14 @@ export class SessionStatePersistence extends EventEmitter {
         };
         
         repoInfo.hasUncommittedChanges = true;
+        repoInfo.currentBranch = 'unknown';
+        repoInfo.latestCommitHash = 'unknown';
       }
       
       return repoInfo;
     } catch (error) {
       serverLogger.warn('Failed to capture repository information:', error);
-      return undefined;
+      return null;
     }
   }
 }

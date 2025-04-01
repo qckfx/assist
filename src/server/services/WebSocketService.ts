@@ -27,8 +27,10 @@ interface ActiveToolExecution {
   tool: {
     id: string;
     name: string;
+    executionId?: string;
   };
   paramSummary: string;
+  args?: Record<string, unknown>;
 }
 
 /**
@@ -522,7 +524,7 @@ export class WebSocketService {
     paramSummary?: string;
     timestamp?: string;
   }): void {
-    const { sessionId, tool } = data;
+    const { sessionId, tool, paramSummary } = data;
     
     // Get the full execution state from the tool execution manager
     const executionId = tool.executionId;
@@ -538,9 +540,27 @@ export class WebSocketService {
     // Convert to client format
     const clientData = this.convertExecutionToClientFormat(execution);
     
+    // Add tool to active tools
+    if (!this.activeTools.has(sessionId)) {
+      this.activeTools.set(sessionId, new Map());
+    }
+    
+    // Track the tool in our active tools map
+    this.activeTools.get(sessionId)?.set(tool.id, {
+      tool,
+      startTime: execution.startTime ? new Date(execution.startTime) : new Date(),
+      paramSummary: paramSummary || execution.summary || 'No parameters',
+      args: execution.args || {}
+    });
+    
     // Emit both the original event for backward compatibility
     // and the new simplified event
-    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, data);
+    const enhancedData = {
+      ...data,
+      isActive: true // Mark as active for UI
+    };
+    
+    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, enhancedData);
     this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
       sessionId,
       tool: clientData
@@ -591,6 +611,17 @@ export class WebSocketService {
     timestamp?: string;
   }): Promise<void> {
     const { sessionId, tool, result, paramSummary, executionTime, timestamp } = data;
+    
+    // Remove from active tools
+    const sessionTools = this.activeTools.get(sessionId);
+    if (sessionTools) {
+      sessionTools.delete(tool.id);
+      
+      // If no more active tools for this session, clean up the map entry
+      if (sessionTools.size === 0) {
+        this.activeTools.delete(sessionId);
+      }
+    }
     
     // Check if we are using the new format with executionId
     if (tool.executionId) {
@@ -665,6 +696,17 @@ export class WebSocketService {
     timestamp?: string;
   }): void {
     const { sessionId, tool, error, paramSummary, timestamp } = data;
+    
+    // Remove from active tools
+    const sessionTools = this.activeTools.get(sessionId);
+    if (sessionTools) {
+      sessionTools.delete(tool.id);
+      
+      // If no more active tools for this session, clean up the map entry
+      if (sessionTools.size === 0) {
+        this.activeTools.delete(sessionId);
+      }
+    }
     
     if (tool.executionId) {
       // Get the full execution state

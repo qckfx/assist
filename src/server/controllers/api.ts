@@ -155,10 +155,10 @@ export async function getStatus(req: Request, res: Response, next: NextFunction)
 }
 
 /**
- * Save tool state for a session
- * @route POST /api/sessions/:sessionId/tools/save
+ * Save session state
+ * @route POST /api/sessions/:sessionId/state/save
  */
-export async function saveToolState(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function saveSessionState(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { sessionId } = req.params;
     const agentService = getAgentService();
@@ -171,8 +171,44 @@ export async function saveToolState(req: Request, res: Response, next: NextFunct
       return;
     }
     
-    await agentService.saveToolState(sessionId);
-    res.status(200).json({ success: true, message: 'Tool state saved successfully' });
+    await agentService.saveSessionState(sessionId);
+    res.status(200).json({ success: true, message: 'Session state saved successfully' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * List persisted sessions
+ * @route GET /api/sessions/persisted
+ */
+export async function listPersistedSessions(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const agentService = getAgentService();
+    
+    const sessions = await agentService.listPersistedSessions();
+    res.status(200).json({ sessions });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Delete a persisted session
+ * @route DELETE /api/sessions/persisted/:sessionId
+ */
+export async function deletePersistedSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { sessionId } = req.params;
+    const agentService = getAgentService();
+    
+    const success = await agentService.deletePersistedSession(sessionId);
+    
+    if (success) {
+      res.status(200).json({ success: true, message: 'Session deleted successfully' });
+    } else {
+      res.status(500).json({ success: false, message: 'Failed to delete session' });
+    }
   } catch (error) {
     next(error);
   }

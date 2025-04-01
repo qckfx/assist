@@ -75,10 +75,22 @@ router.post('/permissions/fast-edit-mode', validateBody(fastEditModeToggleSchema
 router.get('/permissions/fast-edit-mode', validateQuery(fastEditModeQuerySchema), permissionController.getFastEditMode);
 
 /**
- * @route   POST /api/sessions/:sessionId/tools/save
- * @desc    Save tool state for a session
+ * @route   POST /api/sessions/:sessionId/state/save
+ * @desc    Save session state
  */
-router.post('/sessions/:sessionId/tools/save', apiController.saveToolState);
+router.post('/sessions/:sessionId/state/save', apiController.saveSessionState);
+
+/**
+ * @route   GET /api/sessions/persisted
+ * @desc    List persisted sessions
+ */
+router.get('/sessions/persisted', apiController.listPersistedSessions);
+
+/**
+ * @route   DELETE /api/sessions/persisted/:sessionId
+ * @desc    Delete a persisted session
+ */
+router.delete('/sessions/persisted/:sessionId', apiController.deletePersistedSession);
 
 /**
  * @route   GET /api/docs
