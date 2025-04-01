@@ -582,14 +582,14 @@ export class WebSocketService {
   /**
    * Handle tool execution completed event
    */
-  private handleToolExecutionCompleted(data: {
+  private async handleToolExecutionCompleted(data: {
     sessionId: string;
     tool: { id: string; name: string; executionId?: string };
     result?: unknown;
     paramSummary?: string;
     executionTime?: number;
     timestamp?: string;
-  }): void {
+  }): Promise<void> {
     const { sessionId, tool, result, paramSummary, executionTime, timestamp } = data;
     
     // Check if we are using the new format with executionId
@@ -624,7 +624,7 @@ export class WebSocketService {
       // Fall back to generating a new preview if no permission request occurred
       try {
         // Use PreviewService to generate the preview
-        preview = previewService.generatePreview(
+        const previewPromise = previewService.generatePreview(
           {
             id: tool.id,
             name: tool.name
@@ -632,6 +632,9 @@ export class WebSocketService {
           args,
           result
         );
+        
+        // Wait for the promise to resolve
+        preview = await previewPromise;
       } catch (error) {
         serverLogger.error(`Error generating preview for tool ${tool.id}:`, error);
       }
@@ -657,7 +660,7 @@ export class WebSocketService {
   private handleToolExecutionError(data: {
     sessionId: string;
     tool: { id: string; name: string; executionId?: string };
-    error?: { message: string; stack?: string; };
+    error?: { message: string; stack?: string; name?: string; };
     paramSummary?: string;
     timestamp?: string;
   }): void {
@@ -687,12 +690,22 @@ export class WebSocketService {
     } else {
       // For backward compatibility with tests
       // Create error preview data using the PreviewService
+      // Ensure error has all required properties
+      const errorWithName = error ? {
+        message: error.message || 'Unknown error',
+        name: error.name || 'Error',
+        stack: error.stack
+      } : {
+        message: 'Unknown error',
+        name: 'Error'
+      };
+      
       const preview = previewService.generateErrorPreview(
         {
           id: tool.id,
           name: tool.name
         },
-        error,
+        errorWithName,
         { paramSummary }
       );
       

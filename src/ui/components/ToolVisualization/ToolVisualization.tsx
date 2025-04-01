@@ -12,8 +12,6 @@ const truncateString = (str: string, maxLength: number): string => {
   return str.substring(0, maxLength - 3) + '...';
 };
 
-// (We removed the shortenPath helper function since path shortening is now handled server-side)
-
 // Helper function to get a meaningful description of what the tool is doing
 const getToolDescription = (tool: ToolExecution): string => {
   // List of generic descriptions to override
@@ -375,8 +373,13 @@ export function ToolVisualization({
           )}
         >
           <PreviewContent 
-            tool={tool} 
-            viewMode={viewMode} 
+            toolId={tool.id}
+            toolStatus={tool.status}
+            viewMode={viewMode}
+            contentType={tool.preview?.contentType}
+            briefContent={tool.preview?.briefContent}
+            fullContent={tool.preview?.fullContent}
+            metadata={tool.preview?.metadata}
             isDarkTheme={isDarkTheme}
           />
         </div>
@@ -397,7 +400,7 @@ export function ToolVisualization({
       )}
       
       {/* Permission request banner */}
-      {tool.status === 'awaiting-permission' && tool.requiresPermission && toolState !== ToolState.ABORTED && (
+      {tool.status === 'awaiting-permission' && tool.permissionId && toolState !== ToolState.ABORTED && (
         <div 
           className={`mt-1 ${isDarkTheme ? 'bg-amber-900 text-amber-100 border-amber-700' : 'bg-amber-100 text-amber-800 border-amber-300'} px-2 py-1 rounded-md text-xs border`}
           data-testid="permission-banner"
@@ -425,24 +428,34 @@ export function ToolVisualization({
 
 // Create a new PreviewContent component
 interface PreviewContentProps {
-  tool: ToolExecution;
+  toolId: string;
+  toolStatus: string;
   viewMode: PreviewMode;
+  contentType?: string;
+  briefContent?: string;
+  fullContent?: string;
+  metadata?: Record<string, unknown>;
   isDarkTheme: boolean;
 }
 
-function PreviewContent({ tool, viewMode, isDarkTheme }: PreviewContentProps) {
-  if (!tool.preview) {
+function PreviewContent({ 
+  toolId,
+  toolStatus,
+  viewMode,
+  contentType,
+  briefContent,
+  fullContent,
+  metadata,
+  isDarkTheme 
+}: PreviewContentProps) {
+  if (!contentType || !briefContent) {
     return null;
   }
   
-  const { contentType, briefContent } = tool.preview;
-  // Cast preview to unknown first for type safety
-  const fullContent = (tool.preview as unknown as { fullContent?: string }).fullContent;
-  
   // Log preview content info for debugging
   console.log('PreviewContent component render:', {
-    toolId: tool.id,
-    toolStatus: tool.status,
+    toolId,
+    toolStatus,
     viewMode,
     contentType,
     hasBriefContent: !!briefContent,
@@ -468,7 +481,7 @@ function PreviewContent({ tool, viewMode, isDarkTheme }: PreviewContentProps) {
   // Render based on content type
   switch (contentType) {
     case PreviewContentType.TEXT:
-    case PreviewContentType.CODE:
+    case PreviewContentType.CODE: {
       return (
         <div 
           className={baseStyles}
@@ -478,20 +491,17 @@ function PreviewContent({ tool, viewMode, isDarkTheme }: PreviewContentProps) {
           {content}
         </div>
       );
+    }
       
-    case PreviewContentType.DIFF:
+    case PreviewContentType.DIFF: {
       // Extract file path and changes from metadata if available
-      const filePath = tool.preview?.metadata?.filePath as string || '';
-      const changesSummary = tool.preview?.metadata?.changesSummary as { additions: number, deletions: number } || { additions: 0, deletions: 0 };
-      const isEmptyFile = tool.preview?.metadata?.isEmptyFile === true;
+      const filePath = metadata?.filePath as string || '';
+      const changesSummary = metadata?.changesSummary as { additions: number, deletions: number } || { additions: 0, deletions: 0 };
+      const isEmptyFile = metadata?.isEmptyFile === true;
       
-      // Extract original and modified text from tool data
-      const oldString = tool.args.searchCode as string || 
-                        tool.args.old_string as string || 
-                        '';
-      const newString = tool.args.replaceCode as string || 
-                        tool.args.new_string as string || 
-                        '';
+      // Extract original and modified text from metadata
+      const oldString = metadata?.oldString as string || '';
+      const newString = metadata?.newString as string || '';
       
       // Handle empty file case
       if (isEmptyFile || (oldString === '' && newString === '')) {
@@ -545,11 +555,12 @@ function PreviewContent({ tool, viewMode, isDarkTheme }: PreviewContentProps) {
           />
         </div>
       );
+    }
       
     case PreviewContentType.DIRECTORY: {
       // Extract entries from metadata if available
       const entries = 
-        (tool.preview.metadata?.entries as Array<{name: string; isDirectory: boolean; size?: number}>) ||
+        (metadata?.entries as Array<{name: string; isDirectory: boolean; size?: number}>) ||
         [];
       
       return (
@@ -585,7 +596,7 @@ function PreviewContent({ tool, viewMode, isDarkTheme }: PreviewContentProps) {
       );
     }
       
-    default:
+    default: {
       // Fallback for other content types
       return (
         <div 
@@ -596,6 +607,7 @@ function PreviewContent({ tool, viewMode, isDarkTheme }: PreviewContentProps) {
           {content}
         </div>
       );
+    }
   }
 }
 

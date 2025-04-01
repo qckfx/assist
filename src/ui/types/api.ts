@@ -107,6 +107,10 @@ export enum WebSocketEvent {
   
   // Environment information event
   INIT = 'init',
+  
+  // New tool state events
+  TOOL_STATE_UPDATE = 'tool_state_update',
+  TOOL_HISTORY = 'tool_history',
 }
 
 /**
@@ -216,5 +220,54 @@ export interface WebSocketEventMap {
     sessionId: string; 
     executionEnvironment: 'local' | 'docker' | 'e2b'; 
     e2bSandboxId?: string; 
+  };
+  
+  // New tool state events
+  [WebSocketEvent.TOOL_STATE_UPDATE]: {
+    sessionId: string;
+    tool: {
+      id: string;
+      tool: string;
+      toolName: string;
+      status: string;
+      args: Record<string, unknown>;
+      startTime: number;
+      endTime?: number;
+      executionTime?: number;
+      paramSummary?: string;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+      permissionId?: string;
+      preview?: {
+        contentType: string;
+        briefContent: string;
+        fullContent?: string;
+        metadata?: Record<string, unknown>;
+      };
+    };
+  };
+  
+  [WebSocketEvent.TOOL_HISTORY]: {
+    sessionId: string;
+    tools: Array<{
+      id: string;
+      tool: string;
+      toolName: string;
+      status: string;
+      args: Record<string, unknown>;
+      startTime: number;
+      endTime?: number;
+      executionTime?: number;
+      paramSummary?: string;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+      permissionId?: string;
+      preview?: {
+        contentType: string;
+        briefContent: string;
+        fullContent?: string;
+        metadata?: Record<string, unknown>;
+      };
+    }>;
   };
 }

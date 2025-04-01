@@ -92,14 +92,15 @@ describe('ToolVisualization Accessibility', () => {
     expect(statusElement).toHaveAttribute('aria-live', 'off');
   });
   
-  it('renders parameters with an appropriate style', () => {
+  it('renders parameters with appropriate styling', () => {
     const { container } = render(
       <ToolVisualization tool={mockCompletedTool} />
     );
     
-    // Check that parameters element exists
-    const paramsElement = container.querySelector('.truncate');
-    expect(paramsElement).toBeInTheDocument();
+    // Check that description element exists and uses break-words for long text
+    const descriptionElement = container.querySelector('.break-words');
+    expect(descriptionElement).toBeInTheDocument();
+    expect(descriptionElement?.textContent).toContain('command: ls -la');
   });
   
   it('contains appropriate text content', () => {
