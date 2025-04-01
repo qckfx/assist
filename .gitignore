@@ -2,6 +2,7 @@
 node_modules/
 
 # Compiled output
+data/
 dist/
 build/
 lib/
