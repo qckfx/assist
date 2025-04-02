@@ -97,8 +97,31 @@ export class TimelineService extends EventEmitter {
   ): Promise<TimelineResponse> {
     const { limit = 50, pageToken, types, includeRelated = true } = params;
     
+    // Always clear the cache for API requests to ensure we get the latest data
+    delete this.itemsCache[sessionId];
+    
+    // Log that we're retrieving timeline items
+    serverLogger.debug(`Retrieving timeline items for session ${sessionId}`);
+    
+    // Try to load the session from persistence first
+    const sessionStatePersistence = getSessionStatePersistence();
+    if (sessionStatePersistence) {
+      try {
+        const persistedData = await sessionStatePersistence.loadSession(sessionId);
+        if (persistedData) {
+          serverLogger.debug(`API request: Loaded persisted session ${sessionId} with ${persistedData.messages?.length || 0} messages`);
+        }
+      } catch (err) {
+        // Just log but continue - we'll fall back to in-memory session
+        serverLogger.debug(`API request: No persisted data for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    
     // Get or build the timeline
     const timeline = await this.buildSessionTimeline(sessionId, includeRelated);
+    
+    // Log how many items we found
+    serverLogger.debug(`Built timeline for session ${sessionId} with ${timeline.items.length} total items`);
     
     // Apply filtering by types if specified
     let filteredItems = timeline.items;
@@ -113,6 +136,9 @@ export class TimelineService extends EventEmitter {
     
     // Generate next page token if there are more items
     const nextPageToken = endIndex < filteredItems.length ? endIndex.toString() : undefined;
+    
+    // Log how many items we're returning
+    serverLogger.debug(`Returning ${paginatedItems.length} timeline items for session ${sessionId}`);
     
     return {
       items: paginatedItems,
@@ -384,18 +410,40 @@ export class TimelineService extends EventEmitter {
       // Clear the cache for this session to force a rebuild
       delete this.itemsCache[data.sessionId];
       
-      // Build the timeline and send it to connected clients
-      this.buildSessionTimeline(data.sessionId, true)
-        .then(timeline => {
+      // Force load the session from persistence before building the timeline
+      const sessionStatePersistence = getSessionStatePersistence();
+      
+      // Wrap in an async function so we can use await
+      (async () => {
+        try {
+          // Try to load from persistence first
+          if (sessionStatePersistence) {
+            try {
+              const persistedData = await sessionStatePersistence.loadSession(data.sessionId);
+              if (persistedData) {
+                serverLogger.debug(`Loaded persisted session ${data.sessionId} with ${persistedData.messages?.length || 0} messages`);
+              }
+            } catch (err) {
+              serverLogger.debug(`No persisted data for session ${data.sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
+          
+          // Build the timeline with either persisted or in-memory data
+          const timeline = await this.buildSessionTimeline(data.sessionId, true);
+          
+          // Log for debugging
+          serverLogger.debug(`Sending TIMELINE_HISTORY for session ${data.sessionId} with ${timeline.items.length} items`);
+          
+          // Send timeline history to clients
           this.emitToSession(data.sessionId, WebSocketEvent.TIMELINE_HISTORY, {
             sessionId: data.sessionId,
             items: timeline.items,
             totalCount: timeline.items.length
           });
-        })
-        .catch(err => {
+        } catch (err) {
           serverLogger.error(`Error building timeline for session ${data.sessionId}:`, err);
-        });
+        }
+      })();
     });
     
     serverLogger.info('TimelineService: Event listeners setup complete');
@@ -423,7 +471,31 @@ export class TimelineService extends EventEmitter {
    */
   private async getSessionData(sessionId: string): Promise<SessionData | null> {
     try {
-      // Get the session from SessionManager
+      // First, try to load the session from persistence
+      const sessionStatePersistence = getSessionStatePersistence();
+      let persistedSessionData = null;
+      
+      if (sessionStatePersistence) {
+        try {
+          persistedSessionData = await sessionStatePersistence.loadSession(sessionId);
+          // If we have persisted data, use it instead of in-memory session
+          if (persistedSessionData) {
+            serverLogger.debug(`Loaded persisted session data for ${sessionId} with ${persistedSessionData.messages?.length || 0} messages`);
+            
+            // Return the persisted session data directly
+            return {
+              messages: persistedSessionData.messages || [],
+              toolExecutions: persistedSessionData.toolExecutions || [],
+              permissionRequests: persistedSessionData.permissionRequests || [],
+              previews: persistedSessionData.previews || [],
+            };
+          }
+        } catch (err) {
+          serverLogger.debug(`Error loading persisted session: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      
+      // Get the session from SessionManager if we couldn't load from persistence
       if (!this.sessionManager.getSession) {
         serverLogger.error('SessionManager does not have a getSession method');
         return null;
