@@ -1,7 +1,7 @@
 /**
  * Hook for fetching and handling unified timeline data
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { WebSocketEvent } from '../types/api';
 import { TimelineItem, TimelineItemType, TimelineResponse } from '../../types/timeline';
 import { useTerminalWebSocket } from './useTerminalWebSocket';
