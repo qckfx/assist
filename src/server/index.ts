@@ -81,6 +81,15 @@ export async function startServer(config: ServerConfig): Promise<{
     // Set up Swagger documentation UI
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(apiDocumentation));
     
+    // =====================================
+    // IMPORTANT: Register API routes BEFORE history API fallback
+    // This ensures API requests are handled properly and not redirected to index.html
+    // =====================================
+    app.use('/api', apiRoutes);
+    
+    // Add route not found handler for API routes
+    app.use('/api/*', notFoundHandler);
+    
     // Use the build directory for static files
     const staticFilesPath = path.resolve(__dirname, '../../dist/ui');
     
@@ -107,6 +116,7 @@ export async function startServer(config: ServerConfig): Promise<{
       });
 
       // Use history API fallback for SPA with custom rules for session routes
+      // MOVED AFTER API ROUTES to prevent it from intercepting API requests
       app.use(history({
         // Define specific routes to rewrite to index.html
         rewrites: [
@@ -115,7 +125,10 @@ export async function startServer(config: ServerConfig): Promise<{
             from: /^\/sessions\/.*$/,
             to: '/index.html'
           }
-        ]
+        ],
+        // Explicitly ignore API routes by specifying only HTML accept headers
+        // This helps ensure API calls aren't redirected to index.html
+        htmlAcceptHeaders: ['text/html', 'application/xhtml+xml']
       }));
       
       // Serve static files after the history middleware
@@ -220,12 +233,6 @@ export async function startServer(config: ServerConfig): Promise<{
       });
     }
     
-    // Add API routes
-    app.use('/api', apiRoutes);
-    
-    // Add route not found handler for API routes
-    app.use('/api/*', notFoundHandler);
-    
     // Add a catch-all route for SPA (only needed if UI build exists)
     if (uiBuildExists) {
       app.get('*', (req, res) => {
@@ -251,6 +258,45 @@ export async function startServer(config: ServerConfig): Promise<{
           // Store the instance in the app for use during shutdown
           app.locals.webSocketService = webSocketService;
           serverLogger.info('WebSocket service initialized');
+          
+          serverLogger.info('Initializing dependency injection container...');
+          
+          try {
+            // Initialize the dependency injection container
+            // Using import instead of require for better error handling
+            const { initializeContainer, TimelineService } = require('./container');
+            
+            // First check if sessionManager is available
+            if (!sessionManager) {
+              throw new Error('SessionManager not available for container initialization');
+            }
+            
+            // Initialize the container with required services
+            const containerInstance = initializeContainer({
+              webSocketService,
+              sessionManager
+            });
+            
+            // Test the container by trying to resolve the TimelineService
+            const timelineService = containerInstance.get(TimelineService);
+            if (!timelineService) {
+              throw new Error('Failed to resolve TimelineService from container');
+            }
+            
+            // Save the container in app locals
+            app.locals.container = containerInstance;
+            serverLogger.info('Dependency injection container successfully initialized');
+          } catch (error) {
+            serverLogger.error('Error during container initialization:', error);
+            // Provide a better fallback container that returns proper errors
+            app.locals.container = {
+              get: function(serviceType: any) {
+                serverLogger.error(`Failed to resolve service ${serviceType?.name || 'unknown'} - container init failed`);
+                return null;
+              }
+            };
+            serverLogger.warn('Using fallback container due to initialization failure');
+          }
           
           resolve({ server, url });
         });
