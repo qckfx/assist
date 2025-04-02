@@ -7,7 +7,7 @@ export type MessageType = 'user' | 'assistant' | 'system' | 'error';
 export interface MessageProps {
   content: StructuredContent | string; // Allow string for backward compatibility
   type: MessageType;
-  timestamp?: Date;
+  timestamp?: number; // Timestamp in milliseconds
   className?: string;
   showTimestamp?: boolean;
   enableAnsiColors?: boolean;
@@ -208,7 +208,15 @@ export function Message({
           aria-hidden="true"
         >
           {(() => {
+            // Add debugging for timestamp
+            console.log('Timestamp in Message component:', {
+              timestamp,
+              type: typeof timestamp,
+              value: timestamp
+            });
+            
             const now = new Date();
+            // Handle timestamp as number (milliseconds since epoch)
             const messageDate = new Date(timestamp);
             
             // Check if the message is more than 1 day old

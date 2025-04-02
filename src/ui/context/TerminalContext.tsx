@@ -12,7 +12,7 @@ const initialState: TerminalState = {
       id: 'greeting',
       content: [{ type: 'text', text: 'How can I help you today?' }],
       type: 'assistant',
-      timestamp: new Date(),
+      timestamp: Date.now(),
     },
   ],
   isProcessing: false,
@@ -368,7 +368,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
             id: 'greeting',
             content: [{ type: 'text', text: 'How can I help you today?' }],
             type: 'assistant',
-            timestamp: new Date(),
+            timestamp: Date.now(),
           }
         });
         
@@ -500,7 +500,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       id: generateUniqueId(type),
       content: [{ type: 'text', text: content }],
       type,
-      timestamp: new Date(),
+      timestamp: Date.now(),
     };
     
     dispatch({ type: 'ADD_MESSAGE', payload: message });

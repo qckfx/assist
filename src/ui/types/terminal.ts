@@ -5,7 +5,7 @@ export interface TerminalMessage {
   id: string;
   content: StructuredContent | string; // Allow string for backward compatibility
   type: MessageType;
-  timestamp: Date;
+  timestamp: number; // Timestamp in milliseconds
 }
 
 export interface TerminalState {

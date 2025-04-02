@@ -238,7 +238,7 @@ export function WebSocketTerminalProvider({
                 aborted: true,
                 abortTimestamp
               },
-              timestamp: new Date().toISOString(),
+              timestamp: Date.now(),
               executionTime: 0, // No execution time for aborted operations
             };
             

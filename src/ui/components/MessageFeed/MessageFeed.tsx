@@ -120,12 +120,15 @@ export function MessageFeed({
     // Render each timeline item
     return timeline.map((item: TimelineItem) => {
       if (item.type === TimelineItemType.MESSAGE) {
+        // Log the entire item structure for debugging
+        console.log('Timeline item structure:', JSON.stringify(item, null, 2));
+        
         // Convert the stored message to the terminal message format
         const message = {
           id: item.message.id,
           type: item.message.role as 'user' | 'assistant' | 'system' | 'error',
           content: item.message.content,
-          timestamp: new Date(item.message.timestamp)
+          timestamp: Date.parse(item.timestamp) // Use timestamp from the timeline item, not from the message
         };
 
         return (
