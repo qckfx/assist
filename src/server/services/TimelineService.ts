@@ -141,10 +141,10 @@ export class TimelineService extends EventEmitter {
     // Emit events
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
     
-    // Use socket.io's room-based broadcasting
-    this.emitToSession(sessionId, WebSocketEvent.TIMELINE_UPDATE, {
+    // Emit the MESSAGE_RECEIVED event instead of TIMELINE_UPDATE
+    this.emitToSession(sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
       sessionId,
-      item: timelineItem
+      message: timelineItem.message
     });
     
     return timelineItem;
@@ -176,10 +176,30 @@ export class TimelineService extends EventEmitter {
     
     // Emit events
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
-    this.emitToSession(sessionId, WebSocketEvent.TIMELINE_UPDATE, {
-      sessionId,
-      item: timelineItem
-    });
+    
+    // Emit the TOOL_EXECUTION_RECEIVED or TOOL_EXECUTION_UPDATED event
+    if (toolExecution.status === 'running' || toolExecution.status === 'pending') {
+      // For new/running tools
+      this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
+        sessionId,
+        toolExecution: {
+          ...toolExecution,
+          preview
+        }
+      });
+    } else {
+      // For completed/error/aborted tools
+      this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+        sessionId,
+        executionId: toolExecution.id,
+        status: toolExecution.status,
+        result: toolExecution.result,
+        error: toolExecution.error,
+        endTime: toolExecution.endTime,
+        executionTime: toolExecution.executionTime,
+        preview
+      });
+    }
     
     return timelineItem;
   }
@@ -208,10 +228,17 @@ export class TimelineService extends EventEmitter {
     
     // Emit events
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
-    this.emitToSession(sessionId, WebSocketEvent.TIMELINE_UPDATE, {
-      sessionId,
-      item: timelineItem
-    });
+    
+    // In our new model, permissions updates should come through as tool updates
+    // Update the associated tool execution if it exists
+    if (permissionRequest.executionId) {
+      const toolExecution = this.getAgentService()?.getToolExecution(permissionRequest.executionId);
+      
+      if (toolExecution) {
+        // Update the tool execution with the permission state and preview
+        this.addToolExecutionToTimeline(sessionId, toolExecution, preview);
+      }
+    }
     
     return timelineItem;
   }
@@ -285,15 +312,35 @@ export class TimelineService extends EventEmitter {
     // Listen for message events - custom events not in AgentServiceEvent enum
     agentService.on(MESSAGE_ADDED, (data: MessageAddedEvent) => {
       this.addMessageToTimeline(data.sessionId, data.message);
+      
+      // Also emit our new message received event
+      agentService.emit(AgentServiceEvent.MESSAGE_RECEIVED, {
+        sessionId: data.sessionId,
+        message: data.message
+      });
     });
     
     agentService.on(MESSAGE_UPDATED, (data: MessageAddedEvent) => {
       this.addMessageToTimeline(data.sessionId, data.message);
+      
+      // Also emit our new message updated event
+      agentService.emit(AgentServiceEvent.MESSAGE_UPDATED, {
+        sessionId: data.sessionId,
+        messageId: data.message.id,
+        content: data.message.content,
+        isComplete: true
+      });
     });
     
     // Also listen for message events from AgentEvents (from AgentRunner)
     const handleAgentEventsMessage = (data: MessageAddedEvent) => {
       this.addMessageToTimeline(data.sessionId, data.message);
+      
+      // Also emit our new message received event
+      agentService.emit(AgentServiceEvent.MESSAGE_RECEIVED, {
+        sessionId: data.sessionId,
+        message: data.message
+      });
     };
     AgentEvents.on(MESSAGE_ADDED, handleAgentEventsMessage);
     

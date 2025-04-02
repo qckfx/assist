@@ -560,6 +560,68 @@ export class WebSocketService {
     });
     
     // No permission timeout handler - permission requests wait indefinitely
+    
+    // Message event handlers
+    this.agentService.on(AgentServiceEvent.MESSAGE_RECEIVED, (data) => {
+      const { sessionId, message } = data;
+      this.io.to(sessionId).emit(WebSocketEvent.MESSAGE_RECEIVED, {
+        sessionId,
+        message
+      });
+      serverLogger.debug(`Message received event emitted for session ${sessionId}`);
+    });
+    
+    this.agentService.on(AgentServiceEvent.MESSAGE_UPDATED, (data) => {
+      const { sessionId, messageId, content, isComplete } = data;
+      this.io.to(sessionId).emit(WebSocketEvent.MESSAGE_UPDATED, {
+        sessionId,
+        messageId,
+        content,
+        isComplete
+      });
+      serverLogger.debug(`Message updated event emitted for session ${sessionId}`);
+    });
+    
+    // Timeline item events
+    this.agentService.on(AgentServiceEvent.TIMELINE_ITEM_UPDATED, (data) => {
+      const { sessionId, item, isUpdate } = data;
+      // Emit the appropriate event based on the timeline item type
+      if (item.type === 'message') {
+        if (isUpdate) {
+          this.io.to(sessionId).emit(WebSocketEvent.MESSAGE_UPDATED, {
+            sessionId,
+            messageId: item.id,
+            content: item.message.content,
+            isComplete: true
+          });
+        } else {
+          this.io.to(sessionId).emit(WebSocketEvent.MESSAGE_RECEIVED, {
+            sessionId,
+            message: item.message
+          });
+        }
+      } else if (item.type === 'tool_execution') {
+        if (isUpdate) {
+          this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+            sessionId,
+            executionId: item.id,
+            status: item.toolExecution.status,
+            result: item.toolExecution.result,
+            error: item.toolExecution.error,
+            endTime: item.toolExecution.endTime,
+            executionTime: item.toolExecution.executionTime,
+            preview: item.preview
+          });
+        } else {
+          this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
+            sessionId,
+            toolExecution: item.toolExecution
+          });
+        }
+      }
+      
+      serverLogger.debug(`Timeline item ${isUpdate ? 'updated' : 'received'} for session ${sessionId}, type: ${item.type}`);
+    });
   }
   
   /**

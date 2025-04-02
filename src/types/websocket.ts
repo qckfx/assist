@@ -1,6 +1,7 @@
 /**
  * Types for WebSocket communication
  */
+import { StructuredContent } from './message';
 
 /**
  * Event types for WebSocket communication
@@ -34,6 +35,14 @@ export enum WebSocketEvent {
   // Timeline events
   TIMELINE_UPDATE = 'timeline_update',
   TIMELINE_HISTORY = 'timeline_history',
+  
+  // Message events (new)
+  MESSAGE_RECEIVED = 'message_received',
+  MESSAGE_UPDATED = 'message_updated',
+  
+  // Tool timeline events (new)
+  TOOL_EXECUTION_RECEIVED = 'tool_execution_received',
+  TOOL_EXECUTION_UPDATED = 'tool_execution_updated',
   
   // Session management events
   SESSION_SAVED = 'session:saved',
@@ -120,6 +129,63 @@ export interface WebSocketEventMap {
     }>;
     nextPageToken?: string;
     totalCount: number;
+  };
+  
+  // Message events
+  [WebSocketEvent.MESSAGE_RECEIVED]: {
+    sessionId: string;
+    message: {
+      id: string;
+      role: 'user' | 'assistant' | 'system';
+      content: StructuredContent;
+      timestamp: string;
+    };
+  };
+  
+  [WebSocketEvent.MESSAGE_UPDATED]: {
+    sessionId: string;
+    messageId: string;
+    content: StructuredContent;
+    isComplete: boolean; // Whether this is the final update
+  };
+  
+  // Tool execution events
+  [WebSocketEvent.TOOL_EXECUTION_RECEIVED]: {
+    sessionId: string;
+    toolExecution: {
+      id: string; // executionId
+      toolId: string;
+      toolName: string;
+      status: string;
+      args: Record<string, unknown>;
+      startTime: string;
+      endTime?: string;
+      executionTime?: number;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+      preview?: {
+        contentType: string;
+        briefContent: string;
+        fullContent?: string;
+        metadata?: Record<string, unknown>;
+      };
+    };
+  };
+  
+  [WebSocketEvent.TOOL_EXECUTION_UPDATED]: {
+    sessionId: string;
+    executionId: string;
+    status: string;
+    result?: unknown;
+    error?: { message: string; stack?: string; };
+    endTime?: string;
+    executionTime?: number;
+    preview?: {
+      contentType: string;
+      briefContent: string;
+      fullContent?: string;
+      metadata?: Record<string, unknown>;
+    };
   };
   
   // Session events

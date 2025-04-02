@@ -59,7 +59,14 @@ export enum AgentServiceEvent {
   // Session events
   SESSION_SAVED = 'session:saved',
   SESSION_LOADED = 'session:loaded',
-  SESSION_DELETED = 'session:deleted'
+  SESSION_DELETED = 'session:deleted',
+  
+  // Message events (new)
+  MESSAGE_RECEIVED = 'message:received',
+  MESSAGE_UPDATED = 'message:updated',
+  
+  // Timeline events (new)
+  TIMELINE_ITEM_UPDATED = 'timeline_item:updated'
 }
 
 /**

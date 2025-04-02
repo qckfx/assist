@@ -115,114 +115,175 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
     };
   }, [sessionId, fetchTimeline]);
   
+  // Add state for local items cache
+  const [localItems, setLocalItems] = useState<TimelineItem[]>([]);
+
   // Listen for WebSocket updates
   useEffect(() => {
     if (!sessionId || !isConnected) return;
     
-    // Listen for timeline updates
-    const unsubscribeUpdate = subscribe(WebSocketEvent.TIMELINE_UPDATE, (data: {
-      sessionId: string;
-      item: TimelineItem;
-    }) => {
+    // Function to handle timeline item received or updated
+    const handleTimelineItem = (data: any, isUpdate: boolean) => {
       if (data.sessionId !== sessionId) return;
       
-      // Update the state with the new/updated item
-      setState(prev => {
-        const existingIndex = prev.items.findIndex(
-          item => item.id === data.item.id && item.type === data.item.type
+      // Create a timeline item from the data
+      let timelineItem: TimelineItem | null = null;
+      
+      if ('message' in data) {
+        // It's a message event
+        timelineItem = {
+          id: data.message.id,
+          type: TimelineItemType.MESSAGE,
+          sessionId: data.sessionId,
+          timestamp: data.message.timestamp,
+          message: data.message
+        };
+      } else if ('toolExecution' in data) {
+        // It's a tool execution event
+        timelineItem = {
+          id: data.toolExecution.id,
+          type: TimelineItemType.TOOL_EXECUTION,
+          sessionId: data.sessionId, 
+          timestamp: data.toolExecution.startTime,
+          toolExecution: data.toolExecution
+        };
+      } else if ('executionId' in data) {
+        // It's a tool execution update
+        // Find existing tool in local items
+        const existingTool = localItems.find(
+          item => item.type === TimelineItemType.TOOL_EXECUTION && item.id === data.executionId
         );
         
-        let newItems = [...prev.items];
+        if (existingTool && existingTool.type === TimelineItemType.TOOL_EXECUTION) {
+          timelineItem = {
+            ...existingTool,
+            toolExecution: {
+              ...existingTool.toolExecution,
+              status: data.status,
+              result: data.result,
+              error: data.error,
+              endTime: data.endTime,
+              executionTime: data.executionTime
+            },
+            preview: data.preview
+          };
+        }
+      } else if ('messageId' in data) {
+        // It's a message update
+        // Find existing message in local items
+        const existingMessage = localItems.find(
+          item => item.type === TimelineItemType.MESSAGE && item.id === data.messageId
+        );
         
-        if (existingIndex >= 0) {
-          // Update existing item
-          newItems[existingIndex] = data.item;
+        if (existingMessage && existingMessage.type === TimelineItemType.MESSAGE) {
+          timelineItem = {
+            ...existingMessage,
+            message: {
+              ...existingMessage.message,
+              content: data.content
+            }
+          };
+        }
+      }
+      
+      if (!timelineItem) return;
+      
+      setLocalItems(prev => {
+        // Check if we already have this item
+        const existingIndex = prev.findIndex(item => item.id === timelineItem?.id);
+        
+        if (existingIndex >= 0 && isUpdate) {
+          // Replace existing item for updates
+          const newItems = [...prev];
+          newItems[existingIndex] = timelineItem!;
+          return newItems;
+        } else if (existingIndex >= 0) {
+          // Item exists but this isn't an update - keep existing
+          return prev;
         } else {
           // Add new item
-          newItems = [...newItems, data.item];
-          
-          // Sort items by timestamp
-          newItems.sort((a, b) => {
-            const dateA = new Date(a.timestamp).getTime();
-            const dateB = new Date(b.timestamp).getTime();
-            
-            if (dateA === dateB) {
-              // If timestamps are the same, prioritize messages over tool executions
-              if (a.type === TimelineItemType.MESSAGE && b.type !== TimelineItemType.MESSAGE) {
-                return -1;
-              }
-              if (a.type !== TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
-                return 1;
-              }
-            }
-            
-            return dateA - dateB;
-          });
+          return [...prev, timelineItem!];
         }
-        
-        return {
-          ...prev,
-          items: newItems,
-          totalCount: prev.totalCount + (existingIndex >= 0 ? 0 : 1)
-        };
       });
-    });
+    };
     
-    // Listen for timeline history updates
-    const unsubscribeHistory = subscribe(WebSocketEvent.TIMELINE_HISTORY, (data: {
-      sessionId: string;
-      items: TimelineItem[];
-      nextPageToken?: string;
-      totalCount: number;
-    }) => {
-      if (data.sessionId !== sessionId) return;
-      
-      // Replace the entire timeline with the new history
-      setState({
-        items: data.items,
-        isLoading: false,
-        error: null,
-        nextPageToken: data.nextPageToken,
-        totalCount: data.totalCount
-      });
-      
-      timelineInitializedRef.current = true;
-    });
+    // Subscribe to message events
+    const unsubscribeMessageReceived = subscribe(WebSocketEvent.MESSAGE_RECEIVED, 
+      data => handleTimelineItem(data, false));
     
-    // Listen for session updates and refresh timeline if needed
-    const unsubscribeSessionUpdated = subscribe(WebSocketEvent.SESSION_UPDATED, () => {
-      if (timelineInitializedRef.current) {
-        fetchTimeline();
-      }
-    });
+    const unsubscribeMessageUpdated = subscribe(WebSocketEvent.MESSAGE_UPDATED, 
+      data => handleTimelineItem(data, true));
     
-    // Listen for session load events
+    // Subscribe to tool execution events
+    const unsubscribeToolReceived = subscribe(WebSocketEvent.TOOL_EXECUTION_RECEIVED,
+      data => handleTimelineItem(data, false));
+    
+    const unsubscribeToolUpdated = subscribe(WebSocketEvent.TOOL_EXECUTION_UPDATED,
+      data => handleTimelineItem(data, true));
+    
+    // Clear the timeline on session load/reload
     const unsubscribeSessionLoaded = subscribe(WebSocketEvent.SESSION_LOADED, (data: { sessionId: string }) => {
       if (data.sessionId === sessionId) {
+        setLocalItems([]);
         timelineInitializedRef.current = false;
         fetchTimeline();
       }
     });
     
     return () => {
-      unsubscribeUpdate();
-      unsubscribeHistory();
-      unsubscribeSessionUpdated();
+      unsubscribeMessageReceived();
+      unsubscribeMessageUpdated();
+      unsubscribeToolReceived();
+      unsubscribeToolUpdated();
       unsubscribeSessionLoaded();
     };
-  }, [sessionId, isConnected, subscribe, fetchTimeline]);
+  }, [sessionId, isConnected, subscribe, fetchTimeline, localItems]);
   
   // Force reload the timeline
   const reload = useCallback(() => {
     fetchTimeline();
   }, [fetchTimeline]);
   
+  // Combine server state with local state
+  const combinedTimeline = useMemo(() => {
+    // Create a map to deduplicate items by ID
+    const itemMap = new Map<string, TimelineItem>();
+    
+    // Add server items first (older items)
+    state.items.forEach(item => {
+      itemMap.set(item.id, item);
+    });
+    
+    // Add local items, which will override server items with same ID
+    localItems.forEach(item => {
+      itemMap.set(item.id, item);
+    });
+    
+    // Convert back to array and sort by timestamp
+    return Array.from(itemMap.values()).sort((a, b) => {
+      const dateA = new Date(a.timestamp).getTime();
+      const dateB = new Date(b.timestamp).getTime();
+      
+      if (dateA === dateB) {
+        // If timestamps are the same, prioritize messages over tool executions
+        if (a.type === TimelineItemType.MESSAGE && b.type !== TimelineItemType.MESSAGE) {
+          return -1;
+        }
+        if (a.type !== TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+          return 1;
+        }
+      }
+      
+      return dateA - dateB;
+    });
+  }, [state.items, localItems]);
+  
   return {
-    timeline: state.items,
+    timeline: combinedTimeline,
     isLoading: state.isLoading,
     error: state.error,
     hasMore: !!state.nextPageToken,
-    totalCount: state.totalCount,
+    totalCount: combinedTimeline.length,
     loadMore,
     reload
   };
