@@ -1483,97 +1483,63 @@ export class WebSocketService {
    * 
    * This is now an async method to properly handle preview generation
    */
+  /**
+   * Get a preview for a tool execution.
+   * Try to get an existing preview first, then use ToolExecutionManager to generate 
+   * one if not already available.
+   */
   private async getPreviewForExecution(executionId: string): Promise<ToolPreviewState | null> {
     try {
-      // Use the AgentService to get the preview for this execution
+      // First check if preview already exists
       const preview = this.agentService.getPreviewForExecution(executionId);
       
       if (preview) {
-        serverLogger.debug(`Found preview for execution ${executionId}`, {
+        serverLogger.debug(`Found existing preview for execution ${executionId}`, {
           previewId: preview.id,
           contentType: preview.contentType,
           hasFullContent: !!preview.fullContent
         });
         return preview;
-      } else {
-        // Enhanced logging to help troubleshoot missing previews
-        serverLogger.debug(`No preview found for execution ${executionId}. Attempting to generate one...`);
-        
-        // Try to get the execution from the agent service to generate a preview
-        const execution = this.agentService.getToolExecution(executionId);
-        if (execution && execution.result) {
-          try {
-            // Create a preview using previewService directly
-            const toolInfo = {
-              id: execution.toolId,
-              name: execution.toolName
-            };
-            
-            // Generate the preview - properly await the Promise
-            serverLogger.info(`Generating preview for execution ${executionId}...`);
-            const generatedPreview = await previewService.generatePreview(
-              toolInfo,
-              execution.args || {},
-              execution.result
-            );
-            
-            // Now handle the resolved preview
-            if (generatedPreview) {
-              // Preview was successfully generated
-              serverLogger.info(`Generated preview on-demand for ${executionId}`, {
-                contentType: generatedPreview.contentType,
-                hasFullContent: generatedPreview.hasFullContent,
-                briefContentLength: generatedPreview.briefContent.length,
-                metadataKeys: Object.keys(generatedPreview.metadata || {})
-              });
-              
-              // Extract fullContent based on preview type
-              let fullContent: string | undefined = undefined;
-              
-              // Extract fullContent based on the type
-              if (generatedPreview.hasFullContent) {
-                // Each specific preview type has the fullContent property
-                if (generatedPreview.contentType === PreviewContentType.TEXT) {
-                  fullContent = (generatedPreview as TextPreviewData).fullContent;
-                } else if (generatedPreview.contentType === PreviewContentType.CODE) {
-                  fullContent = (generatedPreview as CodePreviewData).fullContent;
-                } else if (generatedPreview.contentType === PreviewContentType.DIFF) {
-                  fullContent = (generatedPreview as DiffPreviewData).fullContent;
-                }
-              }
-              
-              // Convert preview data to state
-              const previewState: ToolPreviewState = {
-                id: `preview-${executionId}`, // Generate a deterministic ID
-                sessionId: execution.sessionId,
-                executionId: executionId,
-                contentType: generatedPreview.contentType,
-                briefContent: generatedPreview.briefContent,
-                fullContent: fullContent,
-                metadata: generatedPreview.metadata
-              };
-              
-              // Log detailed preview content for debugging
-              serverLogger.debug(`Created preview state for ${executionId}:`, {
-                contentType: previewState.contentType,
-                briefContentLength: previewState.briefContent.length,
-                hasFullContent: !!previewState.fullContent,
-                fullContentLength: previewState.fullContent?.length || 0,
-                metadataKeys: Object.keys(previewState.metadata || {})
-              });
-              
-              return previewState;
-            }
-          } catch (previewError) {
-            serverLogger.error(`Error generating fallback preview for ${executionId}:`, previewError);
-          }
-        }
-        
-        serverLogger.debug(`No preview found or generated for execution ${executionId}`);
+      } 
+      
+      // No preview found, request generation from the tool execution manager
+      serverLogger.debug(`No preview found for execution ${executionId}, requesting generation from ToolExecutionManager`);
+      
+      // Get the execution
+      const execution = this.agentService.getToolExecution(executionId);
+      if (!execution) {
+        serverLogger.error(`Cannot generate preview - execution ${executionId} not found`);
         return null;
       }
+      
+      // Get the tool execution manager
+      const toolExecutionManager = this.agentService.getToolExecutionManager();
+      if (!toolExecutionManager) {
+        serverLogger.error(`Cannot get tool execution manager to generate preview for ${executionId}`);
+        return null;
+      }
+      
+      // Get the tool execution manager and cast to appropriate type that has the method
+      const typedManager = toolExecutionManager as unknown as { 
+        generatePreviewForExecution: (id: string) => Promise<ToolPreviewState | null> 
+      };
+      
+      // Generate the preview using the tool execution manager
+      const generatedPreview = await typedManager.generatePreviewForExecution(executionId);
+      
+      if (generatedPreview) {
+        serverLogger.info(`Successfully generated preview for execution ${executionId} via ToolExecutionManager`, {
+          previewId: generatedPreview.id,
+          contentType: generatedPreview.contentType,
+          briefContentLength: generatedPreview.briefContent?.length || 0
+        });
+      } else {
+        serverLogger.debug(`No preview could be generated for execution ${executionId}`);
+      }
+      
+      return generatedPreview;
     } catch (error) {
-      serverLogger.error(`Error retrieving preview for execution ${executionId}:`, error);
+      serverLogger.error(`Error getting/generating preview for execution ${executionId}:`, error);
       return null;
     }
   }

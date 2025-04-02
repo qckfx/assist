@@ -1,6 +1,7 @@
 /**
  * Type definitions for tool execution state management
  */
+import { ToolPreviewState, PreviewManager } from '../preview';
 
 /**
  * Represents the status of a tool execution
@@ -172,7 +173,24 @@ export enum ToolExecutionEvent {
   ERROR = 'tool_execution:error',
   ABORTED = 'tool_execution:aborted',
   PERMISSION_REQUESTED = 'tool_execution:permission_requested',
-  PERMISSION_RESOLVED = 'tool_execution:permission_resolved'
+  PERMISSION_RESOLVED = 'tool_execution:permission_resolved',
+  PREVIEW_GENERATED = 'tool_execution:preview_generated'
+}
+
+/**
+ * Type for data emitted with the PREVIEW_GENERATED event
+ */
+export interface PreviewGeneratedEventData {
+  execution: ToolExecutionState;
+  preview: ToolPreviewState;
+}
+
+/**
+ * Type for data emitted with the COMPLETED event when a preview is available
+ */
+export interface ExecutionCompletedWithPreviewEventData {
+  execution: ToolExecutionState;
+  preview?: ToolPreviewState;
 }
 
 /**
@@ -212,6 +230,7 @@ export interface ToolExecutionManager {
   
   /**
    * Complete a tool execution with results
+   * Also generates a preview automatically if possible
    */
   completeExecution(
     executionId: string, 
@@ -257,6 +276,18 @@ export interface ToolExecutionManager {
   ): ToolExecutionState;
   
   /**
+   * Generate a preview for a tool execution
+   * This will use the appropriate preview generator for the tool type
+   * @param executionId ID of the tool execution to generate a preview for
+   * @param previewManager Optional preview manager to use (otherwise uses default)
+   * @returns Promise resolving to the generated preview state (or null if no preview could be generated)
+   */
+  generatePreviewForExecution(
+    executionId: string,
+    previewManager?: PreviewManager
+  ): Promise<ToolPreviewState | null>;
+  
+  /**
    * Get a tool execution by ID
    */
   getExecution(executionId: string): ToolExecutionState | undefined;
@@ -284,5 +315,5 @@ export interface ToolExecutionManager {
   /**
    * Register a listener for tool execution events
    */
-  on(event: ToolExecutionEvent, listener: (data: unknown) => void): () => void;
+  on(event: ToolExecutionEvent | string, listener: (data: unknown) => void): () => void;
 }

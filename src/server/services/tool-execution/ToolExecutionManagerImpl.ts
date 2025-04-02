@@ -7,6 +7,21 @@ import {
   ToolExecutionEvent,
   PermissionRequestState
 } from '../../../types/tool-execution';
+
+
+// Define event data types locally
+export interface PreviewGeneratedEventData {
+  execution: ToolExecutionState;
+  preview: ToolPreviewState;
+}
+
+export interface ExecutionCompletedWithPreviewEventData {
+  execution: ToolExecutionState;
+  preview?: ToolPreviewState;
+}
+import { PreviewManager, ToolPreviewState, PreviewContentType } from '../../../types/preview';
+import { createPreviewManager } from '../PreviewManagerImpl';
+import { previewService } from '../preview';
 import { serverLogger } from '../../logger';
 
 /**
@@ -106,7 +121,102 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   }
 
   /**
+   * Generate a preview for a tool execution
+   * This will use the appropriate preview generator for the tool type
+   * @param executionId ID of the tool execution to generate a preview for
+   * @param previewManager Optional preview manager to use (otherwise uses default)
+   * @returns Promise resolving to the generated preview state (or null if no preview could be generated)
+   */
+  async generatePreviewForExecution(
+    executionId: string,
+    previewManager?: PreviewManager
+  ): Promise<ToolPreviewState | null> {
+    const execution = this.executions.get(executionId);
+    if (!execution) {
+      throw new Error(`Tool execution not found: ${executionId}`);
+    }
+    
+    // Only generate previews for completed executions
+    if (execution.status !== ToolExecutionStatus.COMPLETED) {
+      serverLogger.debug(`Not generating preview for non-completed execution: ${executionId}`, {
+        status: execution.status,
+        toolId: execution.toolId
+      });
+      return null;
+    }
+
+    try {
+      // Use or create a preview manager
+      const previewMgr = previewManager || createPreviewManager();
+      
+      // Check if we already have a preview
+      if (execution.previewId) {
+        const existingPreview = previewMgr.getPreview(execution.previewId);
+        if (existingPreview) {
+          serverLogger.debug(`Preview already exists for execution ${executionId}`, {
+            previewId: existingPreview.id,
+            contentType: existingPreview.contentType
+          });
+          return existingPreview;
+        }
+      }
+      
+      // Generate preview
+      serverLogger.debug(`Generating preview for execution ${executionId}`, {
+        toolId: execution.toolId,
+        toolName: execution.toolName
+      });
+      
+      const generatedPreview = await previewService.generatePreview(
+        { id: execution.toolId, name: execution.toolName },
+        execution.args || {},
+        execution.result
+      );
+      
+      if (!generatedPreview) {
+        serverLogger.debug(`No preview generator available for ${execution.toolId}`);
+        return null;
+      }
+      
+      // Create a preview state
+      const preview = previewMgr.createPreview(
+        execution.sessionId,
+        execution.id,
+        generatedPreview.contentType,
+        generatedPreview.briefContent,
+        generatedPreview.hasFullContent ? 
+          // If fullContent is available, extract it from the generated preview
+          (generatedPreview as any).fullContent : undefined,
+        generatedPreview.metadata
+      );
+      
+      // Associate the preview with the execution
+      this.associatePreview(execution.id, preview.id);
+      
+      // Emit an event to notify that a preview was generated
+      const eventData: PreviewGeneratedEventData = {
+        execution: this.executions.get(executionId)!,
+        preview
+      };
+      this.emitEvent(ToolExecutionEvent.PREVIEW_GENERATED, eventData);
+      
+      serverLogger.info(`Generated preview for execution ${executionId}`, {
+        previewId: preview.id,
+        contentType: preview.contentType,
+        briefContentLength: preview.briefContent?.length || 0,
+        hasFullContent: !!preview.fullContent
+      });
+      
+      return preview;
+    } catch (error) {
+      serverLogger.error(`Error generating preview for execution ${executionId}:`, error);
+      return null;
+    }
+  }
+  
+  /**
    * Complete a tool execution with results
+   * Also attempts to generate a preview
    */
   completeExecution(executionId: string, result: unknown, executionTime: number): ToolExecutionState {
     const execution = this.executions.get(executionId);
@@ -116,6 +226,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
 
     const endTime = new Date().toISOString();
     
+    // First update the execution state to mark it as completed
     const updatedExecution = this.updateExecution(executionId, {
       status: ToolExecutionStatus.COMPLETED,
       result,
@@ -123,10 +234,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
       executionTime
     });
 
-    // Emit completion event
-    this.emitEvent(ToolExecutionEvent.COMPLETED, updatedExecution);
-    
-    serverLogger.info(`⚠️ TOOL_EXECUTION_MANAGER: Completed tool execution: ${executionId}`, {
+    serverLogger.info(`Completed tool execution: ${executionId}`, {
       executionId,
       toolName: updatedExecution.toolName,
       toolId: updatedExecution.toolId,
@@ -134,9 +242,33 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
       executionTime,
       resultType: typeof result,
       status: updatedExecution.status,
-      timestamp: new Date().toISOString()
+      timestamp: endTime
     });
 
+    // Now generate a preview asynchronously (but don't wait for it)
+    // We return immediately with the execution, and the preview will be
+    // generated and emitted as a separate event later
+    this.generatePreviewForExecution(executionId)
+      .then(preview => {
+        // Create the event data with the preview
+        const eventData: ExecutionCompletedWithPreviewEventData = {
+          execution: updatedExecution,
+          preview: preview || undefined
+        };
+        // Emit completion event with the preview data
+        this.emitEvent(ToolExecutionEvent.COMPLETED, eventData);
+      })
+      .catch(error => {
+        // If preview generation fails, still emit the completion event with just the execution
+        serverLogger.error(`Failed to generate preview for ${executionId}, emitting completion without preview:`, error);
+        // Create event data with just the execution
+        const eventData: ExecutionCompletedWithPreviewEventData = {
+          execution: updatedExecution
+        };
+        this.emitEvent(ToolExecutionEvent.COMPLETED, eventData);
+      });
+      
+    // Return the updated execution immediately
     return updatedExecution;
   }
 
@@ -346,7 +478,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   /**
    * Register a listener for tool execution events
    */
-  on(event: ToolExecutionEvent, listener: (data: unknown) => void): () => void {
+  on(event: ToolExecutionEvent | string, listener: (data: unknown) => void): () => void {
     this.eventEmitter.on(event, listener);
     return () => this.eventEmitter.off(event, listener);
   }
@@ -354,7 +486,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   /**
    * Helper method to emit events
    */
-  private emitEvent(event: ToolExecutionEvent, data: unknown): void {
+  private emitEvent(event: ToolExecutionEvent | string, data: unknown): void {
     this.eventEmitter.emit(event, data);
   }
 
@@ -367,6 +499,44 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     this.permissionRequests.clear();
     this.sessionPermissions.clear();
     this.executionPermissions.clear();
+  }
+
+  /**
+   * Load session data from persistence layer
+   * @param sessionId The session ID to load data for
+   */
+  async loadSessionData(sessionId: string): Promise<void> {
+    // Placeholder - we'll implement proper persistence in the future
+    serverLogger.debug(`Loading session data for ${sessionId}`);
+    // Just a stubbed implementation for now to make TypeScript happy
+    return Promise.resolve();
+  }
+
+  /**
+   * Save session data to persistence layer
+   * @param sessionId The session ID to save data for
+   */
+  async saveSessionData(sessionId: string): Promise<void> {
+    // Placeholder - we'll implement proper persistence in the future
+    serverLogger.debug(`Saving session data for ${sessionId}`);
+    // Just a stubbed implementation for now to make TypeScript happy
+    return Promise.resolve();
+  }
+
+  /**
+   * Resolve a permission request by execution ID
+   * @param executionId The execution ID to resolve the permission for
+   * @param granted Whether permission is granted
+   */
+  resolvePermissionByExecutionId(executionId: string, granted: boolean): PermissionRequestState | null {
+    // Find the permission request for this execution
+    const permissionId = this.executionPermissions.get(executionId);
+    if (!permissionId) {
+      return null;
+    }
+    
+    // Resolve the permission request
+    return this.resolvePermission(permissionId, granted);
   }
 }
 

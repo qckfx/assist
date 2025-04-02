@@ -4,7 +4,21 @@
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
 import { StoredMessage } from '../../types/session';
-import { ToolExecutionState, PermissionRequestState, ToolExecutionStatus } from '../../types/tool-execution';
+import { 
+  ToolExecutionState, 
+  PermissionRequestState, 
+  ToolExecutionStatus,
+  ToolExecutionManager
+} from '../../types/tool-execution';
+
+// Import the enum with a different name to avoid conflicts
+import { ToolExecutionEvent as ToolExecEvent } from '../../types/tool-execution';
+
+// Import event data types from the implementation
+import { 
+  PreviewGeneratedEventData,
+  ExecutionCompletedWithPreviewEventData
+} from './tool-execution/ToolExecutionManagerImpl';
 import { ToolPreviewState, PreviewContentType } from '../../types/preview';
 import { 
   TimelineItem, 
@@ -27,8 +41,8 @@ import { AgentEvents } from '../../utils/sessionUtils';
 
 import { Server as SocketIOServer } from 'socket.io';
 
-// Define interface for tool execution event data
-interface ToolExecutionEventData {
+// Define interface for legacy tool execution event data
+interface LegacyToolExecutionEventData {
   sessionId: string;
   tool: {
     id: string;
@@ -72,7 +86,8 @@ interface MessageAddedEvent {
   message: StoredMessage;
 }
 
-interface ToolExecutionEvent {
+// renamed to avoid conflicts with exported types
+interface InternalToolExecutionEventData {
   sessionId: string;
   execution: ToolExecutionState;
   preview?: ToolPreviewState;
@@ -97,7 +112,8 @@ interface TimelineItemsCache {
 
 export enum TimelineServiceEvent {
   ITEM_ADDED = 'item_added',
-  ITEMS_UPDATED = 'items_updated'
+  ITEMS_UPDATED = 'items_updated',
+  ITEM_UPDATED = 'item_updated'
 }
 
 export class TimelineService extends EventEmitter {
@@ -212,46 +228,7 @@ export class TimelineService extends EventEmitter {
     preview?: ToolPreviewState,
     parentMessageId?: string
   ): Promise<ToolExecutionTimelineItem> {
-    // If there's no preview but we have a completed tool execution with result,
-    // try to generate the preview now
-    if (!preview && toolExecution.result && 
-        (toolExecution.status === 'completed' || toolExecution.status as string === 'completed')) {
-      try {
-        serverLogger.info(`No preview found for completed execution ${toolExecution.id}, generating one now`);
-        
-        // Generate a preview using PreviewService
-        const generatedPreview = await previewService.generatePreview(
-          { id: toolExecution.toolId, name: toolExecution.toolName },
-          toolExecution.args || {},
-          toolExecution.result
-        );
-        
-        if (generatedPreview) {
-          // Create a proper preview state object
-          preview = {
-            id: `preview-${toolExecution.id}`,
-            sessionId: sessionId,
-            executionId: toolExecution.id,
-            contentType: generatedPreview.contentType,
-            briefContent: generatedPreview.briefContent,
-            fullContent: generatedPreview.hasFullContent ? 
-              // Handle different preview types
-              (generatedPreview as any).fullContent : undefined,
-            metadata: generatedPreview.metadata
-          };
-          
-          serverLogger.info(`Successfully generated preview for ${toolExecution.id}:`, {
-            contentType: preview.contentType,
-            briefContentLength: preview.briefContent?.length,
-            fullContentLength: preview.fullContent?.length
-          });
-        }
-      } catch (error) {
-        serverLogger.error(`Error generating preview for ${toolExecution.id}:`, error);
-      }
-    }
-    
-    // Create the timeline item
+    // Create the timeline item with the provided preview
     const timelineItem: ToolExecutionTimelineItem = {
       id: toolExecution.id,
       type: TimelineItemType.TOOL_EXECUTION,
@@ -280,7 +257,7 @@ export class TimelineService extends EventEmitter {
         }
       });
     } else {
-      // For completed/error/aborted tools - use the same format as TOOL_EXECUTION_RECEIVED
+      // For completed/error/aborted tools
       // Convert preview to the correct format for client consumption
       const clientPreview = preview ? {
         contentType: preview.contentType,
@@ -292,20 +269,20 @@ export class TimelineService extends EventEmitter {
       // Check if we have a valid preview with required content
       const hasValidPreview = !!(preview && preview.briefContent);
       
-      // Log what we're about to send
-      serverLogger.info(`Emitting TOOL_EXECUTION_UPDATED with preview for ${toolExecution.id}:`, {
-        toolId: toolExecution.id,
-        toolName: toolExecution.toolName,
-        status: toolExecution.status,
-        hasPreview: hasValidPreview,
-        previewContentType: preview?.contentType,
-        previewBriefContentLength: preview?.briefContent?.length,
-        previewFullContentLength: preview?.fullContent?.length,
-        previewMetadataKeys: preview?.metadata ? Object.keys(preview.metadata) : []
-      });
+      if (hasValidPreview) {
+        serverLogger.info(`Emitting TOOL_EXECUTION_UPDATED with preview for ${toolExecution.id}:`, {
+          toolId: toolExecution.id,
+          toolName: toolExecution.toolName,
+          status: toolExecution.status,
+          hasPreview: true,
+          previewContentType: preview?.contentType,
+          previewBriefContentLength: preview?.briefContent?.length,
+          previewFullContentLength: preview?.fullContent?.length,
+          previewMetadataKeys: preview?.metadata ? Object.keys(preview.metadata) : []
+        });
+      }
       
-      // Create a tool execution object with the right data for the client
-      // Include preview data but NOT the full result (which isn't needed for visualization)
+      // Send the execution update with preview if available
       this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
         sessionId,
         toolExecution: {
@@ -419,6 +396,23 @@ export class TimelineService extends EventEmitter {
       return null;
     }
   }
+  
+  /**
+   * Get ToolExecutionManager from AgentService
+   */
+  private getToolExecutionManager(): ToolExecutionManager | null {
+    try {
+      const agentService = this.getAgentService();
+      if (!agentService) return null;
+      
+      // AgentService should have a 'toolExecutionManager' property
+      const toolExecutionManager = (agentService as unknown as { toolExecutionManager: ToolExecutionManager }).toolExecutionManager;
+      return toolExecutionManager || null;
+    } catch (error) {
+      serverLogger.debug('Could not access ToolExecutionManager:', error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  }
 
   /**
    * Set up event listeners for session events
@@ -431,6 +425,9 @@ export class TimelineService extends EventEmitter {
       serverLogger.error('TimelineService: Could not access AgentService for event subscriptions');
       return;
     }
+    
+    // Get access to the ToolExecutionManager for preview events
+    const toolExecutionManager = this.getToolExecutionManager();
     
     // Listen for message events - custom events not in AgentServiceEvent enum
     agentService.on(MESSAGE_ADDED, (data: MessageAddedEvent) => {
@@ -479,7 +476,7 @@ export class TimelineService extends EventEmitter {
     };
     
     // Listen for tool execution events
-    agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, (data: ToolExecutionEventData) => {
+    agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, (data: LegacyToolExecutionEventData) => {
       if (!data || !data.sessionId || !data.tool || !data.tool.executionId) {
         serverLogger.error('TimelineService: Missing required data in TOOL_EXECUTION_STARTED event');
         return;
@@ -504,7 +501,7 @@ export class TimelineService extends EventEmitter {
         });
     });
     
-    agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: ToolExecutionEventData) => {
+    agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: LegacyToolExecutionEventData) => {
       if (!data || !data.sessionId || !data.tool || !data.tool.executionId) {
         serverLogger.error('TimelineService: Missing required data in TOOL_EXECUTION_COMPLETED event');
         return;
@@ -595,6 +592,39 @@ export class TimelineService extends EventEmitter {
         }
       })();
     });
+    
+    // Listen for Tool Execution Manager events (if available)
+    if (toolExecutionManager) {
+      // Listen for preview generation events
+      toolExecutionManager.on(ToolExecEvent.PREVIEW_GENERATED, (data: unknown) => {
+        // Need to type-cast the data to the expected format
+        const typedData = data as PreviewGeneratedEventData;
+        const { execution, preview } = typedData;
+        
+        // Update timeline item with the newly generated preview
+        this.updateTimelineItemPreview(execution.sessionId, execution.id, preview);
+        
+        serverLogger.debug(`TimelineService received PREVIEW_GENERATED event for execution ${execution.id}`);
+      });
+      
+      // Listen for tool execution completed events that include a preview
+      toolExecutionManager.on(ToolExecEvent.COMPLETED, (data: unknown) => {
+        // Need to type-cast the data to the expected format
+        const typedData = data as ExecutionCompletedWithPreviewEventData;
+        const { execution, preview } = typedData;
+        
+        // Find the parent message ID for this execution
+        this.findParentMessageId(execution.sessionId, execution.id)
+          .then(parentMessageId => {
+            // Add the tool execution with its preview to the timeline
+            this.addToolExecutionToTimeline(execution.sessionId, execution, preview, parentMessageId);
+            
+            serverLogger.debug(`TimelineService processed COMPLETED event for execution ${execution.id} with preview: ${!!preview}`);
+          });
+      });
+    } else {
+      serverLogger.warn('TimelineService: Could not access ToolExecutionManager for event subscriptions');
+    }
     
     serverLogger.info('TimelineService: Event listeners setup complete');
   }
@@ -845,11 +875,8 @@ export class TimelineService extends EventEmitter {
       return { items: [], totalCount: 0 };
     }
     
-    // Generate previews for any tool executions that don't have them
-    // This ensures we have previews for display in the timeline
-    if (includeRelated) {
-      await this.ensurePreviewsForToolExecutions(sessionData);
-    }
+    // We no longer generate previews in the timeline service
+    // All preview generation is now handled by ToolExecutionManager
     
     const timeline: TimelineItem[] = [];
     
@@ -950,62 +977,75 @@ export class TimelineService extends EventEmitter {
   }
 
   /**
-   * Ensure previews exist for completed tool executions
+   * The TimelineService no longer generates previews directly.
+   * All preview generation is now handled by ToolExecutionManager.
    */
-  private async ensurePreviewsForToolExecutions(sessionData: SessionData): Promise<void> {
-    const { toolExecutions, previews } = sessionData;
+   
+  /**
+   * Update the preview for an existing timeline item
+   * This is used when a preview is generated asynchronously after the timeline item was created
+   */
+  private async updateTimelineItemPreview(
+    sessionId: string,
+    executionId: string,
+    preview: ToolPreviewState
+  ): Promise<void> {
+    // Find the existing timeline item in the cache
+    const cachedItems = this.itemsCache[sessionId]?.items || [];
+    const itemIndex = cachedItems.findIndex(
+      item => item.type === TimelineItemType.TOOL_EXECUTION && item.id === executionId
+    );
     
-    // Create a map of existing previews by execution ID for quick lookup
-    const previewMap = new Map<string, ToolPreviewState>();
-    for (const preview of previews) {
-      if (preview.executionId) {
-        previewMap.set(preview.executionId, preview);
-      }
-    }
-    
-    // Process each tool execution
-    for (const execution of toolExecutions) {
-      // Only process completed executions with results that don't have previews
-      if ((execution.status === 'completed' || execution.status as string === 'completed') && 
-          execution.result && !previewMap.has(execution.id)) {
-        try {
-          serverLogger.info(`Generating missing preview for completed execution ${execution.id}`);
-          
-          // Generate a preview using PreviewService
-          const generatedPreview = await previewService.generatePreview(
-            { id: execution.toolId, name: execution.toolName },
-            execution.args || {},
-            execution.result
-          );
-          
-          if (generatedPreview) {
-            // Create a proper preview state object
-            const newPreview: ToolPreviewState = {
-              id: `preview-${execution.id}`,
-              sessionId: execution.sessionId,
-              executionId: execution.id,
-              contentType: generatedPreview.contentType,
-              briefContent: generatedPreview.briefContent,
-              fullContent: generatedPreview.hasFullContent ? 
-                // Handle different preview types
-                (generatedPreview as any).fullContent : undefined,
-              metadata: generatedPreview.metadata
-            };
-            
-            // Add to the previews list and map
-            previews.push(newPreview);
-            previewMap.set(execution.id, newPreview);
-            
-            serverLogger.info(`Successfully generated preview for ${execution.id}:`, {
-              contentType: newPreview.contentType,
-              briefContentLength: newPreview.briefContent?.length,
-              fullContentLength: newPreview.fullContent?.length
-            });
+    if (itemIndex >= 0) {
+      // Update the preview in the timeline item
+      const item = cachedItems[itemIndex] as ToolExecutionTimelineItem;
+      item.preview = preview;
+      
+      // Update the cache
+      await this.updateTimelineCache(sessionId, item);
+      
+      // Emit events
+      this.emit(TimelineServiceEvent.ITEM_UPDATED, item);
+      
+      // Check if we have a valid preview with required content
+      const hasValidPreview = !!(preview && preview.briefContent);
+      
+      if (hasValidPreview) {
+        serverLogger.info(`Updating timeline item with preview for ${executionId}:`, {
+          toolId: item.toolExecution.toolId,
+          toolName: item.toolExecution.toolName,
+          status: item.toolExecution.status,
+          hasPreview: true,
+          previewContentType: preview.contentType,
+          previewBriefContentLength: preview.briefContent?.length,
+          previewFullContentLength: preview.fullContent?.length,
+          previewMetadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+        });
+        
+        // Convert preview to the correct format for client consumption
+        const clientPreview = {
+          contentType: preview.contentType,
+          briefContent: preview.briefContent,
+          fullContent: preview.fullContent,
+          metadata: preview.metadata
+        };
+        
+        // Send the execution update with preview to all clients
+        this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+          sessionId,
+          toolExecution: {
+            id: item.toolExecution.id,
+            toolId: item.toolExecution.toolId,
+            toolName: item.toolExecution.toolName,
+            status: item.toolExecution.status,
+            preview: clientPreview
           }
-        } catch (error) {
-          serverLogger.error(`Error generating preview for ${execution.id}:`, error);
-        }
+        });
+      } else {
+        serverLogger.warn(`Cannot update timeline item with invalid preview for ${executionId}`);
       }
+    } else {
+      serverLogger.warn(`Timeline item not found for execution ${executionId} in session ${sessionId}`);
     }
   }
 

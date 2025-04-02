@@ -217,6 +217,7 @@ export enum ToolExecutionEvent {
   COMPLETED = 'tool_execution:completed',
   ERROR = 'tool_execution:error',
   ABORTED = 'tool_execution:aborted',
+  PREVIEW_GENERATED = 'tool_execution:preview_generated',
   PERMISSION_REQUESTED = 'tool_execution:permission_requested',
   PERMISSION_RESOLVED = 'tool_execution:permission_resolved'
 }
