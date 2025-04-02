@@ -24,6 +24,16 @@ export class DirectoryPreviewGenerator extends PreviewGenerator {
   ): Promise<ToolPreviewData | null> {
     const opts = { ...this.defaultOptions, ...options };
     
+    // Add detailed logging for debugging
+    serverLogger.debug(`DirectoryPreviewGenerator: starting preview generation for ${tool.name}`, {
+      toolId: tool.id,
+      argsKeys: Object.keys(args),
+      resultType: result ? typeof result : 'undefined',
+      resultIsNull: result === null,
+      resultHasEntries: result && typeof result === 'object' && 'entries' in result,
+      resultHasFiles: result && typeof result === 'object' && 'files' in result
+    });
+    
     try {
       // Handle LS tool results
       if (!this.isLSResult(result)) {
@@ -48,6 +58,17 @@ export class DirectoryPreviewGenerator extends PreviewGenerator {
         modified?: Date;
       }>;
       
+      // Add more detailed logging about entries
+      serverLogger.debug(`DirectoryPreviewGenerator: analyzed entries for ${dirPath}`, {
+        rawEntriesLength: rawEntries.length,
+        entriesLength: entries.length,
+        entriesEmpty: entries.length === 0,
+        firstEntryIfExists: entries.length > 0 ? {
+          name: entries[0].name,
+          isDirectory: entries[0].isDirectory
+        } : 'none'
+      });
+      
       // Count directories and files
       const directories = entries.filter(entry => Boolean(entry.isDirectory)).length;
       const files = entries.length - directories;
@@ -55,6 +76,14 @@ export class DirectoryPreviewGenerator extends PreviewGenerator {
       // Format brief content (limited entries)
       const briefEntries = entries.slice(0, opts.maxBriefLines || 10);
       const briefContent = this.formatDirectoryListing(briefEntries, dirPath);
+      
+      // Log the generated brief content for debugging
+      serverLogger.debug(`DirectoryPreviewGenerator: generated brief content for ${dirPath}`, {
+        briefEntriesLength: briefEntries.length,
+        briefContentLength: briefContent.length,
+        briefContentEmpty: !briefContent || briefContent.trim() === '',
+        briefContentSample: briefContent ? briefContent.substring(0, 100) + (briefContent.length > 100 ? '...' : '') : 'EMPTY'
+      });
       
       const preview: DirectoryPreviewData = {
         contentType: PreviewContentType.DIRECTORY,

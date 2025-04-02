@@ -1,6 +1,7 @@
 // Basic API response and request types
 import { ToolPreviewData } from '../../types/preview';
 import { TimelineItem } from '../../types/timeline';
+import { StructuredContent } from '../../types/message';
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -116,6 +117,14 @@ export enum WebSocketEvent {
   // Timeline events
   TIMELINE_UPDATE = 'timeline_update',
   TIMELINE_HISTORY = 'timeline_history',
+  
+  // Message events (new)
+  MESSAGE_RECEIVED = 'message_received',
+  MESSAGE_UPDATED = 'message_updated',
+  
+  // Tool timeline events (new)
+  TOOL_EXECUTION_RECEIVED = 'tool_execution_received',
+  TOOL_EXECUTION_UPDATED = 'tool_execution_updated',
   
   // Session management events
   SESSION_LOADED = 'session_loaded',
@@ -293,6 +302,58 @@ export interface WebSocketEventMap {
     items: TimelineItem[];
     nextPageToken?: string;
     totalCount: number;
+  };
+  
+  // Message events (new)
+  [WebSocketEvent.MESSAGE_RECEIVED]: {
+    sessionId: string;
+    message: {
+      id: string;
+      role: 'user' | 'assistant' | 'system';
+      content: StructuredContent;
+      timestamp: string;
+    };
+  };
+  
+  [WebSocketEvent.MESSAGE_UPDATED]: {
+    sessionId: string;
+    messageId: string;
+    content: StructuredContent;
+    isComplete: boolean;
+  };
+  
+  // Tool execution events (new)
+  [WebSocketEvent.TOOL_EXECUTION_RECEIVED]: {
+    sessionId: string;
+    toolExecution: {
+      id: string;
+      toolId: string;
+      toolName: string;
+      status: string;
+      args: Record<string, unknown>;
+      startTime: string;
+      endTime?: string;
+      executionTime?: number;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+    };
+  };
+  
+  [WebSocketEvent.TOOL_EXECUTION_UPDATED]: {
+    sessionId: string;
+    toolExecution: {
+      id: string;
+      toolId: string;
+      toolName: string;
+      status: string;
+      args?: Record<string, unknown>;
+      startTime: string;
+      endTime?: string;
+      executionTime?: number;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+    };
+    preview?: ToolPreviewData;
   };
   
   // Session management events

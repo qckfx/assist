@@ -174,12 +174,18 @@ export interface WebSocketEventMap {
   
   [WebSocketEvent.TOOL_EXECUTION_UPDATED]: {
     sessionId: string;
-    executionId: string;
-    status: string;
-    result?: unknown;
-    error?: { message: string; stack?: string; };
-    endTime?: string;
-    executionTime?: number;
+    toolExecution: {
+      id: string;
+      toolId: string;
+      toolName: string;
+      status: string;
+      args?: Record<string, unknown>;
+      startTime: string;
+      endTime?: string;
+      executionTime?: number;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+    };
     preview?: {
       contentType: string;
       briefContent: string;

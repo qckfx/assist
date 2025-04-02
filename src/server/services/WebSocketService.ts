@@ -3,7 +3,14 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { AgentService, AgentServiceEvent, getAgentService } from './AgentService';
 import { SessionManager, sessionManager } from './SessionManager';
 import { serverLogger } from '../logger';
-import { ToolPreviewData, ToolPreviewState } from '../../types/preview';
+import { 
+  ToolPreviewData, 
+  ToolPreviewState,
+  PreviewContentType,
+  TextPreviewData,
+  CodePreviewData,
+  DiffPreviewData
+} from '../../types/preview';
 import { WebSocketEvent } from '../../types/websocket';
 import { 
   ToolExecutionState, 
@@ -583,7 +590,7 @@ export class WebSocketService {
     });
     
     // Timeline item events
-    this.agentService.on(AgentServiceEvent.TIMELINE_ITEM_UPDATED, (data) => {
+    this.agentService.on(AgentServiceEvent.TIMELINE_ITEM_UPDATED, async (data) => {
       const { sessionId, item, isUpdate } = data;
       // Emit the appropriate event based on the timeline item type
       if (item.type === 'message') {
@@ -601,22 +608,145 @@ export class WebSocketService {
           });
         }
       } else if (item.type === 'tool_execution') {
-        if (isUpdate) {
-          this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-            sessionId,
-            executionId: item.id,
-            status: item.toolExecution.status,
-            result: item.toolExecution.result,
-            error: item.toolExecution.error,
-            endTime: item.toolExecution.endTime,
-            executionTime: item.toolExecution.executionTime,
-            preview: item.preview
-          });
-        } else {
-          this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
-            sessionId,
-            toolExecution: item.toolExecution
-          });
+        try {
+          if (isUpdate) {
+            // For updates, include important flags for preview data
+            // First, check if we have preview data in the timeline item
+            const hasPreviewInItem = !!item.preview;
+            
+            // Log details about the preview in the timeline item
+            if (hasPreviewInItem) {
+              serverLogger.info(`Timeline item update has preview for execution ${item.id}:`, {
+                contentType: item.preview?.contentType,
+                briefContentLength: item.preview?.briefContent?.length,
+                fullContentLength: item.preview?.fullContent?.length,
+                metadataKeys: item.preview?.metadata ? Object.keys(item.preview.metadata) : []
+              });
+            } else {
+              serverLogger.debug(`Timeline item update has no preview for execution ${item.id}`);
+            }
+            
+            // If this is a completed tool execution and we don't have content, try to get it
+            if (item.toolExecution.status === 'completed') {
+              const executionId = item.id;
+              
+              // Try to get the execution from agent service
+              const execution = this.agentService.getToolExecution(executionId);
+              
+              if (execution && execution.result) {
+                // Get or generate the preview - using the async method
+                serverLogger.debug(`Attempting to get/generate preview for completed timeline item: ${executionId}`);
+                const preview = await this.getPreviewForExecution(executionId);
+                
+                if (preview) {
+                  // Convert to client format
+                  const formattedPreview = this.convertPreviewToClientFormat(preview);
+                  
+                  if (formattedPreview) {
+                    serverLogger.info(`Enhanced timeline preview for ${executionId}:`, {
+                      contentType: preview.contentType,
+                      briefContentLength: preview.briefContent?.length,
+                      fullContentLength: preview.fullContent?.length
+                    });
+                    
+                    // Send enhanced update with the properly generated preview
+                    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+                      sessionId,
+                      toolExecution: {
+                        id: item.id,
+                        toolId: item.toolExecution.toolId,
+                        toolName: item.toolExecution.toolName,
+                        status: item.toolExecution.status,
+                        args: item.toolExecution.args,
+                        startTime: item.toolExecution.startTime,
+                        endTime: item.toolExecution.endTime,
+                        executionTime: item.toolExecution.executionTime,
+                        result: item.toolExecution.result,
+                        error: item.toolExecution.error,
+                        // Include the enhanced preview
+                        preview: formattedPreview,
+                        hasPreview: true,
+                        previewContentType: preview.contentType,
+                        previewBriefContentLength: preview.briefContent?.length,
+                        previewFullContentLength: preview.fullContent?.length,
+                        previewMetadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+                      }
+                    });
+                    
+                    // We've sent the enhanced update, so return to avoid sending duplicate events
+                    return;
+                  }
+                }
+              }
+            }
+            
+            // If we couldn't enhance the preview or it's not a completed tool, send with original preview
+            this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+              sessionId,
+              toolExecution: {
+                id: item.id,
+                toolId: item.toolExecution.toolId,
+                toolName: item.toolExecution.toolName,
+                status: item.toolExecution.status,
+                args: item.toolExecution.args,
+                startTime: item.toolExecution.startTime,
+                endTime: item.toolExecution.endTime,
+                executionTime: item.toolExecution.executionTime,
+                result: item.toolExecution.result,
+                error: item.toolExecution.error,
+                // Include both the preview object and the hasPreview flag
+                preview: item.preview,
+                hasPreview: hasPreviewInItem,
+                previewContentType: item.preview?.contentType,
+                previewBriefContentLength: item.preview?.briefContent?.length,
+                previewFullContentLength: item.preview?.fullContent?.length,
+                previewMetadataKeys: item.preview?.metadata ? Object.keys(item.preview.metadata) : []
+              }
+            });
+          } else {
+            // For new items, also include preview information
+            const hasPreview = !!item.preview;
+            
+            // Include preview information in the received event
+            const toolExecution = {
+              ...item.toolExecution,
+              preview: item.preview,
+              hasPreview: hasPreview,
+              previewContentType: item.preview?.contentType
+            };
+            
+            this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
+              sessionId,
+              toolExecution
+            });
+          }
+        } catch (error) {
+          serverLogger.error(`Error handling timeline tool execution update for ${item.id}:`, error);
+          // Send basic update without enhanced preview
+          if (isUpdate) {
+            this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+              sessionId,
+              toolExecution: {
+                id: item.id,
+                toolId: item.toolExecution.toolId,
+                toolName: item.toolExecution.toolName,
+                status: item.toolExecution.status,
+                args: item.toolExecution.args,
+                startTime: item.toolExecution.startTime,
+                endTime: item.toolExecution.endTime,
+                executionTime: item.toolExecution.executionTime,
+                result: item.toolExecution.result,
+                error: item.toolExecution.error,
+                preview: item.preview,
+                hasPreview: !!item.preview
+              }
+            });
+          } else {
+            this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
+              sessionId,
+              toolExecution: item.toolExecution
+            });
+          }
         }
       }
       
@@ -684,44 +814,66 @@ export class WebSocketService {
       return;
     }
     
-    // Convert to client format
-    const clientData = this.convertExecutionToClientFormat(execution);
-    
-    // Add tool to active tools
-    if (!this.activeTools.has(sessionId)) {
-      this.activeTools.set(sessionId, new Map());
-    }
-    
-    // Track the tool in our active tools map
-    this.activeTools.get(sessionId)?.set(tool.id, {
-      tool,
-      startTime: execution.startTime ? new Date(execution.startTime) : new Date(),
-      paramSummary: paramSummary || execution.summary || 'No parameters',
-      args: execution.args || {}
-    });
-    
-    // Emit both the original event for backward compatibility
-    // and the new simplified event
-    const enhancedData = {
-      ...data,
-      isActive: true // Mark as active for UI
-    };
-    
-    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, enhancedData);
-    this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-      sessionId,
-      tool: clientData
-    });
+    // Convert to client format - using Promise.resolve to handle async/non-async implementation
+    Promise.resolve(this.convertExecutionToClientFormat(execution))
+      .then(clientData => {
+        // Add tool to active tools
+        if (!this.activeTools.has(sessionId)) {
+          this.activeTools.set(sessionId, new Map());
+        }
+        
+        // Track the tool in our active tools map
+        this.activeTools.get(sessionId)?.set(tool.id, {
+          tool,
+          startTime: execution.startTime ? new Date(execution.startTime) : new Date(),
+          paramSummary: paramSummary || execution.summary || 'No parameters',
+          args: execution.args || {}
+        });
+        
+        // Add debug logging to see if we have a preview at start time
+        serverLogger.info(`Tool execution started with preview info for ${executionId}:`, {
+          toolId: execution.toolId,
+          toolName: execution.toolName,
+          hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
+          previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined,
+          previewBriefContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
+            (clientData.preview as any).briefContent?.length : undefined,
+          previewFullContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
+            (clientData.preview as any).fullContent?.length : undefined
+        });
+        
+        // Emit both the original event for backward compatibility
+        // and the new simplified event with the client data
+        const enhancedData = {
+          ...data,
+          isActive: true, // Mark as active for UI
+          // Include preview flags in the enhanced data for backward compatibility
+          hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
+          previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined
+        };
+        
+        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, enhancedData);
+        this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
+          sessionId,
+          tool: clientData
+        });
+      })
+      .catch(error => {
+        serverLogger.error(`Error processing tool execution start for ${executionId}:`, error);
+        // In case of error, emit basic data without preview
+        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, data);
+      });
+    // The emit is now handled inside the Promise callback above
   }
   
   /**
    * Handle tool execution updated event
    */
-  private handleToolExecutionUpdated(data: {
+  private async handleToolExecutionUpdated(data: {
     sessionId: string;
     tool: { id: string; name: string; executionId: string };
     result?: unknown;
-  }): void {
+  }): Promise<void> {
     const { sessionId, tool } = data;
     
     // Get the full execution state
@@ -735,15 +887,43 @@ export class WebSocketService {
       return;
     }
     
-    // Convert to client format
-    const clientData = this.convertExecutionToClientFormat(execution);
-    
-    // Emit both formats
-    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, data);
-    this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-      sessionId,
-      tool: clientData
-    });
+    try {
+      // Convert to client format - using await to handle async preview generation
+      serverLogger.debug(`Converting execution to client format with awaitable preview generation: ${executionId}`);
+      const clientData = await this.convertExecutionToClientFormat(execution);
+      
+      // Add debug logging to see the preview state in the client data
+      serverLogger.info(`Tool execution updated with preview info for ${executionId}:`, {
+        toolId: execution.toolId,
+        toolName: execution.toolName,
+        hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
+        previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined,
+        previewBriefContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
+          (clientData.preview as any).briefContent?.length : undefined,
+        previewFullContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
+          (clientData.preview as any).fullContent?.length : undefined
+      });
+      
+      // Only emit the WebSocket events once we have the complete data with preview
+      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, data);
+      this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
+        sessionId,
+        tool: clientData
+      });
+      
+      // If we have a preview, also send a separate update to ensure clients catch it
+      if (clientData && typeof clientData === 'object' && clientData.hasPreview) {
+        serverLogger.info(`Sending dedicated preview update for ${executionId}`);
+        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+          sessionId,
+          toolExecution: clientData
+        });
+      }
+    } catch (error) {
+      serverLogger.error(`Error handling tool execution update for ${executionId}:`, error);
+      // Emit minimal data in case of error
+      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, data);
+    }
   }
   
   /**
@@ -782,15 +962,50 @@ export class WebSocketService {
         return;
       }
       
-      // Convert to client format
-      const clientData = this.convertExecutionToClientFormat(execution);
-      
-      // Emit both formats
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, data);
-      this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-        sessionId,
-        tool: clientData
-      });
+      try {
+        // Convert to client format - use await to properly handle async preview generation
+        serverLogger.debug(`Converting completed execution to client format with awaitable preview: ${executionId}`);
+        const clientData = await this.convertExecutionToClientFormat(execution);
+        
+        // Add debug logging to see the preview state in the client data
+        serverLogger.info(`Tool execution completed with preview info for ${executionId}:`, {
+          toolId: execution.toolId,
+          toolName: execution.toolName,
+          hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
+          previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined,
+          previewBriefContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
+            (clientData.preview as any).briefContent?.length : undefined,
+          previewFullContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
+            (clientData.preview as any).fullContent?.length : undefined
+        });
+        
+        // Emit completion event with proper preview data
+        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, {
+          ...data,
+          preview: clientData && typeof clientData === 'object' ? clientData.preview : undefined,
+          hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
+          previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined
+        });
+        
+        // Also emit tool state update
+        this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
+          sessionId,
+          tool: clientData
+        });
+        
+        // If we have a preview, also send a dedicated update event
+        if (clientData.hasPreview) {
+          serverLogger.info(`Sending dedicated preview update for completed tool ${executionId}`);
+          this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+            sessionId,
+            toolExecution: clientData
+          });
+        }
+      } catch (error) {
+        serverLogger.error(`Error handling tool execution completion for ${executionId}:`, error);
+        // Emit basic completion event in case of error
+        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, data);
+      }
     } else {
       // Use the legacy behavior for backward compatibility with tests
       // Get tool args from the stored data in AgentService
@@ -802,6 +1017,7 @@ export class WebSocketService {
       // Fall back to generating a new preview if no permission request occurred
       try {
         // Use PreviewService to generate the preview
+        serverLogger.debug(`Generating legacy preview for tool ${tool.id} completion...`);
         const previewPromise = previewService.generatePreview(
           {
             id: tool.id,
@@ -813,12 +1029,21 @@ export class WebSocketService {
         
         // Wait for the promise to resolve
         preview = await previewPromise;
+        
+        if (preview) {
+          serverLogger.info(`Generated legacy preview for tool ${tool.id}:`, {
+            contentType: preview.contentType,
+            hasFullContent: preview.hasFullContent,
+            briefContentLength: preview.briefContent.length,
+            metadataKeys: Object.keys(preview.metadata || {})
+          });
+        }
       } catch (error) {
-        serverLogger.error(`Error generating preview for tool ${tool.id}:`, error);
+        serverLogger.error(`Error generating legacy preview for tool ${tool.id}:`, error);
       }
       
       // Forward the event to clients with preview data if available
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, { 
+      const completionEvent = {
         sessionId,
         tool,
         result,
@@ -827,8 +1052,20 @@ export class WebSocketService {
         timestamp,
         isActive: false,
         // Include preview data if available
-        preview
+        preview,
+        hasPreview: !!preview,
+        previewContentType: preview?.contentType
+      };
+      
+      // Log the event we're sending
+      serverLogger.info(`Sending legacy tool completion event for ${tool.id}:`, {
+        hasPreview: !!preview,
+        previewContentType: preview?.contentType,
+        briefContentLength: preview?.briefContent?.length,
+        hasResult: !!result
       });
+      
+      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, completionEvent);
     }
   }
   
@@ -1037,8 +1274,9 @@ export class WebSocketService {
   
   /**
    * Convert a tool execution state to the format expected by clients
+   * Now async to properly handle preview generation
    */
-  private convertExecutionToClientFormat(execution: ToolExecutionState): Record<string, unknown> {
+  private async convertExecutionToClientFormat(execution: ToolExecutionState): Promise<Record<string, unknown>> {
     // Add extra logging for debugging
     serverLogger.debug(`Converting execution to client format: ${execution.id}`, {
       status: execution.status,
@@ -1089,39 +1327,104 @@ export class WebSocketService {
       clientData.permissionId = execution.permissionId;
     }
     
-    // Add preview if available
+    // Add preview if available - now with proper async handling
     // First, try to use the preview ID if it exists
     if (execution.previewId) {
       try {
         serverLogger.debug(`Execution ${execution.id} has previewId: ${execution.previewId}`);
-        const preview = this.getPreviewForExecution(execution.id);
+        // Properly await the preview retrieval
+        const preview = await this.getPreviewForExecution(execution.id);
         if (preview) {
-          serverLogger.debug(`Preview found for execution ${execution.id}:`, {
+          serverLogger.info(`Preview found for execution ${execution.id}:`, {
             previewId: preview.id,
-            contentType: preview.contentType
+            contentType: preview.contentType,
+            briefContentLength: preview.briefContent?.length,
+            fullContentLength: preview.fullContent?.length
           });
-          clientData.preview = this.convertPreviewToClientFormat(preview);
+          
+          // Convert preview to client format with validation
+          const formattedPreview = this.convertPreviewToClientFormat(preview);
+          
+          // Only set preview data if we have valid preview content
+          if (formattedPreview) {
+            clientData.preview = formattedPreview;
+            
+            // These are important for the client to know there's a preview available
+            clientData.hasPreview = true;
+            clientData.previewContentType = preview.contentType;
+            clientData.previewBriefContentLength = preview.briefContent?.length;
+            clientData.previewFullContentLength = preview.fullContent?.length;
+            clientData.previewMetadataKeys = preview.metadata ? Object.keys(preview.metadata) : [];
+            
+            // Log detailed preview content to help diagnose potential issues
+            serverLogger.info(`Adding preview to client data for ${execution.id}:`, {
+              hasPreview: true,
+              contentType: preview.contentType,
+              briefContent: preview.briefContent?.substring(0, 50) + (preview.briefContent?.length > 50 ? '...' : ''),
+              briefContentLength: preview.briefContent?.length,
+              fullContentLength: preview.fullContent?.length,
+              metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+            });
+          } else {
+            serverLogger.warn(`Invalid preview data for execution ${execution.id}: missing required fields`);
+            clientData.hasPreview = false;
+          }
         } else {
           serverLogger.warn(`No preview found for execution ${execution.id} despite having previewId: ${execution.previewId}`);
+          clientData.hasPreview = false;
         }
       } catch (error) {
         serverLogger.error(`Error getting preview for execution ${execution.id}:`, error);
+        clientData.hasPreview = false;
       }
     } else {
       // Try to get preview even if there's no previewId - sometimes it might exist
       try {
         serverLogger.debug(`Execution ${execution.id} has no previewId, trying to find preview anyway`);
-        const preview = this.getPreviewForExecution(execution.id);
+        // Properly await the preview generation
+        const preview = await this.getPreviewForExecution(execution.id);
         if (preview) {
-          serverLogger.debug(`Preview found for execution ${execution.id} despite no previewId:`, {
+          serverLogger.info(`Preview generated for execution ${execution.id} despite no previewId:`, {
             previewId: preview.id,
-            contentType: preview.contentType
+            contentType: preview.contentType,
+            briefContentLength: preview.briefContent?.length,
+            fullContentLength: preview.fullContent?.length
           });
-          clientData.preview = this.convertPreviewToClientFormat(preview);
+          
+          // Convert preview to client format with validation
+          const formattedPreview = this.convertPreviewToClientFormat(preview);
+          
+          // Only set preview data if we have valid preview content
+          if (formattedPreview) {
+            clientData.preview = formattedPreview;
+            
+            // These are important for the client to know there's a preview available
+            clientData.hasPreview = true;
+            clientData.previewContentType = preview.contentType;
+            clientData.previewBriefContentLength = preview.briefContent?.length;
+            clientData.previewFullContentLength = preview.fullContent?.length;
+            clientData.previewMetadataKeys = preview.metadata ? Object.keys(preview.metadata) : [];
+            
+            // Log detailed preview content to help diagnose potential issues
+            serverLogger.info(`Adding generated preview to client data for ${execution.id}:`, {
+              hasPreview: true,
+              contentType: preview.contentType,
+              briefContent: preview.briefContent?.substring(0, 50) + (preview.briefContent?.length > 50 ? '...' : ''),
+              briefContentLength: preview.briefContent?.length,
+              fullContentLength: preview.fullContent?.length,
+              metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+            });
+          } else {
+            serverLogger.warn(`Invalid generated preview data for execution ${execution.id}: missing required fields`);
+            clientData.hasPreview = false;
+          }
+        } else {
+          clientData.hasPreview = false;
         }
-      } catch {
-        // Just log at debug level since this is an opportunistic attempt
-        serverLogger.debug(`No preview found for execution ${execution.id} without previewId`);
+      } catch (error) {
+        // Log more details about the error
+        serverLogger.warn(`Error generating preview for execution ${execution.id} without previewId:`, error);
+        clientData.hasPreview = false;
       }
     }
     
@@ -1131,7 +1434,41 @@ export class WebSocketService {
   /**
    * Convert a preview state to the format expected by clients
    */
-  private convertPreviewToClientFormat(preview: ToolPreviewState): Record<string, unknown> {
+  private convertPreviewToClientFormat(preview: ToolPreviewState): Record<string, unknown> | null {
+    // Validate that the preview has required fields
+    if (!preview.contentType) {
+      serverLogger.warn(`Invalid preview data for ${preview.id}: missing contentType`);
+      return null;
+    }
+    
+    // Ensure briefContent is not empty or undefined
+    if (!preview.briefContent || preview.briefContent.trim() === '') {
+      serverLogger.warn(`Preview ${preview.id} has empty briefContent - adding placeholder`);
+      
+      // Set a placeholder message based on content type
+      let placeholderContent = '[Preview content unavailable]';
+      
+      if (preview.contentType === 'directory') {
+        placeholderContent = `Directory listing preview:\n\nFiles and directories will be shown here`;
+      } else if (preview.contentType === 'code') {
+        placeholderContent = `Code preview:\n\nFile contents will be shown here`;
+      } else if (preview.contentType === 'diff') {
+        placeholderContent = `Diff preview:\n\nChanges will be shown here`;
+      }
+      
+      // Log that we're adding placeholder content
+      serverLogger.info(`Adding placeholder content for preview ${preview.id} of type ${preview.contentType}`);
+      
+      // Return preview with placeholder content
+      return {
+        contentType: preview.contentType,
+        briefContent: placeholderContent,
+        fullContent: preview.fullContent || placeholderContent,
+        metadata: preview.metadata
+      };
+    }
+    
+    // Normal case - return the preview with its content
     return {
       contentType: preview.contentType,
       briefContent: preview.briefContent,
@@ -1143,8 +1480,10 @@ export class WebSocketService {
   /**
    * Get a preview for an execution
    * Retrieves the preview associated with a tool execution from the AgentService
+   * 
+   * This is now an async method to properly handle preview generation
    */
-  private getPreviewForExecution(executionId: string): ToolPreviewState | null {
+  private async getPreviewForExecution(executionId: string): Promise<ToolPreviewState | null> {
     try {
       // Use the AgentService to get the preview for this execution
       const preview = this.agentService.getPreviewForExecution(executionId);
@@ -1157,7 +1496,80 @@ export class WebSocketService {
         });
         return preview;
       } else {
-        serverLogger.debug(`No preview found for execution ${executionId}`);
+        // Enhanced logging to help troubleshoot missing previews
+        serverLogger.debug(`No preview found for execution ${executionId}. Attempting to generate one...`);
+        
+        // Try to get the execution from the agent service to generate a preview
+        const execution = this.agentService.getToolExecution(executionId);
+        if (execution && execution.result) {
+          try {
+            // Create a preview using previewService directly
+            const toolInfo = {
+              id: execution.toolId,
+              name: execution.toolName
+            };
+            
+            // Generate the preview - properly await the Promise
+            serverLogger.info(`Generating preview for execution ${executionId}...`);
+            const generatedPreview = await previewService.generatePreview(
+              toolInfo,
+              execution.args || {},
+              execution.result
+            );
+            
+            // Now handle the resolved preview
+            if (generatedPreview) {
+              // Preview was successfully generated
+              serverLogger.info(`Generated preview on-demand for ${executionId}`, {
+                contentType: generatedPreview.contentType,
+                hasFullContent: generatedPreview.hasFullContent,
+                briefContentLength: generatedPreview.briefContent.length,
+                metadataKeys: Object.keys(generatedPreview.metadata || {})
+              });
+              
+              // Extract fullContent based on preview type
+              let fullContent: string | undefined = undefined;
+              
+              // Extract fullContent based on the type
+              if (generatedPreview.hasFullContent) {
+                // Each specific preview type has the fullContent property
+                if (generatedPreview.contentType === PreviewContentType.TEXT) {
+                  fullContent = (generatedPreview as TextPreviewData).fullContent;
+                } else if (generatedPreview.contentType === PreviewContentType.CODE) {
+                  fullContent = (generatedPreview as CodePreviewData).fullContent;
+                } else if (generatedPreview.contentType === PreviewContentType.DIFF) {
+                  fullContent = (generatedPreview as DiffPreviewData).fullContent;
+                }
+              }
+              
+              // Convert preview data to state
+              const previewState: ToolPreviewState = {
+                id: `preview-${executionId}`, // Generate a deterministic ID
+                sessionId: execution.sessionId,
+                executionId: executionId,
+                contentType: generatedPreview.contentType,
+                briefContent: generatedPreview.briefContent,
+                fullContent: fullContent,
+                metadata: generatedPreview.metadata
+              };
+              
+              // Log detailed preview content for debugging
+              serverLogger.debug(`Created preview state for ${executionId}:`, {
+                contentType: previewState.contentType,
+                briefContentLength: previewState.briefContent.length,
+                hasFullContent: !!previewState.fullContent,
+                fullContentLength: previewState.fullContent?.length || 0,
+                metadataKeys: Object.keys(previewState.metadata || {})
+              });
+              
+              return previewState;
+            }
+          } catch (previewError) {
+            serverLogger.error(`Error generating fallback preview for ${executionId}:`, previewError);
+          }
+        }
+        
+        serverLogger.debug(`No preview found or generated for execution ${executionId}`);
         return null;
       }
     } catch (error) {

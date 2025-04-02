@@ -11,7 +11,14 @@ import {
   LogLevel,
 } from '../../index';
 import { Agent } from '../../types/main';
-import { ToolPreviewState } from '../../types/preview';
+import { 
+  ToolPreviewState, 
+  PreviewContentType, 
+  ToolPreviewData, 
+  TextPreviewData,
+  CodePreviewData,
+  DiffPreviewData
+} from '../../types/preview';
 import { ToolResultEntry } from '../../types';
 import { 
   ToolExecutionState, 
@@ -319,6 +326,23 @@ export class AgentService extends EventEmitter {
    * Transform tool created event data
    */
   private transformToolCreatedEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    // Get preview if available
+    const preview = this.previewManager.getPreviewForExecution(execution.id);
+    
+    // Also emit a timeline item event for this tool execution
+    this.emit(AgentServiceEvent.TIMELINE_ITEM_UPDATED, {
+      sessionId: execution.sessionId,
+      item: {
+        id: execution.id,
+        type: 'tool_execution',
+        sessionId: execution.sessionId,
+        timestamp: execution.startTime,
+        toolExecution: execution,
+        preview: preview || undefined
+      },
+      isUpdate: false // This is a new item, not an update
+    });
+    
     return {
       sessionId: execution.sessionId,
       tool: {
@@ -336,6 +360,23 @@ export class AgentService extends EventEmitter {
    * Transform tool updated event data
    */
   private transformToolUpdatedEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    // Get preview if available
+    const preview = this.previewManager.getPreviewForExecution(execution.id);
+    
+    // Also emit a timeline item event for this tool execution update
+    this.emit(AgentServiceEvent.TIMELINE_ITEM_UPDATED, {
+      sessionId: execution.sessionId,
+      item: {
+        id: execution.id,
+        type: 'tool_execution',
+        sessionId: execution.sessionId,
+        timestamp: execution.startTime,
+        toolExecution: execution,
+        preview: preview || undefined
+      },
+      isUpdate: true // This is an update to an existing item
+    });
+    
     return {
       sessionId: execution.sessionId,
       tool: {
@@ -352,10 +393,115 @@ export class AgentService extends EventEmitter {
    * Transform tool completed event data
    */
   private transformToolCompletedEvent(execution: ToolExecutionState): ToolExecutionEventData {
-    // Get the preview for this execution if available
-    const preview = this.previewManager.getPreviewForExecution(execution.id);
+    // Check if a preview exists already
+    let preview = this.previewManager.getPreviewForExecution(execution.id);
     
-    return {
+    // If no preview exists and we have a result, generate one
+    if (!preview && execution.result) {
+      try {
+        serverLogger.info(`⚠️ No preview found for ${execution.id}, generating one now`);
+        
+        // Generate a preview using PreviewService
+        const generatedPreview = previewService.generatePreview(
+          { id: execution.toolId, name: execution.toolName },
+          execution.args || {},
+          execution.result
+        );
+        
+        // Handle both synchronous and promise-based results
+        if (generatedPreview instanceof Promise) {
+          // Handle async preview generation
+          serverLogger.info(`⚠️ Preview generation is async for ${execution.id}, creating placeholder`);
+          // For now we'll need to wait for it - we could improve this later
+          generatedPreview.then((asyncPreview) => {
+            if (asyncPreview) {
+              // Store the preview once available
+              const newPreview = this.previewManager.createPreview(
+                execution.sessionId,
+                execution.id,
+                asyncPreview.contentType,
+                asyncPreview.briefContent,
+                asyncPreview.hasFullContent ? (asyncPreview as any).fullContent : undefined,
+                asyncPreview.metadata
+              );
+              
+              // Link the preview to the execution
+              this.toolExecutionManager.associatePreview(execution.id, newPreview.id);
+              serverLogger.info(`⚠️ Created and associated async preview ${newPreview.id} for execution ${execution.id}`);
+            }
+          }).catch(err => {
+            serverLogger.error(`⚠️ Error in async preview generation for ${execution.id}:`, err);
+          });
+        } else if (generatedPreview) {
+          // Handle specific preview types to get the fullContent
+          let fullContent: string | undefined = undefined;
+          const previewData = generatedPreview as ToolPreviewData;
+          
+          // Extract fullContent based on the type
+          if (previewData.hasFullContent) {
+            // Each specific preview type has the fullContent property
+            if (previewData.contentType === PreviewContentType.TEXT) {
+              fullContent = (previewData as TextPreviewData).fullContent;
+            } else if (previewData.contentType === PreviewContentType.CODE) {
+              fullContent = (previewData as CodePreviewData).fullContent;
+            } else if (previewData.contentType === PreviewContentType.DIFF) {
+              fullContent = (previewData as DiffPreviewData).fullContent;
+            }
+          }
+          
+          // Create and store the preview
+          preview = this.previewManager.createPreview(
+            execution.sessionId,
+            execution.id,
+            previewData.contentType,
+            previewData.briefContent,
+            fullContent,
+            previewData.metadata
+          );
+          
+          // Link the preview to the execution
+          this.toolExecutionManager.associatePreview(execution.id, preview.id);
+          serverLogger.info(`⚠️ Created and associated preview ${preview.id} for execution ${execution.id}`);
+        }
+      } catch (error) {
+        serverLogger.error(`⚠️ Error generating preview for ${execution.id}:`, error);
+      }
+      
+      // Fetch the preview again in case it was just created
+      if (!preview) {
+        preview = this.previewManager.getPreviewForExecution(execution.id);
+      }
+    }
+    
+    // Add extra debugging for tool completion
+    serverLogger.info(`⚠️ TRANSFORM_TOOL_COMPLETED: Tool execution completed: ${execution.id}`, {
+      executionId: execution.id,
+      toolId: execution.toolId,
+      toolName: execution.toolName,
+      status: execution.status,
+      hasResult: !!execution.result,
+      resultType: execution.result ? typeof execution.result : 'none',
+      hasPreview: !!preview,
+      previewId: preview?.id
+    });
+    
+    // Also emit a timeline item event for this tool execution completion
+    serverLogger.info(`⚠️ TRANSFORM_TOOL_COMPLETED: Emitting timeline item update for ${execution.id}`);
+    this.emit(AgentServiceEvent.TIMELINE_ITEM_UPDATED, {
+      sessionId: execution.sessionId,
+      item: {
+        id: execution.id,
+        type: 'tool_execution',
+        sessionId: execution.sessionId,
+        timestamp: execution.startTime,
+        toolExecution: execution,
+        preview: preview || undefined
+      },
+      isUpdate: true // This is an update to an existing item
+    });
+    
+    // Prepare the event data to return
+    const eventData = {
       sessionId: execution.sessionId,
       tool: {
         id: execution.toolId,
@@ -369,12 +515,83 @@ export class AgentService extends EventEmitter {
       startTime: execution.startTime,
       preview: preview ? this.convertPreviewStateToData(preview) : undefined
     };
+    
+    serverLogger.info(`⚠️ TRANSFORM_TOOL_COMPLETED: Returning event data for ${execution.id}`, {
+      toolId: execution.toolId,
+      toolName: execution.toolName,
+      eventTimestamp: eventData.timestamp,
+      hasResult: !!eventData.result,
+      hasPreview: !!eventData.preview,
+      previewType: preview?.contentType
+    });
+    
+    return eventData;
   }
   
   /**
    * Transform tool error event data
    */
   private transformToolErrorEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    // Check if a preview exists already
+    let preview = this.previewManager.getPreviewForExecution(execution.id);
+    
+    // If no preview exists and we have an error, generate an error preview
+    if (!preview && execution.error) {
+      try {
+        serverLogger.info(`⚠️ No preview found for error execution ${execution.id}, generating error preview`);
+        
+        // Generate an error preview
+        const errorPreview = previewService.generateErrorPreview(
+          { id: execution.toolId, name: execution.toolName },
+          {
+            message: execution.error.message,
+            name: 'Error',
+            stack: execution.error.stack
+          },
+          { toolId: execution.toolId, args: execution.args }
+        );
+        
+        // Extract fullContent if available for error preview
+        let fullContent: string | undefined = undefined;
+        
+        // Error previews may have a fullContent field with the stack trace
+        if (errorPreview.hasFullContent) {
+          // Try to safely extract fullContent from any preview with it
+          fullContent = (errorPreview as unknown as { fullContent?: string }).fullContent;
+        }
+        
+        // Create and store the preview
+        preview = this.previewManager.createPreview(
+          execution.sessionId,
+          execution.id,
+          errorPreview.contentType,
+          errorPreview.briefContent,
+          fullContent,
+          errorPreview.metadata
+        );
+        
+        // Link the preview to the execution
+        this.toolExecutionManager.associatePreview(execution.id, preview.id);
+        serverLogger.info(`⚠️ Created and associated error preview ${preview.id} for execution ${execution.id}`);
+      } catch (error) {
+        serverLogger.error(`⚠️ Error generating error preview for ${execution.id}:`, error);
+      }
+    }
+    
+    // Also emit a timeline item event for this tool execution error
+    this.emit(AgentServiceEvent.TIMELINE_ITEM_UPDATED, {
+      sessionId: execution.sessionId,
+      item: {
+        id: execution.id,
+        type: 'tool_execution',
+        sessionId: execution.sessionId,
+        timestamp: execution.startTime,
+        toolExecution: execution,
+        preview: preview || undefined
+      },
+      isUpdate: true // This is an update to an existing item
+    });
+    
     return {
       sessionId: execution.sessionId,
       tool: {
@@ -385,7 +602,8 @@ export class AgentService extends EventEmitter {
       error: execution.error,
       paramSummary: execution.summary,
       timestamp: execution.endTime,
-      startTime: execution.startTime
+      startTime: execution.startTime,
+      preview: preview ? this.convertPreviewStateToData(preview) : undefined
     };
   }
   
@@ -393,6 +611,53 @@ export class AgentService extends EventEmitter {
    * Transform tool aborted event data
    */
   private transformToolAbortedEvent(execution: ToolExecutionState): ToolExecutionEventData {
+    // Check if a preview exists already
+    let preview = this.previewManager.getPreviewForExecution(execution.id);
+    
+    // If no preview exists, generate an abort preview
+    if (!preview) {
+      try {
+        serverLogger.info(`⚠️ No preview found for aborted execution ${execution.id}, generating abort preview`);
+        
+        // Create a simple text preview for aborted executions
+        const abortMessage = `Tool execution was aborted at ${execution.endTime}`;
+        
+        // Create and store the preview
+        preview = this.previewManager.createPreview(
+          execution.sessionId,
+          execution.id,
+          PreviewContentType.TEXT, // Using proper enum value
+          abortMessage,
+          abortMessage, // same for brief and full
+          { 
+            toolId: execution.toolId,
+            aborted: true,
+            abortTime: execution.endTime
+          }
+        );
+        
+        // Link the preview to the execution
+        this.toolExecutionManager.associatePreview(execution.id, preview.id);
+        serverLogger.info(`⚠️ Created and associated abort preview ${preview.id} for execution ${execution.id}`);
+      } catch (error) {
+        serverLogger.error(`⚠️ Error generating abort preview for ${execution.id}:`, error);
+      }
+    }
+    
+    // Also emit a timeline item event for this tool execution abort
+    this.emit(AgentServiceEvent.TIMELINE_ITEM_UPDATED, {
+      sessionId: execution.sessionId,
+      item: {
+        id: execution.id,
+        type: 'tool_execution',
+        sessionId: execution.sessionId,
+        timestamp: execution.startTime,
+        toolExecution: execution,
+        preview: preview || undefined
+      },
+      isUpdate: true // This is an update to an existing item
+    });
+    
     return {
       sessionId: execution.sessionId,
       tool: {
@@ -402,7 +667,8 @@ export class AgentService extends EventEmitter {
       },
       timestamp: execution.endTime,
       startTime: execution.startTime,
-      abortTimestamp: execution.endTime
+      abortTimestamp: execution.endTime,
+      preview: preview ? this.convertPreviewStateToData(preview) : undefined
     };
   }
   
@@ -412,8 +678,49 @@ export class AgentService extends EventEmitter {
   private transformPermissionRequestedEvent(data: { execution: ToolExecutionState, permission: PermissionRequestState }): PermissionEventData {
     const { execution, permission } = data;
     
-    // Get the preview for this execution if available
-    const preview = this.previewManager.getPreviewForExecution(execution.id);
+    // Check if a preview exists already
+    let preview = this.previewManager.getPreviewForExecution(execution.id);
+    
+    // If no preview exists, generate a permission preview
+    if (!preview) {
+      try {
+        serverLogger.info(`⚠️ No preview found for permission request ${permission.id}, generating permission preview`);
+        
+        // Generate a preview specifically for this permission request
+        const permissionPreview = previewService.generatePermissionPreview(
+          { id: execution.toolId, name: execution.toolName },
+          permission.args || {}
+        );
+        
+        // Extract fullContent from permission preview if available
+        let fullContent: string | undefined = undefined;
+        
+        // Permission previews may have a fullContent field with details
+        if (permissionPreview.hasFullContent) {
+          // Try to safely extract fullContent from any preview with it
+          fullContent = (permissionPreview as unknown as { fullContent?: string }).fullContent;
+        }
+        
+        // Create and store the preview
+        preview = this.previewManager.createPreview(
+          execution.sessionId,
+          execution.id,
+          permissionPreview.contentType,
+          permissionPreview.briefContent,
+          fullContent,
+          { 
+            ...permissionPreview.metadata,
+            permissionId: permission.id
+          }
+        );
+        
+        // Link the preview to the execution
+        this.toolExecutionManager.associatePreview(execution.id, preview.id);
+        serverLogger.info(`⚠️ Created and associated permission preview ${preview.id} for execution ${execution.id} and permission ${permission.id}`);
+      } catch (error) {
+        serverLogger.error(`⚠️ Error generating permission preview for ${execution.id}:`, error);
+      }
+    }
     
     return {
       permissionId: permission.id,
@@ -433,13 +740,32 @@ export class AgentService extends EventEmitter {
   private transformPermissionResolvedEvent(data: { execution: ToolExecutionState, permission: PermissionRequestState }): PermissionEventData {
     const { execution, permission } = data;
     
+    // Get the existing preview
+    const preview = this.previewManager.getPreviewForExecution(execution.id);
+    
+    // Update the preview if it exists to include resolution information
+    if (preview) {
+      // Add the resolution status to the preview metadata
+      this.previewManager.updatePreview(preview.id, {
+        metadata: {
+          ...preview.metadata,
+          permissionResolved: true,
+          permissionGranted: permission.granted,
+          resolvedTime: permission.resolvedTime
+        }
+      });
+      
+      serverLogger.info(`⚠️ Updated preview ${preview.id} with permission resolution info for execution ${execution.id}`);
+    }
+    
     return {
       permissionId: permission.id,
       sessionId: permission.sessionId,
       toolId: permission.toolId,
       executionId: execution.id,
       granted: permission.granted,
-      timestamp: permission.resolvedTime
+      timestamp: permission.resolvedTime,
+      preview: preview ? this.convertPreviewStateToData(preview) : undefined
     };
   }
   
@@ -506,43 +832,77 @@ export class AgentService extends EventEmitter {
     executionTime: number, 
     sessionId: string
   ): void {
+    serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE handler called`, {
+      toolId,
+      sessionId,
+      executionTime,
+      hasResult: !!result,
+      resultType: typeof result,
+      argKeys: Object.keys(args)
+    });
+    
     // Find the execution ID for this tool
     const activeTools = this.activeTools.get(sessionId) || [];
     const activeTool = activeTools.find(t => t.toolId === toolId);
     const executionId = activeTool?.executionId;
     
+    serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE active tool lookup:`, {
+      foundActiveTool: !!activeTool,
+      toolId,
+      executionId: executionId || 'none',
+      activeToolCount: activeTools.length,
+      activeToolIds: activeTools.map(t => t.toolId)
+    });
+    
     if (executionId) {
       // Complete the execution in the manager
+      serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE calling manager.completeExecution for ${executionId}`);
       this.toolExecutionManager.completeExecution(executionId, result, executionTime);
       
       // Generate a preview for the completed tool
+      serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE generating preview for ${executionId}`);
       this.generateToolExecutionPreview(executionId, toolId, args, result);
       
       // Remove from active tools
-      this.activeTools.set(
-        sessionId, 
-        activeTools.filter(t => t.toolId !== toolId)
-      );
+      const newActiveTools = activeTools.filter(t => t.toolId !== toolId);
+      this.activeTools.set(sessionId, newActiveTools);
+      serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE removed from active tools: ${activeTools.length} -> ${newActiveTools.length}`);
       
       // Clean up stored arguments
       this.activeToolArgs.delete(`${sessionId}:${toolId}`);
       this.activeToolArgs.delete(`${sessionId}:${executionId}`);
+      serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE cleaned up stored arguments`);
     } else {
       // If we don't have an execution ID, fall back to old behavior
-      serverLogger.warn(`No execution ID found for completed tool: ${toolId}`);
+      serverLogger.warn(`⚠️ TOOL_EXECUTION_COMPLETE: No execution ID found for completed tool: ${toolId}, using fallback behavior`);
       
       // Emit directly instead of through the manager
+      const toolName = this.agent?.toolRegistry.getTool(toolId)?.name || toolId;
+      const timestamp = new Date().toISOString();
+      
+      serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE emitting direct event:`, {
+        eventType: AgentServiceEvent.TOOL_EXECUTION_COMPLETED,
+        sessionId,
+        toolId,
+        toolName,
+        timestamp
+      });
+      
       this.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, {
         sessionId,
         tool: {
           id: toolId,
-          name: this.agent?.toolRegistry.getTool(toolId)?.name || toolId
+          name: toolName
         },
         result,
         executionTime,
-        timestamp: new Date().toISOString()
+        timestamp
       });
+      
+      serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE direct event emitted successfully`);
     }
+    
+    serverLogger.info(`⚠️ TOOL_EXECUTION_COMPLETE handler completed for ${toolId}`);
   }
   
   // When a tool execution fails
@@ -1162,8 +1522,20 @@ export class AgentService extends EventEmitter {
         // Ensure the session state includes the sessionId for the new abort system
         session.state.id = sessionId;
         
+        // Add diagnostic logging
+        serverLogger.info(`[DIAGNOSTIC] About to run agent.processQuery for session ${sessionId}`, 'system');
+        
         // Process the query with our registered callbacks
+        serverLogger.info(`[DIAGNOSTIC] Awaiting agent.processQuery to complete...`, 'system');
         const result = await this.agent.processQuery(query, session.state);
+        
+        serverLogger.info(`[DIAGNOSTIC] Completed agent.processQuery call successfully with result:`, {
+          hasToolResults: Array.isArray(result?.result?.toolResults) && result.result.toolResults.length > 0,
+          toolResultCount: Array.isArray(result?.result?.toolResults) ? result.result.toolResults.length : 0,
+          iterations: result?.result?.iterations || 0,
+          hasResponse: !!result?.response,
+          hasError: !!result?.error
+        }, 'system');
   
         if (result.error) {
           throw new ServerError(`Agent error: ${result.error}`);
@@ -1171,7 +1543,36 @@ export class AgentService extends EventEmitter {
         
         // Capture any tool results from the response
         if (result.result && result.result.toolResults) {
+          serverLogger.info(`⚠️ AGENT_SERVICE: Processing completed with ${result.result.toolResults.length} tool results after ${result.result.iterations} iterations`, {
+            toolResultCount: result.result.toolResults.length,
+            toolIds: result.result.toolResults.map(tr => tr.toolId),
+            iterations: result.result.iterations,
+            hasResponse: !!result.response,
+            responseLength: result.response ? result.response.length : 0,
+            conversationHistoryLength: Array.isArray(result.sessionState.conversationHistory) ? result.sessionState.conversationHistory.length : 0,
+            hasStateError: !!result.error
+          });
           toolResults.push(...result.result.toolResults);
+        } else {
+          serverLogger.warn(`⚠️ AGENT_SERVICE: No tool results in agent response`, {
+            resultHasToolResults: !!(result.result && result.result.toolResults),
+            resultHasIterations: !!(result.result && result.result.iterations !== undefined),
+            iterations: result.result ? result.result.iterations : 'unknown',
+            hasResponse: !!result.response,
+            responseLength: result.response ? result.response.length : 0,
+            hasStateError: !!result.error
+          });
+        }
+        
+        // Check if there was an error in the result
+        if (result.error) {
+          serverLogger.error(`⚠️ AGENT_SERVICE: Error in agent.processQuery result:`, {
+            errorMessage: result.error,
+            sessionId,
+            hasToolResults: !!(result.result && result.result.toolResults),
+            toolResultCount: result.result?.toolResults?.length || 0,
+            iterations: result.result?.iterations || 0
+          });
         }
         
         // Update the session with the new state, ensuring proper structure for conversationHistory
@@ -1179,6 +1580,15 @@ export class AgentService extends EventEmitter {
         const conversationHistory = Array.isArray(sessionState.conversationHistory) 
           ? sessionState.conversationHistory 
           : [];
+        
+        serverLogger.info(`⚠️ AGENT_SERVICE: Updating session with new state:`, {
+          sessionId,
+          hasConversationHistory: conversationHistory.length > 0,
+          messageCount: conversationHistory.length,
+          isDone: !!result.done,
+          isAborted: !!result.aborted,
+          isProcessing: false
+        });
         
         sessionManager.updateSession(sessionId, {
           state: { 

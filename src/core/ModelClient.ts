@@ -72,6 +72,16 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       toolDescriptions: ToolDescription[], 
       sessionState: SessionState = { conversationHistory: [] }
     ): Promise<ToolCallResponse> {
+      console.log('⚠️ MODEL_CLIENT getToolCall called with:', {
+        queryLength: query ? query.length : 0,
+        query: query ? query.substring(0, 50) + (query.length > 50 ? '...' : '') : 'none',
+        toolCount: toolDescriptions.length,
+        sessionId: sessionState.id || 'unknown',
+        historyLength: sessionState.conversationHistory?.length || 0,
+        lastResult: !!sessionState.lastResult,
+        hasToolError: !!sessionState.lastToolError
+      });
+      
       // Format tools for Claude
       const claudeTools = this.formatToolsForClaude(toolDescriptions);
       
@@ -91,8 +101,23 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         sessionState
       };
       
-      // Call the model provider
-      const response = await modelProvider(request);
+      console.log('⚠️ MODEL_CLIENT sending request to modelProvider with:', {
+        hasQuery: !!query, 
+        toolCount: claudeTools.length,
+        historyLength: sessionState.conversationHistory?.length || 0,
+        sessionId: sessionState.id || 'unknown'
+      });
+      
+      let response;
+      try {
+        // Call the model provider
+        console.log('⚠️ MODEL_CLIENT calling modelProvider...');
+        response = await modelProvider(request);
+        console.log('⚠️ MODEL_CLIENT received response from modelProvider');
+      } catch (error) {
+        console.error('⚠️ MODEL_CLIENT error calling modelProvider:', error);
+        throw error;
+      }
       
       // Track token usage from response
       if (response.usage) {
@@ -102,27 +127,54 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       // Check if Claude wants to use a tool - look for tool_use in the content
       const hasTool = response.content && response.content.some(c => c.type === "tool_use");
       
+      console.log('⚠️ MODEL_CLIENT response analysis:', {
+        hasTool,
+        contentLength: response.content?.length || 0,
+        contentTypes: response.content?.map(c => c.type),
+        hasToolUse: response.content?.some(c => c.type === "tool_use"),
+        sessionId: sessionState.id || 'unknown'
+      });
+      
       if (hasTool) {
         // Extract the tool use from the response
         const toolUse = response.content && response.content.find(c => c.type === "tool_use");
         
+        console.log('⚠️ MODEL_CLIENT toolUse found:', {
+          toolUseName: toolUse?.name,
+          toolUseId: toolUse?.id,
+          hasInput: !!toolUse?.input,
+          inputSize: toolUse?.input ? Object.keys(toolUse.input).length : 0
+        });
+        
         // Add the assistant's tool use response to the conversation history only if not aborted
         if (sessionState.conversationHistory && toolUse && !isSessionAborted(getSessionId(sessionState))) {
-          sessionState.conversationHistory.push({
+          const toolUseMessage: Anthropic.Messages.MessageParam = {
             role: "assistant",
             content: [
               {
-                type: "tool_use",
+                type: "tool_use" as const,
                 id: toolUse.id,
                 name: toolUse.name,
                 input: toolUse.input || {}
               }
             ]
+          };
+          
+          sessionState.conversationHistory.push(toolUseMessage);
+          console.log('⚠️ MODEL_CLIENT added tool use to conversation history:', {
+            toolName: toolUse.name,
+            historyLength: sessionState.conversationHistory.length
+          });
+        } else {
+          console.log('⚠️ MODEL_CLIENT did not add tool use to conversation history:', {
+            hasHistory: !!sessionState.conversationHistory,
+            hasToolUse: !!toolUse,
+            isAborted: isSessionAborted(getSessionId(sessionState))
           });
         }
         
         if (toolUse) {
-          return {
+          const toolCallResponse = {
             toolCall: {
               toolId: toolUse.name || "",
               args: toolUse.input || {},
@@ -131,9 +183,19 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
             toolChosen: true,
             aborted: isSessionAborted(getSessionId(sessionState)) // Check current abort status
           };
+          
+          console.log('⚠️ MODEL_CLIENT returning tool call:', {
+            toolId: toolCallResponse.toolCall.toolId,
+            toolUseId: toolCallResponse.toolCall.toolUseId,
+            argsKeys: Object.keys(toolCallResponse.toolCall.args),
+            isAborted: toolCallResponse.aborted
+          });
+          
+          return toolCallResponse;
         }
       }
       
+      console.log('⚠️ MODEL_CLIENT returning no tool chosen response');
       return {response: response, toolChosen: false, aborted: isSessionAborted(getSessionId(sessionState))};
     },
     

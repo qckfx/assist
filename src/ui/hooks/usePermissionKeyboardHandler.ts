@@ -1,12 +1,32 @@
 import { useEffect, useCallback } from 'react';
 import { useToolStream } from './useToolStream';
 import apiClient from '../services/apiClient';
+import { useWebSocket } from './useWebSocket';
 
 /**
  * Hook for handling keyboard events for permission requests
  */
 export function usePermissionKeyboardHandler() {
   const { getActiveTools } = useToolStream();
+  const { socket, isConnected } = useWebSocket();
+  
+  // Debug websocket connection
+  console.log('WebSocket connection status:', { 
+    isSocketAvailable: !!socket, 
+    isConnected,
+    socketId: socket?.id
+  });
+  
+  if (socket) {
+    // Log any socket.io errors for debugging
+    socket.on('connect_error', (err) => {
+      console.error('Socket.io connection error:', err.message);
+    });
+    
+    socket.on('error', (err) => {
+      console.error('Socket.io error:', err);
+    });
+  }
   
   // Get pending permissions from active tools
   const activeTools = getActiveTools();

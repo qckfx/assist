@@ -126,9 +126,15 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     // Emit completion event
     this.emitEvent(ToolExecutionEvent.COMPLETED, updatedExecution);
     
-    serverLogger.debug(`Completed tool execution: ${executionId}`, {
+    serverLogger.info(`⚠️ TOOL_EXECUTION_MANAGER: Completed tool execution: ${executionId}`, {
       executionId,
-      executionTime
+      toolName: updatedExecution.toolName,
+      toolId: updatedExecution.toolId,
+      sessionId: updatedExecution.sessionId,
+      executionTime,
+      resultType: typeof result,
+      status: updatedExecution.status,
+      timestamp: new Date().toISOString()
     });
 
     return updatedExecution;

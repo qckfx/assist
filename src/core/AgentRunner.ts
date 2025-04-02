@@ -195,7 +195,27 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         };
         
         // Loop until we get a final response or reach max iterations
+        console.log('⚠️ STARTING AGENT LOOP with maxIterations:', maxIterations);
+        console.log('⚠️ LOOP INITIAL STATE:', {
+          initialIterations: iterations,
+          maxIterations: maxIterations,
+          hasToolResults: toolResults.length > 0,
+          hasFinalResponse: !!finalResponse,
+          sessionId: sessionId,
+          isAborted: isSessionAborted(sessionId),
+          conversationHistoryLength: sessionState.conversationHistory?.length || 0,
+          currentQuery: currentQuery ? currentQuery.substring(0, 50) + '...' : 'none'
+        });
+        
         while (iterations < maxIterations) {
+          console.log(`⚠️ LOOP CHECK: ITERATION ${iterations}/${maxIterations}, HAS FINAL RESPONSE: ${!!finalResponse}`);
+          console.log('⚠️ LOOP ENTRY STATE:', {
+            toolResults: toolResults.length,
+            firstToolId: toolResults.length > 0 ? toolResults[0].toolId : 'none',
+            lastToolId: toolResults.length > 0 ? toolResults[toolResults.length - 1].toolId : 'none',
+            conversationHistoryLength: sessionState.conversationHistory?.length || 0
+          });
+          
           // Add this check at the beginning of each iteration
           if (isSessionAborted(sessionId)) {
             logger.info("Operation aborted - stopping processing", LogCategory.SYSTEM);
@@ -203,17 +223,33 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           }
           
           iterations++;
+          console.log(`⚠️ STARTING ITERATION ${iterations}/${maxIterations} - ABOUT TO BEGIN EXECUTION`);
           logger.debug(`Iteration ${iterations}/${maxIterations}`, LogCategory.SYSTEM);
+          
+          // Also log the state before each model call
+          console.log('⚠️ PRE-MODEL CALL STATE:', {
+            currentQuery: currentQuery ? currentQuery.substring(0, 50) + '...' : 'none',
+            toolsCount: toolRegistry.getAllTools().length,
+            conversationHistoryLength: sessionState.conversationHistory?.length || 0,
+            sessionId
+          });
           
           try {
             // 1. Ask the model what to do next
             logger.debug('Getting tool call from model', LogCategory.MODEL);
+            
+            console.log(`⚠️ AGENT_LOOP: About to call modelClient.getToolCall with query: ${currentQuery?.substring(0, 50)}...`);
             
             const toolCallChat = await modelClient.getToolCall(
               currentQuery, 
               toolRegistry.getToolDescriptions(), 
               sessionState
             );
+            
+            console.log(`⚠️ AGENT_LOOP: Received toolCallChat response, toolChosen: ${toolCallChat.toolChosen}, aborted: ${toolCallChat.aborted}`);
+            if (toolCallChat.toolCall) {
+              console.log(`⚠️ AGENT_LOOP: Tool selected: ${toolCallChat.toolCall.toolId}`);
+            }
             
             // Check if the operation was aborted during the model call
             if (toolCallChat.aborted || isSessionAborted(sessionId)) {
@@ -319,15 +355,28 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             // 3. Execute the tool
             const argSummary = summarizeArgs(toolCall.args as Record<string, unknown>);
             logger.debug(`Executing tool ${tool.name} with args: ${argSummary}`, LogCategory.TOOLS);
+            logger.debug(`AgentRunner execution progress - preparing to execute tool in iteration ${iterations}`, LogCategory.SYSTEM);
             let result;
             try {
               // Use the new executeToolWithCallbacks method instead of direct execution
-              result = await toolRegistry.executeToolWithCallbacks(
-                toolCall.toolId, 
-                toolCall.args as Record<string, unknown>, 
-                context
-              );
+              logger.debug(`STARTING tool execution for ${tool.name}`, LogCategory.TOOLS);
+              console.log('⚠️ EXECUTING TOOL:', toolCall.toolId, 'with args:', JSON.stringify(toolCall.args));
+              console.log(`⚠️ TOOL_EXECUTION: Starting executeToolWithCallbacks for ${toolCall.toolId}`);
+              
+              try {
+                result = await toolRegistry.executeToolWithCallbacks(
+                  toolCall.toolId, 
+                  toolCall.args as Record<string, unknown>, 
+                  context
+                );
+                console.log('⚠️ TOOL EXECUTION COMPLETE:', toolCall.toolId, 'with result type:', typeof result, 'result:', JSON.stringify(result).substring(0, 100));
+                logger.debug(`COMPLETED tool execution for ${tool.name} successfully`, LogCategory.TOOLS);
+              } catch (toolError) {
+                console.error(`⚠️ TOOL_EXECUTION ERROR: Failed to execute ${toolCall.toolId}:`, toolError);
+                throw toolError;
+              }
             } catch (error: unknown) {
+              logger.error(`FAILED tool execution for ${tool.name}`, error, LogCategory.TOOLS);
               // Handle validation errors specifically
               const errorObj = error as Error;
               
@@ -354,7 +403,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                     role: "user",
                     content: [
                       {
-                        type: "tool_result",
+                        type: "tool_result" as const,
                         tool_use_id: toolCall.toolUseId,
                         content: JSON.stringify(permissionDeniedResult)
                       } 
@@ -439,7 +488,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                   role: "user",
                   content: [
                     {
-                      type: "tool_result",
+                      type: "tool_result" as const,
                       tool_use_id: toolCall.toolUseId,
                       content: JSON.stringify(result)
                     } 
@@ -451,16 +500,30 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             }
             
             // Add tool result to conversation history if it exists
+            console.log('⚠️ HISTORY: Adding tool result to conversation history for tool:', toolCall.toolId);
             if (sessionState.conversationHistory && toolCall.toolUseId) {
-              sessionState.conversationHistory.push({
+              // Create the message with proper Anthropic types
+              const resultMessage: Anthropic.Messages.MessageParam = {
                 role: "user",
                 content: [
                   {
-                    type: "tool_result",
+                    type: "tool_result" as const,
                     tool_use_id: toolCall.toolUseId,
                     content: JSON.stringify(result)
                   } 
                 ]
+              };
+              sessionState.conversationHistory.push(resultMessage);
+              console.log('⚠️ HISTORY: Added tool result to conversation history, history length now:', sessionState.conversationHistory.length);
+              
+              // Type assertion to safely access properties
+              const contentBlock = resultMessage.content[0] as { type: string; tool_use_id: string };
+              console.log('⚠️ HISTORY: Last message type:', contentBlock.type, 'for tool use ID:', contentBlock.tool_use_id);
+            } else {
+              console.log('⚠️ HISTORY ERROR: Could not add tool result to conversation history:', {
+                hasHistory: !!sessionState.conversationHistory,
+                hasToolUseId: !!toolCall.toolUseId,
+                toolUseId: toolCall.toolUseId
               });
             }
             
@@ -472,8 +535,28 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               toolUseId: toolCall.toolUseId
             });
             
+            console.log('⚠️ RESULTS: Added tool result to toolResults array:', {
+              toolId: toolCall.toolId,
+              toolResultsCount: toolResults.length,
+              hasToolUseId: !!toolCall.toolUseId,
+              resultType: typeof result
+            });
+            
             // Ask the model to decide what to do next
             currentQuery = `Based on the result of using ${tool.name}, what should I do next to answer: ${query}`;
+            logger.debug(`Tool execution complete, preparing for next iteration (${iterations+1})`, LogCategory.SYSTEM);
+            logger.debug(`Next query for model: "${currentQuery}"`, LogCategory.SYSTEM);
+            
+            console.log('⚠️ LOOP CHECK: About to exit tool execution block and continue to next iteration');
+            console.log('⚠️ LOOP STATE:', {
+              iteration: iterations,
+              maxIterations: maxIterations,
+              hasToolResults: toolResults.length > 0,
+              hasFinalResponse: !!finalResponse,
+              sessionId: sessionId,
+              isAborted: isSessionAborted(sessionId),
+              conversationHistoryLength: sessionState.conversationHistory?.length || 0
+            });
           } catch (error: unknown) {
             logger.error(`Error in iteration ${iterations}:`, error, LogCategory.SYSTEM);
             
@@ -549,6 +632,17 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             responseText = firstContent.text;
           }
         }
+        
+        console.log('⚠️ END OF PROCESSING QUERY - returning final result with', toolResults.length, 'tool results after', iterations, 'iterations');
+        console.log('⚠️ FINAL RESULT STATE:', {
+          toolResultsCount: toolResults.length,
+          toolResultIds: toolResults.map(tr => tr.toolId),
+          iterations,
+          hasResponse: !!responseText,
+          responseTextLength: responseText ? responseText.length : 0,
+          conversationHistoryLength: sessionState.conversationHistory?.length || 0,
+          isAborted: isSessionAborted(sessionId)
+        });
         
         return {
           result: {

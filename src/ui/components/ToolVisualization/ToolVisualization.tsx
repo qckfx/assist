@@ -143,12 +143,19 @@ export function ToolVisualization({
   defaultViewMode = PreviewMode.BRIEF,
   onViewModeChange,
 }: ToolVisualizationProps) {
-  // Add component lifecycle logging
-  console.log('ToolVisualization RENDER', { 
+  // Add detailed component lifecycle logging
+  console.log('🔍 ToolVisualization RENDER', { 
     id: tool.id, 
     status: tool.status, 
     hasPreview: !!tool.preview,
-    toolName: tool.toolName 
+    previewType: tool.preview?.contentType,
+    toolName: tool.toolName,
+    executionTime: tool.executionTime,
+    hasResult: !!tool.result,
+    hasError: !!tool.error,
+    timestamp: new Date().toISOString(),
+    startTime: tool.startTime ? new Date(tool.startTime).toISOString() : undefined,
+    endTime: tool.endTime ? new Date(tool.endTime).toISOString() : undefined
   });
   // Determine the tool state from the status
   const toolState = 
@@ -158,6 +165,16 @@ export function ToolVisualization({
     tool.status === 'aborted' ? ToolState.ABORTED :
     tool.status === 'awaiting-permission' ? 'awaiting-permission' as ToolState :
     ToolState.PENDING;
+    
+  // Log detailed tool state for debugging
+  console.log(`Tool state calculation for ${tool.id} (${tool.toolName}):`, {
+    currentStatus: tool.status,
+    calculatedState: toolState,
+    hasPreview: !!tool.preview,
+    previewContentType: tool.preview?.contentType,
+    briefContentExists: !!tool.preview?.briefContent,
+    fullContentExists: !!tool.preview?.fullContent
+  });
   
   // Track view mode locally with the provided default
   const [viewMode, setViewMode] = useState<PreviewMode>(
@@ -257,10 +274,31 @@ export function ToolVisualization({
   // Format timestamp - unused for now but keeping for future reference
   const _timestamp = new Date(tool.startTime).toLocaleTimeString();
   
-  // Determine if we should show a preview
-  const hasPreview = !!tool.preview;
-  // Can expand/collapse if there's a preview and tool is completed or awaiting permission
-  const canExpandCollapse = hasPreview && (toolState === ToolState.COMPLETED || tool.status === 'awaiting-permission');
+  // Determine if we should show a preview - check for actual content, not just the preview object
+  const hasPreview = !!tool.preview && (!!tool.preview.briefContent || !!tool.preview.fullContent);
+  // Can expand/collapse if there's a preview and tool is complete, running, or awaiting permission
+  const canExpandCollapse = hasPreview && (
+    toolState === ToolState.COMPLETED || 
+    toolState === ToolState.RUNNING || 
+    tool.status === 'awaiting-permission'
+  );
+  
+  console.log(`Preview availability check for ${tool.id}:`, {
+    hasPreviewObject: !!tool.preview,
+    hasActualPreviewContent: hasPreview,
+    previewContentType: tool.preview?.contentType,
+    briefContent: tool.preview?.briefContent ? 
+      tool.preview.briefContent.substring(0, 50) + (tool.preview.briefContent.length > 50 ? '...' : '') : undefined,
+    briefContentType: typeof tool.preview?.briefContent,
+    briefContentLength: tool.preview?.briefContent?.length || 0,
+    fullContentLength: tool.preview?.fullContent?.length || 0,
+    canExpandCollapse,
+    toolState,
+    contentSizes: tool.preview ? {
+      briefLength: tool.preview.briefContent?.length || 0,
+      fullLength: tool.preview.fullContent?.length || 0
+    } : null
+  });
   
   return (
     <div 
@@ -329,7 +367,7 @@ export function ToolVisualization({
       </div>
       
       {/* Preview content - show if preview data exists for completed, running, or awaiting permission tools */}
-      {hasPreview && (toolState === ToolState.COMPLETED || toolState === ToolState.RUNNING || tool.status === 'awaiting-permission') && viewMode !== PreviewMode.RETRACTED && (
+      {hasPreview && viewMode !== PreviewMode.RETRACTED && (
         <div 
           className={cn(
             'mt-2 preview-container',
@@ -354,7 +392,7 @@ export function ToolVisualization({
       )}
       
       {/* Show button to expand preview when in RETRACTED mode */}
-      {hasPreview && (toolState === ToolState.COMPLETED || toolState === ToolState.RUNNING || tool.status === 'awaiting-permission') && viewMode === PreviewMode.RETRACTED && (
+      {hasPreview && viewMode === PreviewMode.RETRACTED && (
         <button
           onClick={(e) => setViewModeWithCallback(PreviewMode.BRIEF, e)}
           className={cn(
@@ -438,8 +476,20 @@ function PreviewContent({
   onShowMore,
   onShowLess
 }: PreviewContentProps) {
-  if (!contentType || !briefContent) {
+  // Enhanced validation that handles missing content better
+  if (!contentType) {
+    console.warn(`Missing content type for preview in tool ${toolId}`);
     return null;
+  }
+  
+  // If we don't have any content at all, show a placeholder
+  if (!briefContent && !fullContent) {
+    console.warn(`Missing content for preview in tool ${toolId} with type ${contentType}`);
+    return (
+      <div className={`p-2 text-center italic ${isDarkTheme ? 'text-gray-400' : 'text-gray-600'}`}>
+        Preview loading...
+      </div>
+    );
   }
   
   // Log preview content info for debugging

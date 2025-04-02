@@ -55,6 +55,21 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
    * Override the emit method to handle buffering
    */
   public emit(event: string, ...args: unknown[]): boolean {
+    console.log(`⚠️ EMIT method called for event: ${event}`);
+    
+    // Special logging for TOOL_EXECUTION_COMPLETED events
+    if (event === WebSocketEvent.TOOL_EXECUTION_COMPLETED) {
+      const data = args[0] as Record<string, unknown>;
+      console.log('⚠️ TOOL_EXECUTION_COMPLETED event:', {
+        sessionId: data.sessionId,
+        toolId: data.tool && typeof data.tool === 'object' ? (data.tool as any).id : 'unknown',
+        toolName: data.tool && typeof data.tool === 'object' ? (data.tool as any).name : 'unknown',
+        executionId: data.tool && typeof data.tool === 'object' ? (data.tool as any).executionId : 'unknown',
+        hasResult: !!data.result,
+        timestamp: data.timestamp || new Date().toISOString()
+      });
+    }
+    
     // For tool execution events, use buffering
     if (event === WebSocketEvent.TOOL_EXECUTION) {
       const data = args[0] as Record<string, unknown>;
@@ -64,9 +79,18 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
         toolId = data.tool.id as string;
       }
       
+      console.log('⚠️ TOOL_EXECUTION event for buffering:', {
+        toolId,
+        dataKeys: Object.keys(data),
+        hasToolObject: typeof data.tool === 'object' && data.tool !== null,
+        toolProperties: typeof data.tool === 'object' && data.tool !== null ? Object.keys(data.tool) : []
+      });
+      
       if (toolId) {
         this.bufferToolResult(toolId, data);
         return true;
+      } else {
+        console.log('⚠️ WARNING: TOOL_EXECUTION event without valid toolId, bypassing buffer');
       }
     }
     
@@ -75,11 +99,13 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
       event === WebSocketEvent.PROCESSING_STARTED ||
       event === WebSocketEvent.SESSION_UPDATED
     ) {
+      console.log(`⚠️ Using throttled emit for high-frequency event: ${event}`);
       this.throttledEmit(event, args[0]);
       return true;
     }
     
     // Default behavior for other events
+    console.log(`⚠️ Using default emit behavior for event: ${event}`);
     return super.emit(event, ...args);
   }
 
@@ -335,13 +361,22 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
     
     // Handle tool execution completed to remove from active tools
     this.socket.on(WebSocketEvent.TOOL_EXECUTION_COMPLETED, (data: WebSocketEventMap[WebSocketEvent.TOOL_EXECUTION_COMPLETED]) => {
+      console.log('⚠️ SOCKET RECEIVED TOOL_EXECUTION_COMPLETED event:', {
+        sessionId: data.sessionId,
+        toolId: data.tool?.id || 'unknown',
+        toolName: data.tool?.name || 'unknown',
+        executionId: data.tool?.executionId || 'unknown',
+        hasResult: !!data.result,
+        timestamp: data.timestamp || new Date().toISOString()
+      });
+      
       // Check if the session was aborted
       const abortTimestamp = this.abortTimestamps.get(data.sessionId);
       const eventTimestamp = data.timestamp ? new Date(data.timestamp).getTime() : Date.now();
       
       // If this event happened after abort, ignore it
       if (abortTimestamp && eventTimestamp > abortTimestamp) {
-        console.log('Ignoring tool completion event after abort:', data.tool.id);
+        console.log('⚠️ IGNORING: Tool completion event after abort:', data.tool.id);
         return;
       }
       
@@ -350,10 +385,14 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
         const activeTools = this.activeToolsMap.get(data.sessionId) || [];
         const updatedTools = activeTools.filter(tool => tool.id !== data.tool.id);
         this.activeToolsMap.set(data.sessionId, updatedTools);
+        console.log(`⚠️ ACTIVE_TOOLS: Removed ${data.tool.id} from active tools, ${activeTools.length} -> ${updatedTools.length} tools remaining`);
       }
       
       // Buffer and emit the event
+      console.log('⚠️ BUFFERING: Adding tool completion to event buffer');
       this.bufferEvent(WebSocketEvent.TOOL_EXECUTION_COMPLETED, data);
+      
+      console.log('⚠️ EMITTING: Tool completion to event listeners');
       this.emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, data);
     });
     
@@ -506,27 +545,50 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
    * Buffer tool results and flush when appropriate
    */
   private bufferToolResult(toolId: string, data: unknown): void {
+    console.log('⚠️ BUFFER_TOOL_RESULT called:', { 
+      toolId, 
+      dataType: typeof data,
+      dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : [],
+      timestamp: new Date().toISOString()
+    });
+    
     // Initialize buffer if needed
     if (!this.toolResultBuffer[toolId]) {
       this.toolResultBuffer[toolId] = [];
       this.lastToolFlush[toolId] = Date.now();
+      console.log('⚠️ BUFFER_INIT: Created new buffer for tool', toolId);
     }
     
     // Add to buffer
     this.toolResultBuffer[toolId].push(data);
+    console.log(`⚠️ BUFFER_ADD: Added data to buffer for tool ${toolId}, new size: ${this.toolResultBuffer[toolId].length}`);
     
     // Check if we should flush
     const bufferSize = this.toolResultBuffer[toolId].length;
     const timeSinceLastFlush = Date.now() - this.lastToolFlush[toolId];
     
+    console.log('⚠️ BUFFER_CHECK:', { 
+      toolId, 
+      bufferSize, 
+      maxBufferSize: this.maxBufferSize,
+      timeSinceLastFlush, 
+      flushIntervalMs: this.flushIntervalMs,
+      shouldFlushNow: bufferSize >= this.maxBufferSize || timeSinceLastFlush >= this.flushIntervalMs
+    });
+    
     // Flush if buffer is full or enough time has passed
     if (bufferSize >= this.maxBufferSize || timeSinceLastFlush >= this.flushIntervalMs) {
+      console.log('⚠️ BUFFER_FLUSH_IMMEDIATE: Flushing tool buffer immediately for', toolId);
       this.flushToolBuffer(toolId);
     } else {
       // Schedule a flush after the interval
+      console.log(`⚠️ BUFFER_SCHEDULE: Scheduling flush for tool ${toolId} in ${this.flushIntervalMs - timeSinceLastFlush}ms`);
       setTimeout(() => {
         if (this.toolResultBuffer[toolId]?.length > 0) {
+          console.log('⚠️ BUFFER_FLUSH_SCHEDULED: Executing scheduled flush for', toolId);
           this.flushToolBuffer(toolId);
+        } else {
+          console.log('⚠️ BUFFER_FLUSH_CANCELLED: Buffer empty at scheduled flush time for', toolId);
         }
       }, this.flushIntervalMs - timeSinceLastFlush);
     }
@@ -536,7 +598,10 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
    * Flush the buffer for a specific tool
    */
   private flushToolBuffer(toolId: string): void {
+    console.log('⚠️ FLUSH_TOOL_BUFFER called for tool:', toolId);
+    
     if (!this.toolResultBuffer[toolId] || this.toolResultBuffer[toolId].length === 0) {
+      console.log('⚠️ FLUSH_SKIP: Buffer empty for tool:', toolId);
       return;
     }
     
@@ -548,19 +613,29 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
       batchSize: this.toolResultBuffer[toolId].length,
     };
     
+    console.log('⚠️ FLUSH_EMIT: Emitting batch event for tool:', {
+      toolId,
+      batchSize: batchedData.batchSize,
+      resultTypes: batchedData.results.map(r => typeof r),
+      eventName: WebSocketEvent.TOOL_EXECUTION_BATCH
+    });
+    
     // Emit the batched event
     super.emit(WebSocketEvent.TOOL_EXECUTION_BATCH, batchedData);
     
     // Clear buffer and update last flush time
     this.toolResultBuffer[toolId] = [];
     this.lastToolFlush[toolId] = Date.now();
+    console.log('⚠️ FLUSH_COMPLETE: Buffer cleared for tool:', toolId);
   }
   
   /**
    * Flush all tool buffers
    */
   public flushAllToolBuffers(): void {
-    Object.keys(this.toolResultBuffer).forEach(toolId => {
+    const toolIds = Object.keys(this.toolResultBuffer);
+    
+    toolIds.forEach(toolId => {
       this.flushToolBuffer(toolId);
     });
   }

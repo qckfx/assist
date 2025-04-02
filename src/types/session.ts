@@ -70,6 +70,14 @@ export interface StoredMessage {
    * Ordering sequence in the conversation
    */
   sequence: number;
+  
+  /**
+   * Status indicating server confirmation state
+   * 'pending' - Message sent locally but not confirmed by server
+   * 'confirmed' - Message confirmed received by server
+   * 'failed' - Message failed to send to server
+   */
+  confirmationStatus?: 'pending' | 'confirmed' | 'failed';
 }
 
 /**
