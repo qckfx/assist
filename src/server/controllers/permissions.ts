@@ -108,11 +108,24 @@ export async function getFastEditMode(req: Request, res: Response, next: NextFun
   try {
     const { sessionId } = fastEditModeQuerySchema.parse(req.query);
     
-    // Get the agent service
-    const agentService = getAgentService();
+    // Get the agent service with detailed logging
+    console.log('Getting AgentService for getFastEditMode endpoint, sessionId:', sessionId);
+    let agentService;
+    try {
+      agentService = getAgentService();
+      console.log('AgentService obtained successfully:', {
+        hasAgentService: !!agentService,
+        hasGetFastEditMode: typeof agentService.getFastEditMode === 'function'
+      });
+    } catch (e) {
+      console.error('Error getting AgentService:', e);
+      throw new Error(`Failed to get AgentService: ${e instanceof Error ? e.message : String(e)}`);
+    }
     
     // Get fast edit mode state
+    console.log('Calling getFastEditMode with sessionId:', sessionId);
     const enabled = agentService.getFastEditMode(sessionId);
+    console.log('getFastEditMode result:', enabled);
     
     res.status(200).json({
       success: true,

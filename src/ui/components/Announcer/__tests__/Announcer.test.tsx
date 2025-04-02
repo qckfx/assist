@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { Announcer } from '../Announcer';
+import { StructuredContent } from '../../../../types/message';
 
 describe('Announcer Component', () => {
   it('renders nothing when messages array is empty', () => {
@@ -10,9 +11,9 @@ describe('Announcer Component', () => {
   
   it('renders the latest message for screen readers', () => {
     const messages = [
-      { id: '1', content: 'First message' },
-      { id: '2', content: 'Second message' },
-      { id: '3', content: 'Latest message' },
+      { id: '1', content: [{ type: 'text', text: 'First message' }] as StructuredContent },
+      { id: '2', content: [{ type: 'text', text: 'Second message' }] as StructuredContent },
+      { id: '3', content: [{ type: 'text', text: 'Latest message' }] as StructuredContent },
     ];
     
     const { container } = render(<Announcer messages={messages} />);
@@ -28,7 +29,7 @@ describe('Announcer Component', () => {
   
   it('sets aria-live to polite by default', () => {
     const messages = [
-      { id: '1', content: 'Test message' },
+      { id: '1', content: [{ type: 'text', text: 'Test message' }] as StructuredContent },
     ];
     
     const { container } = render(<Announcer messages={messages} />);
@@ -41,7 +42,7 @@ describe('Announcer Component', () => {
   
   it('sets aria-live to assertive when assertive prop is true', () => {
     const messages = [
-      { id: '1', content: 'Error message' },
+      { id: '1', content: [{ type: 'text', text: 'Error message' }] as StructuredContent },
     ];
     
     const { container } = render(<Announcer messages={messages} assertive={true} />);
@@ -54,7 +55,7 @@ describe('Announcer Component', () => {
   
   it('sets aria-atomic to true', () => {
     const messages = [
-      { id: '1', content: 'Test message' },
+      { id: '1', content: [{ type: 'text', text: 'Test message' }] as StructuredContent },
     ];
     
     const { container } = render(<Announcer messages={messages} />);
@@ -63,5 +64,23 @@ describe('Announcer Component', () => {
     const atomicRegion = container.querySelector('[aria-atomic]');
     expect(atomicRegion).not.toBeNull();
     expect(atomicRegion?.getAttribute('aria-atomic')).toBe('true');
+  });
+  
+  it('combines multiple text parts from structured content', () => {
+    const messages = [
+      { 
+        id: '1', 
+        content: [
+          { type: 'text', text: 'First part' },
+          { type: 'text', text: 'Second part' }
+        ] as StructuredContent 
+      },
+    ];
+    
+    render(<Announcer messages={messages} />);
+    
+    // Should contain combined text from all text parts
+    const announcement = screen.getByText('First part Second part');
+    expect(announcement).toBeInTheDocument();
   });
 });

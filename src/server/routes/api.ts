@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import * as apiController from '../controllers/api';
 import * as permissionController from '../controllers/permissions';
+import * as timelineController from '../controllers/timeline';
 import { validateBody, validateQuery } from '../middleware/validation';
 import {
   startSessionSchema,
@@ -15,6 +16,7 @@ import {
   permissionResolutionSchema,
   fastEditModeToggleSchema,
   fastEditModeQuerySchema,
+  timelineQuerySchema,
 } from '../schemas/api';
 import { apiDocumentation } from '../docs/api';
 
@@ -91,6 +93,12 @@ router.get('/sessions/persisted', apiController.listPersistedSessions);
  * @desc    Delete a persisted session
  */
 router.delete('/sessions/persisted/:sessionId', apiController.deletePersistedSession);
+
+/**
+ * @route   GET /api/sessions/:sessionId/timeline
+ * @desc    Get timeline for a session
+ */
+router.get('/sessions/:sessionId/timeline', validateQuery(timelineQuerySchema), timelineController.getSessionTimeline);
 
 /**
  * @route   GET /api/docs

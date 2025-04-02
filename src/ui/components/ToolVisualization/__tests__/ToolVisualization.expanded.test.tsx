@@ -96,8 +96,8 @@ describe('ToolVisualization with Preview', () => {
     expect(briefContainer.querySelector('.preview-container')).not.toBeInTheDocument();
   });
   
-  // Add a separate test for callback
-  it('calls onViewModeChange when view mode button is clicked', () => {
+  // Add a separate test for "Show More" callback
+  it('calls onViewModeChange when Show More button is clicked', () => {
     const mockTool = createMockTool();
     const onViewModeChange = vi.fn();
     render(
@@ -107,12 +107,33 @@ describe('ToolVisualization with Preview', () => {
       />
     );
     
-    // Find and click the toggle button
-    const toggleButton = screen.getByLabelText(/Toggle view mode/);
-    fireEvent.click(toggleButton);
+    // Find and click the Show More button
+    const showMoreButton = screen.getByTestId('preview-show-more-button');
+    fireEvent.click(showMoreButton);
     
-    // Verify callback was called
+    // Verify callback was called with COMPLETE mode
     expect(onViewModeChange).toHaveBeenCalledWith('test-tool-1', PreviewMode.COMPLETE);
+  });
+  
+  // Add a separate test for "Show Less" callback
+  it('calls onViewModeChange when Show Less button is clicked', () => {
+    const mockTool = createMockTool({
+      viewMode: PreviewMode.COMPLETE // Start in COMPLETE mode to see the Show Less button
+    });
+    const onViewModeChange = vi.fn();
+    render(
+      <ToolVisualization 
+        tool={mockTool} 
+        onViewModeChange={onViewModeChange}
+      />
+    );
+    
+    // Find and click the Show Less button
+    const showLessButton = screen.getByTestId('preview-show-less-button');
+    fireEvent.click(showLessButton);
+    
+    // Verify callback was called with BRIEF mode
+    expect(onViewModeChange).toHaveBeenCalledWith('test-tool-1', PreviewMode.BRIEF);
   });
   
   it('renders diff content with appropriate highlighting', () => {

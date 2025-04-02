@@ -242,6 +242,15 @@ export const apiClient = {
     const endpoint = API_ENDPOINTS.SESSIONS_DELETE.replace(':sessionId', sessionId);
     return apiRequest<{ success: boolean; message: string }>(endpoint, 'DELETE');
   },
+  
+  /**
+   * Fetch timeline data for a session
+   */
+  fetchTimeline: <T>(sessionId: string, queryParams: string) => {
+    const endpoint = API_ENDPOINTS.TIMELINE.replace(':sessionId', sessionId) + 
+      (queryParams ? `?${queryParams}` : '');
+    return apiRequest<T>(endpoint);
+  },
 };
 
 export default apiClient;

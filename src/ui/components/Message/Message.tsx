@@ -1,10 +1,11 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { StructuredContent, TextContentPart, parseStructuredContent } from '../../../types/message';
 
 export type MessageType = 'user' | 'assistant' | 'system' | 'error';
 
 export interface MessageProps {
-  content: string;
+  content: StructuredContent | string; // Allow string for backward compatibility
   type: MessageType;
   timestamp?: Date;
   className?: string;
@@ -95,8 +96,42 @@ export function Message({
   isStreaming = false,
   streamingContent = '',
 }: MessageProps) {
-  // Process content for ANSI colors if enabled
-  const processedContent = enableAnsiColors ? parseAnsi(content) : content;
+  // Process structured content to render properly
+  const renderStructuredContent = () => {
+    // Parse string content if needed
+    let structuredContent: StructuredContent;
+    
+    if (typeof content === 'string') {
+      // Try to parse as structured content using Zod
+      const parsed = parseStructuredContent(content);
+      
+      if (parsed) {
+        // Successfully parsed as structured content
+        structuredContent = parsed;
+      } else {
+        // Use as plain text content if parsing fails
+        structuredContent = [{ type: 'text', text: content }];
+      }
+    } else {
+      // Already structured content
+      structuredContent = content;
+    }
+    
+    // Handle structured content
+    return structuredContent.map((part, index) => {
+      if (part.type === 'text') {
+        const textPart = part as TextContentPart;
+        // Process ANSI colors if enabled
+        return (
+          <div key={index} className="whitespace-pre-wrap break-words">
+            {enableAnsiColors ? parseAnsi(textPart.text) : textPart.text}
+          </div>
+        );
+      }
+      // Add handlers for other content types here (images, code blocks, etc.)
+      return null;
+    });
+  };
   
   // Get CSS variables based on message type
   const getTypeStyles = () => {
@@ -160,7 +195,7 @@ export function Message({
           <span className="animate-pulse cursor">|</span>
         </div>
       ) : (
-        <div className="whitespace-pre-wrap break-words">{processedContent}</div>
+        renderStructuredContent()
       )}
       
       {showTimestamp && timestamp && !isStreaming && (

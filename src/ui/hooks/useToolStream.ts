@@ -69,7 +69,7 @@ export function useToolStream() {
   
   // Load initial tool history
   useEffect(() => {
-    if (!socket || !socket.connected || historyLoadedRef.current) {
+    if (!socket) {
       return;
     }
     
@@ -78,13 +78,35 @@ export function useToolStream() {
       return;
     }
     
-    // Request tool history from the server
-    socket.emit(WebSocketEvent.TOOL_HISTORY, {
-      sessionId,
-      includeCompleted: true
-    });
+    // Function to request history
+    const requestHistory = () => {
+      console.log('Requesting tool history for session:', sessionId);
+      socket.emit(WebSocketEvent.TOOL_HISTORY, {
+        sessionId,
+        includeCompleted: true
+      });
+      historyLoadedRef.current = true;
+    };
     
-    historyLoadedRef.current = true;
+    // If socket is connected and we haven't loaded history yet, request it
+    if (socket.connected && !historyLoadedRef.current) {
+      requestHistory();
+    }
+    
+    // Also listen for connect events to request history when socket reconnects
+    const handleConnect = () => {
+      console.log('Socket connected, requesting tool history');
+      // Reset history loaded flag to ensure we request it on reconnection
+      historyLoadedRef.current = false;
+      requestHistory();
+    };
+    
+    socket.on('connect', handleConnect);
+    
+    // Clean up listener
+    return () => {
+      socket.off('connect', handleConnect);
+    };
   }, [socket, getSessionId]);
   
   // Handle tool state updates from the server
@@ -138,6 +160,14 @@ export function useToolStream() {
   const handleToolHistory = useCallback((data: { sessionId: string; tools: ToolExecution[] }) => {
     const { tools } = data;
     
+    console.log('Received tool history:', {
+      sessionId: data.sessionId,
+      toolCount: tools.length,
+      toolIds: tools.map(t => t.id),
+      // Log the first few tools to see their properties
+      sampleTools: tools.slice(0, 2)
+    });
+    
     setState(prev => {
       // Create map of tool executions
       const toolExecutions = { ...prev.toolExecutions };
@@ -155,6 +185,16 @@ export function useToolStream() {
       const activeToolCount = Object.values(toolExecutions).filter(
         t => t.status === 'running' || t.status === 'awaiting-permission'
       ).length;
+      
+      const completedCount = Object.values(toolExecutions).filter(
+        t => t.status === 'completed'
+      ).length;
+      
+      console.log('Tool history processed:', {
+        totalTools: Object.keys(toolExecutions).length,
+        activeTools: activeToolCount,
+        completedTools: completedCount
+      });
       
       return {
         ...prev,
@@ -176,6 +216,26 @@ export function useToolStream() {
     
     const toolHistoryUnsubscribe = subscribe(WebSocketEvent.TOOL_HISTORY, handleToolHistory);
     unsubscribers.push(toolHistoryUnsubscribe);
+    
+    // Subscribe to session_updated to request tool history
+    const sessionUpdatedUnsubscribe = subscribe('session_updated', (data) => {
+      console.log('Session updated, requesting tool history');
+      // Reset history loaded flag to trigger a fresh load
+      historyLoadedRef.current = false;
+      
+      // Request tool history when session is updated
+      if (socket && socket.connected) {
+        const sessionId = getSessionId();
+        if (sessionId) {
+          socket.emit(WebSocketEvent.TOOL_HISTORY, {
+            sessionId,
+            includeCompleted: true
+          });
+          historyLoadedRef.current = true;
+        }
+      }
+    });
+    unsubscribers.push(sessionUpdatedUnsubscribe);
     
     // Subscribe to processing completed to reset active tool count
     const processingCompletedUnsubscribe = subscribe(WebSocketEvent.PROCESSING_COMPLETED, () => {

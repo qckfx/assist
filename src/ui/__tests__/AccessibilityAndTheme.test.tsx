@@ -82,7 +82,7 @@ describe('Terminal Accessibility and Theming', () => {
           messages={[
             {
               id: '1',
-              content: 'Test message',
+              content: [{ type: 'text', text: 'Test message' }],
               type: 'system',
               timestamp: new Date(),
             },

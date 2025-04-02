@@ -31,6 +31,10 @@ export enum WebSocketEvent {
   TOOL_STATE_UPDATE = 'tool_state_update',
   TOOL_HISTORY = 'tool_history',
   
+  // Timeline events
+  TIMELINE_UPDATE = 'timeline_update',
+  TIMELINE_HISTORY = 'timeline_history',
+  
   // Session management events
   SESSION_SAVED = 'session:saved',
   SESSION_LOADED = 'session:loaded',
@@ -91,6 +95,31 @@ export interface WebSocketEventMap {
         metadata?: Record<string, unknown>;
       };
     }>;
+  };
+  
+  // Timeline events
+  [WebSocketEvent.TIMELINE_UPDATE]: {
+    sessionId: string;
+    item: {
+      id: string;
+      type: string;
+      timestamp: string;
+      sessionId: string;
+      [key: string]: any; // Additional properties based on the item type
+    };
+  };
+  
+  [WebSocketEvent.TIMELINE_HISTORY]: {
+    sessionId: string;
+    items: Array<{
+      id: string;
+      type: string;
+      timestamp: string;
+      sessionId: string;
+      [key: string]: any; // Additional properties based on the item type
+    }>;
+    nextPageToken?: string;
+    totalCount: number;
   };
   
   // Session events

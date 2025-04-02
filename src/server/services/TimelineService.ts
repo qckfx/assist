@@ -15,6 +15,7 @@ import {
   ToolExecutionTimelineItem,
   PermissionRequestTimelineItem 
 } from '../../types/timeline';
+import { TextContentPart } from '../../types/message';
 import { WebSocketEvent } from '../../types/websocket';
 import { WebSocketService } from './WebSocketService';
 import { SessionManager } from './SessionManager';
@@ -22,12 +23,13 @@ import { serverLogger } from '../logger';
 import { AgentService, AgentServiceEvent } from './AgentService';
 import { previewService } from './preview';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
+import { AgentEvents } from '../../utils/sessionUtils';
 
 import { Server as SocketIOServer } from 'socket.io';
 
 // Custom events for message handling that are not part of AgentServiceEvent enum
-const MESSAGE_ADDED = 'message:added';
-const MESSAGE_UPDATED = 'message:updated';
+export const MESSAGE_ADDED = 'message:added';
+export const MESSAGE_UPDATED = 'message:updated';
 
 // Define interfaces for the SessionData model
 interface SessionData {
@@ -74,6 +76,7 @@ export enum TimelineServiceEvent {
 export class TimelineService extends EventEmitter {
   private itemsCache: TimelineItemsCache = {};
   private cacheExpiryMs = 30 * 1000; // 30 seconds
+  private cleanup: () => void = () => {};
 
   constructor(
     private sessionManager: SessionManager,
@@ -287,6 +290,23 @@ export class TimelineService extends EventEmitter {
     agentService.on(MESSAGE_UPDATED, (data: MessageAddedEvent) => {
       this.addMessageToTimeline(data.sessionId, data.message);
     });
+    
+    // Also listen for message events from AgentEvents (from AgentRunner)
+    const handleAgentEventsMessage = (data: MessageAddedEvent) => {
+      this.addMessageToTimeline(data.sessionId, data.message);
+    };
+    AgentEvents.on(MESSAGE_ADDED, handleAgentEventsMessage);
+    
+    // Add cleanup handler for AgentEvents
+    const originalCleanup = this.cleanup;
+    this.cleanup = () => {
+      // Remove listener from AgentEvents
+      AgentEvents.off(MESSAGE_ADDED, handleAgentEventsMessage);
+      // Call original cleanup if it exists
+      if (typeof originalCleanup === 'function') {
+        originalCleanup();
+      }
+    };
     
     // Listen for tool execution events
     agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, (data: ToolExecutionEvent) => {
@@ -557,37 +577,6 @@ export class TimelineService extends EventEmitter {
     }
     
     const timeline: TimelineItem[] = [];
-    
-    // Check if we need to add an initial welcome message
-    if (sessionData.messages.length === 0) {
-      // Generate a welcome message if no messages exist yet
-      const welcomeMessageId = crypto.randomUUID();
-      const timestamp = new Date().toISOString();
-      
-      const welcomeMessage: StoredMessage = {
-        id: welcomeMessageId,
-        role: 'assistant',
-        content: 'Hi there! How can I help you today?',
-        timestamp: timestamp,
-        sequence: 0,
-        toolCalls: []
-      };
-      
-      // Add the welcome message to the timeline
-      const welcomeItem: MessageTimelineItem = {
-        id: welcomeMessageId,
-        type: TimelineItemType.MESSAGE,
-        timestamp: timestamp,
-        sessionId,
-        message: welcomeMessage,
-        toolExecutions: []
-      };
-      
-      timeline.push(welcomeItem);
-      
-      // Log that we added a welcome message
-      serverLogger.debug(`Added welcome message to empty timeline for session ${sessionId}`);
-    }
     
     // Add existing messages to timeline
     for (const message of sessionData.messages) {

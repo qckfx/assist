@@ -5,6 +5,7 @@
 import { SessionState } from './model';
 import { ToolExecutionState, PermissionRequestState } from './tool-execution';
 import { ToolPreviewState } from './preview';
+import { StructuredContent } from './message';
 
 /**
  * Reference to a tool call in a stored message
@@ -51,9 +52,9 @@ export interface StoredMessage {
   timestamp: string;
   
   /**
-   * Basic text content without embedded tool calls
+   * Structured message content as array of content parts
    */
-  content: string;
+  content: StructuredContent;
   
   /**
    * References to tool calls made within this message

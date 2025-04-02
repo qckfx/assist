@@ -10,7 +10,7 @@ const initialState: TerminalState = {
   messages: [
     {
       id: 'greeting',
-      content: 'How can I help you today?',
+      content: [{ type: 'text', text: 'How can I help you today?' }],
       type: 'assistant',
       timestamp: new Date(),
     },
@@ -249,7 +249,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
           type: 'ADD_MESSAGE', 
           payload: {
             id: generateUniqueId('error'),
-            content: `Error: ${error.message}`,
+            content: [{ type: 'text', text: `Error: ${error.message}` }],
             type: 'error',
             timestamp: new Date()
           }
@@ -270,7 +270,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
         type: 'ADD_MESSAGE', 
         payload: {
           id: generateUniqueId('system'),
-          content: 'Operation stopped. You can continue with a new message.',
+          content: [{ type: 'text', text: 'Operation stopped. You can continue with a new message.' }],
           type: 'system',
           timestamp: new Date()
         }
@@ -366,7 +366,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
           type: 'ADD_MESSAGE', 
           payload: {
             id: 'greeting',
-            content: 'How can I help you today?',
+            content: [{ type: 'text', text: 'How can I help you today?' }],
             type: 'assistant',
             timestamp: new Date(),
           }
@@ -407,10 +407,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
             if (textContent.trim()) {
               messagesToAdd.push({
                 id: generateUniqueId(message.role),
-                content: textContent,
+                content: [{ type: 'text' as const, text: textContent }],
                 type: message.role,
-                // Try to use the message's timestamp if available, fallback to current time
-                timestamp: message.timestamp ? new Date(message.timestamp) : new Date()
+                // Use current time for all messages from history
+                timestamp: new Date()
               });
             }
           }
@@ -498,7 +498,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
   const addMessage = (content: string, type: MessageType = 'system') => {
     const message: TerminalMessage = {
       id: generateUniqueId(type),
-      content,
+      content: [{ type: 'text', text: content }],
       type,
       timestamp: new Date(),
     };

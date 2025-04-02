@@ -25,6 +25,8 @@ import { PreviewMode } from '../../../types/preview';
 import { SessionManager } from '../SessionManagement';
 // Import the API client
 import apiClient from '@/services/apiClient';
+// Import timeline types
+import { TimelineItemType } from '../../../types/timeline';
 
 export interface TerminalProps {
   className?: string;
@@ -540,14 +542,22 @@ export function Terminal({
             const completedTools = getRecentTools(); // No limit
             
             // Get current tools for rendering
-            
             const allTools = [...activeTools, ...completedTools];
+            
+            console.log('Tools to display in MessageFeed:', {
+              activeToolCount: activeTools.length, 
+              completedToolCount: completedTools.length,
+              totalTools: allTools.length,
+              toolIds: allTools.map(t => t.id).slice(0, 5) // Show first 5 tool IDs
+            });
+            
             const toolMap = Object.fromEntries(
               allTools.map(tool => [tool.id, tool])
             );
             
             return (
               <MessageFeed 
+                sessionId={sessionId || null} 
                 messages={messages} 
                 className="terminal-message-animation"
                 ariaLabelledBy={ids.output}
@@ -629,7 +639,11 @@ export function Terminal({
           <SessionManager onClose={() => setShowSessionManager(false)} />
         </div>
       )}
-      <Announcer messages={messages} />
+      <Announcer messages={messages.map(msg => ({
+        id: msg.id,
+        content: Array.isArray(msg.content) ? msg.content : [{ type: 'text', text: String(msg.content) }],
+        role: msg.type
+      }))} />
       
       {/* Hidden elements for screen reader description */}
       <div className="sr-only" id={`${ids.terminal}-shortcuts-title`}>Keyboard shortcuts</div>

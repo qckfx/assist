@@ -11,6 +11,8 @@ import {
 } from '../types/agent';
 import { ToolCall, ConversationMessage, SessionState } from '../types/model';
 import { LogCategory, createLogger, LogLevel } from '../utils/logger';
+import Anthropic from '@anthropic-ai/sdk';
+import { MESSAGE_ADDED } from '../server/services/TimelineService';
 
 import { isSessionAborted, clearSessionAborted, AgentEvents, AgentEventType } from '../utils/sessionUtils';
 
@@ -168,9 +170,17 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             clearSessionAborted(sessionId);
           }
           
-          sessionState.conversationHistory.push({
+          // Create properly typed message following Anthropic's expected structure
+          const userMessage: Anthropic.Messages.MessageParam = {
             role: 'user',
             content: [{ type: 'text', text: query }]
+          };
+          sessionState.conversationHistory.push(userMessage);
+          
+          // Emit message:added event for TimelineService to pick up
+          AgentEvents.emit(MESSAGE_ADDED, {
+            sessionId,
+            message: userMessage
           });
         }
         
@@ -515,9 +525,17 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
 
         // Add the assistant's response to conversation history ONLY if not aborted
         if (!isSessionAborted(sessionId) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
-          (sessionState.conversationHistory as ConversationMessage[]).push({
+          // Create properly typed message following Anthropic's expected structure
+          const assistantMessage: Anthropic.Messages.MessageParam = {
             role: 'assistant',
             content: finalResponse.content
+          };
+          sessionState.conversationHistory.push(assistantMessage);
+          
+          // Emit message:added event for TimelineService to pick up
+          AgentEvents.emit(MESSAGE_ADDED, {
+            sessionId,
+            message: assistantMessage
           });
         } else if (isSessionAborted(sessionId)) {
           logger.info("Skipping assistant response because session was aborted", LogCategory.SYSTEM);

@@ -20,6 +20,7 @@ import {
   PermissionRequestState
 } from '../../types/tool-execution';
 import { StoredMessage, RepositoryInfo, SessionListEntry } from '../../types/session';
+import { StructuredContent, TextContentPart } from '../../types/message';
 import { createToolExecutionManager, ToolExecutionManagerImpl } from './ToolExecutionManagerImpl';
 import { createPreviewManager, PreviewManagerImpl } from './PreviewManagerImpl';
 import { Session, sessionManager } from './SessionManager';
@@ -697,8 +698,8 @@ export class AgentService extends EventEmitter {
       // Using a type assertion to handle 'system' role
       if ((message.role as string) === 'system') continue;
       
-      // Extract content text
-      let content = '';
+            // Create structured content using our imported type
+      const structuredContent: StructuredContent = [];
       let toolCalls: StoredMessage['toolCalls'] = undefined;
       
       // Process content blocks if available
@@ -706,11 +707,17 @@ export class AgentService extends EventEmitter {
         // For each content block
         for (const block of message.content) {
           if (typeof block === 'string') {
-            // Append string content
-            content += block;
+            // Convert string to text content part
+            structuredContent.push({
+              type: 'text',
+              text: block
+            });
           } else if (block.type === 'text') {
-            // Append text content
-            content += block.text;
+            // Add text content part
+            structuredContent.push({
+              type: 'text',
+              text: block.text
+            });
           } else if (block.type === 'tool_use') {
             // Handle tool use blocks
             if (!toolCalls) toolCalls = [];
@@ -725,16 +732,25 @@ export class AgentService extends EventEmitter {
           }
         }
       } else if (typeof message.content === 'string') {
-        // Handle plain string content
-        content = message.content;
+        // Convert string to text content part
+        structuredContent.push({
+          type: 'text',
+          text: message.content
+        });
       }
+      
+      // Extract plain text for ID generation
+      const plainText = structuredContent
+        .filter(part => part.type === 'text')
+        .map(part => part.text)
+        .join('');
       
       // Create the stored message
       const storedMessage: StoredMessage = {
-        id: generateMessageId(message.role, content, sequence),
+        id: generateMessageId(message.role, plainText, sequence),
         role: message.role as 'user' | 'assistant',
         timestamp: new Date().toISOString(), // We don't have timestamps in the original messages
-        content,
+        content: structuredContent,
         toolCalls,
         sequence: sequence++
       };
@@ -935,10 +951,20 @@ export class AgentService extends EventEmitter {
         lastActiveAt: session.lastActiveAt.toISOString(),
         messageCount: messages.length,
         toolCount: toolExecutions.length,
-        initialQuery: initialMessage?.content,
+        initialQuery: initialMessage ? 
+          initialMessage.content
+            .filter(part => part.type === 'text')
+            .map(part => (part as TextContentPart).text)
+            .join('') 
+          : undefined,
         lastMessage: lastMessage && {
           role: lastMessage.role,
-          content: lastMessage.content.substring(0, 100), // Preview
+          // Extract text from structured content for preview
+          content: lastMessage.content
+            .filter(part => part.type === 'text')
+            .map(part => (part as TextContentPart).text)
+            .join('')
+            .substring(0, 100), // Preview
           timestamp: lastMessage.timestamp
         },
         repositoryInfo: repoInfo

@@ -87,19 +87,19 @@ const renderWithProviders = (ui: React.ReactElement) => {
 const mockMessages: TerminalMessage[] = [
   {
     id: '1',
-    content: 'System message',
+    content: [{ type: 'text', text: 'System message' }],
     type: 'system',
     timestamp: new Date(),
   },
   {
     id: '2',
-    content: 'User message',
+    content: [{ type: 'text', text: 'User message' }],
     type: 'user',
     timestamp: new Date(),
   },
   {
     id: '3',
-    content: 'Assistant message',
+    content: [{ type: 'text', text: 'Assistant message' }],
     type: 'assistant',
     timestamp: new Date(),
   },

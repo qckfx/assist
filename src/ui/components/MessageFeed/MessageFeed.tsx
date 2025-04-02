@@ -1,44 +1,32 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import Message from '@/components/Message';
 import { TerminalMessage } from '@/types/terminal';
 import { ToolExecution } from '@/hooks/useToolStream';
 import ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
 import { PreviewMode } from '../../../types/preview';
-
-// Define types for timeline items
-type MessageTimelineItem = {
-  id: string;
-  timestamp: Date;
-  type: 'message';
-  message: TerminalMessage;
-};
-
-type ToolTimelineItem = {
-  id: string;
-  timestamp: Date;
-  type: 'tool';
-  tool: ToolExecution;
-};
-
-type TimelineItem = MessageTimelineItem | ToolTimelineItem;
+import { TimelineItem, TimelineItemType } from '../../../types/timeline';
+import { useTimeline } from '@/hooks/useTimeline';
+import { ContentPart, TextContentPart } from '../../../types/message';
 
 export interface MessageFeedProps {
-  messages: TerminalMessage[];
-  toolExecutions?: Record<string, ToolExecution>;
+  sessionId: string | null;
+  messages: TerminalMessage[]; // For backwards compatibility 
+  toolExecutions?: Record<string, ToolExecution>; // For backwards compatibility
   className?: string;
   autoScroll?: boolean;
   enableAnsiColors?: boolean;
   ariaLabelledBy?: string;
   showToolsInline?: boolean;
-  isDarkTheme?: boolean; // Add terminal theme property
+  isDarkTheme?: boolean;
   onToolViewModeChange?: (toolId: string, mode: PreviewMode) => void;
   defaultToolViewMode?: PreviewMode;
-  onNewSession?: () => void; // Add this new prop
-  showNewSessionMessage?: boolean; // Add this to control visibility
+  onNewSession?: () => void;
+  showNewSessionMessage?: boolean;
 }
 
 export function MessageFeed({
+  sessionId,
   messages,
   toolExecutions = {},
   className,
@@ -46,7 +34,7 @@ export function MessageFeed({
   enableAnsiColors = true,
   ariaLabelledBy,
   showToolsInline = true,
-  isDarkTheme = false, // Default to light theme
+  isDarkTheme = false,
   onToolViewModeChange,
   defaultToolViewMode,
   onNewSession,
@@ -54,9 +42,19 @@ export function MessageFeed({
 }: MessageFeedProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
+  // Get the unified timeline
+  const {
+    timeline,
+    isLoading,
+    error
+  } = useTimeline(sessionId, {
+    limit: 100,
+    includeRelated: true
+  });
+  
   // Auto-scroll effect for new messages and new tool executions
   useEffect(() => {
-    // Scroll on changes to message count or tool execution count
+    // Scroll on changes to message count or tool execution count or timeline length
     if (autoScroll && messagesEndRef.current) {
       // Check if scrollIntoView is available (for JSDOM in tests)
       if (typeof messagesEndRef.current.scrollIntoView === 'function') {
@@ -64,41 +62,50 @@ export function MessageFeed({
         messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
       }
     }
-  }, [messages.length, Object.keys(toolExecutions).length, autoScroll]);
+  }, [
+    messages.length, 
+    Object.keys(toolExecutions).length, 
+    timeline?.length,
+    autoScroll
+  ]);
 
-  // Process tools and messages together in a timeline
-  const getTimelinedItems = () => {
-    if (!showToolsInline || Object.keys(toolExecutions).length === 0) {
-      return {
-        messageItems: messages,
-        toolItems: []
-      };
+  // Keep toolItems for backward compatibility with other components
+  const { messageItems, toolItems } = useMemo(() => {
+    return {
+      messageItems: messages,
+      toolItems: []
+    };
+  }, [messages]);
+
+  // This is now removed as we only use the unified timeline
+
+  // Render timeline items
+  const renderTimelineItems = () => {
+    if (isLoading && (!timeline || timeline.length === 0)) {
+      return (
+        <div 
+          className="flex-1 flex items-center justify-center text-gray-500 min-h-[200px]"
+          role="status"
+          aria-live="polite"
+        >
+          <p>Loading timeline...</p>
+        </div>
+      );
     }
 
-    // Convert tool executions to a format we can combine with messages
-    const toolItems: Array<{id: string; timestamp: Date; tool: ToolExecution}> = Object.values(toolExecutions)
-      // Sort by timestamp to ensure correct ordering
-      .sort((a, b) => a.startTime - b.startTime)
-      .map(tool => ({
-        id: tool.id,
-        timestamp: new Date(tool.startTime),
-        tool
-      }));
+    if (error) {
+      return (
+        <div 
+          className="flex-1 flex items-center justify-center text-red-500 min-h-[200px]"
+          role="status"
+          aria-live="polite"
+        >
+          <p>Error loading timeline: {error.message}</p>
+        </div>
+      );
+    }
 
-    // Track tool items count for internal use (may be used in the future)
-    const _toolCount = toolItems.length;
-
-    return {
-      messageItems: messages, // No need to filter for 'tool' type as it's been removed
-      toolItems
-    };
-  };
-
-  const { messageItems, toolItems } = getTimelinedItems();
-
-  // Render a timeline of messages and tools
-  const renderTimelineItems = () => {
-    if (messageItems.length === 0 && toolItems.length === 0) {
+    if (!timeline || timeline.length === 0) {
       return (
         <div 
           className="flex-1 flex items-center justify-center text-gray-500 min-h-[200px]"
@@ -110,32 +117,20 @@ export function MessageFeed({
       );
     }
 
-    // Create a merged timeline of messages and tools
-    const allItems: TimelineItem[] = [
-      ...messageItems.map(msg => ({ 
-        id: msg.id, 
-        timestamp: msg.timestamp, 
-        type: 'message' as const, 
-        message: msg 
-      })),
-      ...toolItems.map(tool => ({ 
-        id: tool.id, 
-        timestamp: tool.timestamp, 
-        type: 'tool' as const, 
-        tool: tool.tool 
-      }))
-    ];
+    // Render each timeline item
+    return timeline.map((item: TimelineItem) => {
+      if (item.type === TimelineItemType.MESSAGE) {
+        // Convert the stored message to the terminal message format
+        const message = {
+          id: item.message.id,
+          type: item.message.role as 'user' | 'assistant' | 'system' | 'error',
+          content: item.message.content,
+          timestamp: new Date(item.message.timestamp)
+        };
 
-    // Sort by timestamp
-    allItems.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-
-    // Render each item
-    return allItems.map(item => {
-      if (item.type === 'message') {
-        const message = item.message;
         return (
           <div
-            key={message.id}
+            key={`message-${item.id}`}
             className={cn(
               message.type === 'user' && 'self-end max-w-[80%]',
               message.type === 'assistant' && 'self-start max-w-[80%]',
@@ -154,19 +149,38 @@ export function MessageFeed({
             />
           </div>
         );
-      } else {
-        // Tool visualization - left-aligned and compact
-        const tool = item.tool;
+      } else if (item.type === TimelineItemType.TOOL_EXECUTION) {
+        // Convert the stored tool execution to the format expected by ToolVisualization
+        const toolExecution = {
+          id: item.toolExecution.id,
+          tool: item.toolExecution.toolId,
+          toolName: item.toolExecution.toolName,
+          status: item.toolExecution.status,
+          args: item.toolExecution.args,
+          startTime: new Date(item.toolExecution.startTime).getTime(),
+          endTime: item.toolExecution.endTime ? new Date(item.toolExecution.endTime).getTime() : undefined,
+          executionTime: item.toolExecution.executionTime,
+          result: item.toolExecution.result,
+          error: item.toolExecution.error,
+          permissionId: item.toolExecution.permissionId,
+          preview: item.preview ? {
+            contentType: item.preview.contentType,
+            briefContent: item.preview.briefContent,
+            fullContent: item.preview.fullContent,
+            metadata: item.preview.metadata
+          } : undefined
+        };
+
         return (
           <div
-            key={tool.id}
+            key={`tool-${item.id}`}
             className="w-4/5 self-start mt-2 mb-2 ml-2" // Left-aligned, not centered
-            data-testid={`tool-${tool.id}`}
+            data-testid={`tool-${toolExecution.id}`}
             role="listitem"
-            aria-label={`Tool execution: ${tool.toolName || tool.id}`}
+            aria-label={`Tool execution: ${toolExecution.toolName || toolExecution.id}`}
           >
             <ToolVisualization
-              tool={tool}
+              tool={toolExecution}
               showExecutionTime={true}
               compact={true} // Always use compact view
               className="mx-0" // Remove horizontal margin
@@ -176,7 +190,13 @@ export function MessageFeed({
             />
           </div>
         );
+      } else if (item.type === TimelineItemType.PERMISSION_REQUEST) {
+        // For now, we don't render permission requests directly
+        // They are shown as part of tool execution visualizations
+        return null;
       }
+
+      return null;
     });
   };
 

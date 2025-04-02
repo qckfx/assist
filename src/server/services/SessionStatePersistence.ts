@@ -12,6 +12,7 @@ import {
   RepositoryInfo,
   SessionPersistenceEvent
 } from '../../types/session';
+import { TextContentPart } from '../../types/message';
 import { ToolPreviewState } from '../../types/preview';
 import { serverLogger } from '../logger';
 import { EventEmitter } from 'events';
@@ -605,17 +606,19 @@ export class SessionStatePersistence extends EventEmitter {
         id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         role: message.role as 'user' | 'assistant',
         timestamp: new Date().toISOString(),
-        content: '',
+        content: [], // Initialize with empty array for structured content
         sequence: sequence++,
         toolCalls: []
       };
       
-      const textParts: string[] = [];
-      
       // Process content blocks and extract tool calls
       for (const block of message.content) {
         if (block.type === 'text') {
-          textParts.push(block.text || '');
+          // Add to structured content
+          storedMessage.content.push({
+            type: 'text',
+            text: block.text || ''
+          } as TextContentPart);
         } else if (block.type === 'tool_use') {
           // Try to find the matching tool execution
           const toolId = block.id;
@@ -638,7 +641,6 @@ export class SessionStatePersistence extends EventEmitter {
         }
       }
       
-      storedMessage.content = textParts.join(' ').trim();
       messages.push(storedMessage);
     }
     

@@ -3,7 +3,7 @@ import { cn } from '../../lib/utils';
 import { ToolExecution } from '../../hooks/useToolStream';
 import { ToolState } from '../../types/terminal';
 import { PreviewMode, PreviewContentType } from '../../../types/preview';
-import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
+import { ChevronDown, Minimize2 } from 'lucide-react';
 import MonacoDiffViewer from '../DiffViewer';
 
 // Helper function to truncate strings
@@ -123,19 +123,6 @@ const getToolDescription = (tool: ToolExecution): string => {
   return `Running ${tool.toolName}`;
 };
 
-// Helper to get appropriate icon for the current view mode
-const getViewModeIcon = (mode: PreviewMode) => {
-  switch (mode) {
-    case PreviewMode.RETRACTED:
-      return <ChevronDown size={14} />; // Down arrow for consistency
-    case PreviewMode.BRIEF:
-      return <Maximize2 size={14} />; // Maximize to indicate expand to full view
-    case PreviewMode.COMPLETE:
-      return <Minimize2 size={14} />; // Minimize to indicate collapse
-    default:
-      return <ChevronDown size={14} />; // Default also down chevron
-  }
-};
 
 export interface ToolVisualizationProps {
   tool: ToolExecution;
@@ -185,14 +172,19 @@ export function ToolVisualization({
     }
   }, [tool.viewMode]); // Remove viewMode from dependency array to prevent immediate reversion
   
-  // Handle cycling through view modes
-  const cycleViewMode = useCallback((e?: React.MouseEvent) => {
-    console.log('cycleViewMode called:', {
+  // Handle changes to view modes
+  const setViewModeWithCallback = useCallback((nextMode: PreviewMode, e?: React.MouseEvent) => {
+    // If event was provided, prevent default and stop propagation
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log('setViewModeWithCallback called:', {
       toolId: tool.id,
-      toolState,
-      status: tool.status,
-      hasPreview: !!tool.preview,
-      viewMode
+      currentMode: viewMode,
+      nextMode,
+      hasPreview: !!tool.preview
     });
     
     // If tool has no preview or is in a state that can't show previews, do nothing
@@ -200,31 +192,12 @@ export function ToolVisualization({
         toolState !== ToolState.COMPLETED && 
         toolState !== ToolState.RUNNING && 
         tool.status !== 'awaiting-permission')) {
-      console.log('cycleViewMode early return - condition not met:', { 
+      console.log('setViewModeWithCallback early return - condition not met:', { 
         toolState, 
         status: tool.status,
         hasPreview: !!tool.preview 
       });
       return;
-    }
-    
-    // If event was provided, prevent default and stop propagation
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    
-    // Modified behavior: Toggle between RETRACTED and BRIEF/COMPLETE
-    let nextMode;
-    if (viewMode === PreviewMode.RETRACTED) {
-      // If retracted, always go to BRIEF first
-      nextMode = PreviewMode.BRIEF;
-    } else if (viewMode === PreviewMode.BRIEF) {
-      // If in brief mode, expand to COMPLETE
-      nextMode = PreviewMode.COMPLETE;
-    } else {
-      // If in complete mode, collapse to RETRACTED
-      nextMode = PreviewMode.RETRACTED;
     }
     
     setViewMode(nextMode);
@@ -233,7 +206,20 @@ export function ToolVisualization({
     if (onViewModeChange) {
       onViewModeChange(tool.id, nextMode);
     }
-  }, [viewMode, tool.id, toolState, tool.preview, onViewModeChange]);
+  }, [viewMode, tool.id, toolState, tool.status, tool.preview, onViewModeChange]);
+  
+  // Handlers for specific view mode changes
+  const minimizePreview = useCallback((e?: React.MouseEvent) => {
+    setViewModeWithCallback(PreviewMode.RETRACTED, e);
+  }, [setViewModeWithCallback]);
+  
+  const showFullPreview = useCallback((e?: React.MouseEvent) => {
+    setViewModeWithCallback(PreviewMode.COMPLETE, e);
+  }, [setViewModeWithCallback]);
+
+  const showBriefPreview = useCallback((e?: React.MouseEvent) => {
+    setViewModeWithCallback(PreviewMode.BRIEF, e);
+  }, [setViewModeWithCallback]);
   
   // Get appropriate styles for the current state
   const getStatusStyles = () => {
@@ -286,8 +272,8 @@ export function ToolVisualization({
         className
       )}
       style={{ 
-        maxWidth: viewMode === PreviewMode.COMPLETE ? '90%' : '30%',
-        width: viewMode === PreviewMode.COMPLETE ? 'auto' : '300px',
+        maxWidth: viewMode === PreviewMode.COMPLETE ? '90%' : '90%',
+        width: viewMode === PreviewMode.COMPLETE ? 'auto' : '450px',
         transition: 'width 0.3s ease-in-out, max-width 0.3s ease-in-out'
       }}
       data-testid="tool-visualization"
@@ -321,22 +307,18 @@ export function ToolVisualization({
           )}
         </div>
         
-        {/* View mode toggle button */}
-        {/* Removed console.log statement */}
-        {canExpandCollapse && (
+        {/* Minimize button - only shown when preview is not retracted */}
+        {canExpandCollapse && viewMode !== PreviewMode.RETRACTED && (
           <button
-            onClick={(e) => {
-              console.log('Toggle button clicked for tool:', tool.id);
-              cycleViewMode(e);
-            }}
+            onClick={minimizePreview}
             className={cn(
               'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700',
               'transition-colors duration-200'
             )}
-            aria-label={`Toggle view mode (currently ${viewMode})`}
-            data-testid="tool-view-mode-toggle"
+            aria-label="Minimize preview"
+            data-testid="tool-minimize-button"
           >
-            {getViewModeIcon(viewMode)}
+            <Minimize2 size={14} />
           </button>
         )}
       </div>
@@ -365,8 +347,27 @@ export function ToolVisualization({
             fullContent={tool.preview?.fullContent}
             metadata={tool.preview?.metadata}
             isDarkTheme={isDarkTheme}
+            onShowMore={viewMode === PreviewMode.BRIEF && tool.preview?.fullContent !== tool.preview?.briefContent ? showFullPreview : undefined}
+            onShowLess={viewMode === PreviewMode.COMPLETE ? showBriefPreview : undefined}
           />
         </div>
+      )}
+      
+      {/* Show button to expand preview when in RETRACTED mode */}
+      {hasPreview && (toolState === ToolState.COMPLETED || toolState === ToolState.RUNNING || tool.status === 'awaiting-permission') && viewMode === PreviewMode.RETRACTED && (
+        <button
+          onClick={(e) => setViewModeWithCallback(PreviewMode.BRIEF, e)}
+          className={cn(
+            'mt-1 w-full text-xs py-1 rounded',
+            isDarkTheme ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700',
+            'transition-colors duration-200 flex items-center justify-center gap-1'
+          )}
+          aria-label="Show preview"
+          data-testid="tool-show-preview-button"
+        >
+          <ChevronDown size={12} />
+          <span>Show Preview</span>
+        </button>
       )}
       
       {/* Error message if status is error */}
@@ -384,13 +385,6 @@ export function ToolVisualization({
       )}
       
       {/* Permission request banner */}
-      {console.log('Permission banner condition values:', {
-        toolId: tool.id,
-        status: tool.status,
-        toolState,
-        isAborted: toolState === ToolState.ABORTED,
-        conditionValue: (tool.status === 'awaiting-permission' && toolState !== ToolState.ABORTED)
-      })}
       {tool.status === 'awaiting-permission' && toolState !== ToolState.ABORTED && (
         <div 
           className={`mt-1 ${isDarkTheme ? 'bg-amber-900 text-amber-100 border-amber-700' : 'bg-amber-100 text-amber-800 border-amber-300'} px-2 py-1 rounded-md text-xs border`}
@@ -428,6 +422,8 @@ interface PreviewContentProps {
   fullContent?: string;
   metadata?: Record<string, unknown>;
   isDarkTheme: boolean;
+  onShowMore?: (e: React.MouseEvent) => void;
+  onShowLess?: (e: React.MouseEvent) => void;
 }
 
 function PreviewContent({ 
@@ -438,7 +434,9 @@ function PreviewContent({
   briefContent,
   fullContent,
   metadata,
-  isDarkTheme 
+  isDarkTheme,
+  onShowMore,
+  onShowLess
 }: PreviewContentProps) {
   if (!contentType || !briefContent) {
     return null;
@@ -470,18 +468,58 @@ function PreviewContent({
   // Max height based on view mode
   const maxHeight = viewMode === PreviewMode.BRIEF ? '200px' : '500px';
   
+  // Check if there is more content to show
+  const hasMoreContent = fullContent && fullContent !== briefContent;
+  
   // Render based on content type
   switch (contentType) {
     case PreviewContentType.TEXT:
     case PreviewContentType.CODE: {
       return (
-        <div 
-          className={baseStyles}
-          style={{ maxHeight }}
-          data-testid="preview-content-code"
-        >
-          {content}
-        </div>
+        <>
+          <div 
+            className={baseStyles}
+            style={{ maxHeight }}
+            data-testid="preview-content-code"
+          >
+            {content}
+          </div>
+          
+          {/* Show More/Less buttons */}
+          <div className="text-center p-1 border-t">
+            {/* Show More button for BRIEF mode when there's more content */}
+            {viewMode === PreviewMode.BRIEF && hasMoreContent && onShowMore && (
+              <button
+                onClick={onShowMore}
+                className={cn(
+                  'text-xs px-3 py-1 rounded',
+                  isDarkTheme ? 'hover:bg-gray-700 text-blue-300' : 'hover:bg-gray-200 text-blue-600',
+                  'transition-colors duration-200'
+                )}
+                aria-label="Show more content"
+                data-testid="preview-show-more-button"
+              >
+                Show More
+              </button>
+            )}
+            
+            {/* Show Less button for COMPLETE mode */}
+            {viewMode === PreviewMode.COMPLETE && onShowLess && (
+              <button
+                onClick={onShowLess}
+                className={cn(
+                  'text-xs px-3 py-1 rounded',
+                  isDarkTheme ? 'hover:bg-gray-700 text-blue-300' : 'hover:bg-gray-200 text-blue-600',
+                  'transition-colors duration-200'
+                )}
+                aria-label="Show less content"
+                data-testid="preview-show-less-button"
+              >
+                Show Less
+              </button>
+            )}
+          </div>
+        </>
       );
     }
       
@@ -580,37 +618,74 @@ function PreviewContent({
       
       // Regular diff content with Monaco diffing for better visualization
       return (
-        <div 
-          className={baseStyles}
-          style={{ maxHeight: 'none' }}  // Allow Monaco editor to control height
-          data-testid="preview-content-diff"
-        >
-          {/* File info header */}
-          {filePath && (
-            <div className={`mb-2 font-medium ${isDarkTheme ? 'text-yellow-300' : 'text-yellow-700'}`}>
-              {filePath}
-              <span className="ml-2 text-xs">
-                <span className={isDarkTheme ? 'text-green-300' : 'text-green-700'}>
-                  +{changesSummary.additions}
+        <>
+          <div 
+            className={baseStyles}
+            style={{ maxHeight: 'none' }}  // Allow Monaco editor to control height
+            data-testid="preview-content-diff"
+          >
+            {/* File info header */}
+            {filePath && (
+              <div className={`mb-2 font-medium ${isDarkTheme ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                {filePath}
+                <span className="ml-2 text-xs">
+                  <span className={isDarkTheme ? 'text-green-300' : 'text-green-700'}>
+                    +{changesSummary.additions}
+                  </span>
+                  <span className="mx-1">|</span>
+                  <span className={isDarkTheme ? 'text-red-300' : 'text-red-700'}>
+                    -{changesSummary.deletions}
+                  </span>
                 </span>
-                <span className="mx-1">|</span>
-                <span className={isDarkTheme ? 'text-red-300' : 'text-red-700'}>
-                  -{changesSummary.deletions}
-                </span>
-              </span>
-            </div>
-          )}
+              </div>
+            )}
+            
+            {/* Use Monaco diff viewer for all cases - with unified diff fallback */}
+            <MonacoDiffViewer
+              originalText={oldString}
+              modifiedText={newString}
+              unifiedDiff={hasOriginalAndModified ? '' : content}
+              fileName={filePath}
+              isDarkTheme={isDarkTheme}
+              height={viewMode === PreviewMode.COMPLETE ? '500px' : '200px'}
+            />
+          </div>
           
-          {/* Use Monaco diff viewer for all cases - with unified diff fallback */}
-          <MonacoDiffViewer
-            originalText={oldString}
-            modifiedText={newString}
-            unifiedDiff={hasOriginalAndModified ? '' : content}
-            fileName={filePath}
-            isDarkTheme={isDarkTheme}
-            height={viewMode === PreviewMode.COMPLETE ? '500px' : '200px'}
-          />
-        </div>
+          {/* Show More/Less buttons */}
+          <div className="text-center p-1 border-t">
+            {/* Show More button for BRIEF mode when there's more content */}
+            {viewMode === PreviewMode.BRIEF && hasMoreContent && onShowMore && (
+              <button
+                onClick={onShowMore}
+                className={cn(
+                  'text-xs px-3 py-1 rounded',
+                  isDarkTheme ? 'hover:bg-gray-700 text-blue-300' : 'hover:bg-gray-200 text-blue-600',
+                  'transition-colors duration-200'
+                )}
+                aria-label="Show more content"
+                data-testid="preview-show-more-button"
+              >
+                Show More
+              </button>
+            )}
+            
+            {/* Show Less button for COMPLETE mode */}
+            {viewMode === PreviewMode.COMPLETE && onShowLess && (
+              <button
+                onClick={onShowLess}
+                className={cn(
+                  'text-xs px-3 py-1 rounded',
+                  isDarkTheme ? 'hover:bg-gray-700 text-blue-300' : 'hover:bg-gray-200 text-blue-600',
+                  'transition-colors duration-200'
+                )}
+                aria-label="Show less content"
+                data-testid="preview-show-less-button"
+              >
+                Show Less
+              </button>
+            )}
+          </div>
+        </>
       );
     }
       
@@ -621,48 +696,122 @@ function PreviewContent({
         [];
       
       return (
-        <div 
-          className={baseStyles}
-          style={{ maxHeight }}
-          data-testid="preview-content-directory"
-        >
-          {/* Show directory entries with icons */}
-          {content}
-          
-          {/* If we have structured entries, show them with icons */}
-          {entries.length > 0 && viewMode === PreviewMode.COMPLETE && (
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1">
-              {entries.map((entry, i) => (
-                <div key={i} className="flex items-center">
-                  <span className="mr-1">
-                    {entry.isDirectory ? '📁' : '📄'}
-                  </span>
-                  <span className="truncate">
-                    {entry.name}
-                  </span>
-                  {entry.size !== undefined && (
-                    <span className="ml-1 text-gray-500 text-xs">
-                      ({formatSize(entry.size)})
+        <>
+          <div 
+            className={baseStyles}
+            style={{ maxHeight }}
+            data-testid="preview-content-directory"
+          >
+            {/* Show directory entries with icons */}
+            {content}
+            
+            {/* If we have structured entries, show them with icons */}
+            {entries.length > 0 && viewMode === PreviewMode.COMPLETE && (
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1">
+                {entries.map((entry, i) => (
+                  <div key={i} className="flex items-center">
+                    <span className="mr-1">
+                      {entry.isDirectory ? '📁' : '📄'}
                     </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                    <span className="truncate">
+                      {entry.name}
+                    </span>
+                    {entry.size !== undefined && (
+                      <span className="ml-1 text-gray-500 text-xs">
+                        ({formatSize(entry.size)})
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {/* Show More/Less buttons */}
+          <div className="text-center p-1 border-t">
+            {/* Show More button for BRIEF mode when there's more content */}
+            {viewMode === PreviewMode.BRIEF && hasMoreContent && onShowMore && (
+              <button
+                onClick={onShowMore}
+                className={cn(
+                  'text-xs px-3 py-1 rounded',
+                  isDarkTheme ? 'hover:bg-gray-700 text-blue-300' : 'hover:bg-gray-200 text-blue-600',
+                  'transition-colors duration-200'
+                )}
+                aria-label="Show more content"
+                data-testid="preview-show-more-button"
+              >
+                Show More
+              </button>
+            )}
+            
+            {/* Show Less button for COMPLETE mode */}
+            {viewMode === PreviewMode.COMPLETE && onShowLess && (
+              <button
+                onClick={onShowLess}
+                className={cn(
+                  'text-xs px-3 py-1 rounded',
+                  isDarkTheme ? 'hover:bg-gray-700 text-blue-300' : 'hover:bg-gray-200 text-blue-600',
+                  'transition-colors duration-200'
+                )}
+                aria-label="Show less content"
+                data-testid="preview-show-less-button"
+              >
+                Show Less
+              </button>
+            )}
+          </div>
+        </>
       );
     }
       
     default: {
       // Fallback for other content types
       return (
-        <div 
-          className={baseStyles}
-          style={{ maxHeight }}
-          data-testid="preview-content-default"
-        >
-          {content}
-        </div>
+        <>
+          <div 
+            className={baseStyles}
+            style={{ maxHeight }}
+            data-testid="preview-content-default"
+          >
+            {content}
+          </div>
+          
+          {/* Show More/Less buttons */}
+          <div className="text-center p-1 border-t">
+            {/* Show More button for BRIEF mode when there's more content */}
+            {viewMode === PreviewMode.BRIEF && hasMoreContent && onShowMore && (
+              <button
+                onClick={onShowMore}
+                className={cn(
+                  'text-xs px-3 py-1 rounded',
+                  isDarkTheme ? 'hover:bg-gray-700 text-blue-300' : 'hover:bg-gray-200 text-blue-600',
+                  'transition-colors duration-200'
+                )}
+                aria-label="Show more content"
+                data-testid="preview-show-more-button"
+              >
+                Show More
+              </button>
+            )}
+            
+            {/* Show Less button for COMPLETE mode */}
+            {viewMode === PreviewMode.COMPLETE && onShowLess && (
+              <button
+                onClick={onShowLess}
+                className={cn(
+                  'text-xs px-3 py-1 rounded',
+                  isDarkTheme ? 'hover:bg-gray-700 text-blue-300' : 'hover:bg-gray-200 text-blue-600',
+                  'transition-colors duration-200'
+                )}
+                aria-label="Show less content"
+                data-testid="preview-show-less-button"
+              >
+                Show Less
+              </button>
+            )}
+          </div>
+        </>
       );
     }
   }

@@ -1,5 +1,6 @@
 // Basic API response and request types
 import { ToolPreviewData } from '../../types/preview';
+import { TimelineItem } from '../../types/timeline';
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -111,6 +112,16 @@ export enum WebSocketEvent {
   // New tool state events
   TOOL_STATE_UPDATE = 'tool_state_update',
   TOOL_HISTORY = 'tool_history',
+  
+  // Timeline events
+  TIMELINE_UPDATE = 'timeline_update',
+  TIMELINE_HISTORY = 'timeline_history',
+  
+  // Session management events
+  SESSION_LOADED = 'session_loaded',
+  SESSION_SAVED = 'session_saved',
+  SESSION_DELETED = 'session_deleted',
+  SESSION_LIST_UPDATED = 'session_list_updated',
 }
 
 /**
@@ -267,6 +278,59 @@ export interface WebSocketEventMap {
         briefContent: string;
         fullContent?: string;
         metadata?: Record<string, unknown>;
+      };
+    }>;
+  };
+  
+  // Timeline events
+  [WebSocketEvent.TIMELINE_UPDATE]: {
+    sessionId: string;
+    item: TimelineItem;
+  };
+  
+  [WebSocketEvent.TIMELINE_HISTORY]: {
+    sessionId: string;
+    items: TimelineItem[];
+    nextPageToken?: string;
+    totalCount: number;
+  };
+  
+  // Session management events
+  [WebSocketEvent.SESSION_LOADED]: { 
+    sessionId: string;
+    timestamp: string;
+  };
+  
+  [WebSocketEvent.SESSION_SAVED]: {
+    sessionId: string;
+    timestamp: string;
+  };
+  
+  [WebSocketEvent.SESSION_DELETED]: {
+    sessionId: string;
+    timestamp: string;
+  };
+  
+  [WebSocketEvent.SESSION_LIST_UPDATED]: {
+    sessions: Array<{
+      id: string;
+      createdAt: string;
+      lastActiveAt: string;
+      messageCount: number;
+      toolCount: number;
+      initialQuery?: string;
+      lastMessage?: {
+        role: 'user' | 'assistant';
+        content: string;
+        timestamp: string;
+      };
+      repositoryInfo?: {
+        repoName: string;
+        commitHash: string;
+        branch: string;
+        remoteUrl?: string;
+        isDirty?: boolean;
+        workingDirectory?: string;
       };
     }>;
   };

@@ -77,6 +77,7 @@
     "events": "^3.3.0",
     "express": "^4.21.2",
     "glob": "^8.1.0",
+    "inversify": "^7.4.0",
     "monaco-editor": "^0.52.2",
     "ora": "^8.2.0",
     "prompts": "^2.4.2",

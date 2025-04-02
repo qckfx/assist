@@ -24,7 +24,7 @@ let mockSessionId = 'test-session-id';
 
 // Mock usePermissionKeyboardHandler
 vi.mock('@/hooks/usePermissionKeyboardHandler', () => ({
-  usePermissionKeyboardHandler: (props: { sessionId?: string }) => mockUsePermissionKeyboardHandler(props)
+  usePermissionKeyboardHandler: () => mockUsePermissionKeyboardHandler()
 }));
 
 // Mock WebSocketTerminalContext

@@ -1,8 +1,9 @@
 import { MessageType } from '../components/Message';
+import { StructuredContent } from '../../types/message';
 
 export interface TerminalMessage {
   id: string;
-  content: string;
+  content: StructuredContent | string; // Allow string for backward compatibility
   type: MessageType;
   timestamp: Date;
 }
