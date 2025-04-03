@@ -31,7 +31,7 @@ describe('Permission Controller', () => {
     // Create mock agent service
     mockAgentService = {
       getPermissionRequests: jest.fn(),
-      resolvePermission: jest.fn(),
+      resolvePermissionByExecutionId: jest.fn(),
     };
 
     (getAgentService as jest.Mock).mockReturnValue(mockAgentService);
@@ -91,12 +91,12 @@ describe('Permission Controller', () => {
       // Mock request body
       mockRequest.body = {
         sessionId: testSessionId,
-        permissionId: 'test-permission-id',
+        executionId: 'test-execution-id',
         granted: true,
       };
 
       // Mock permission resolution
-      mockAgentService.resolvePermission.mockReturnValue(true);
+      mockAgentService.resolvePermissionByExecutionId.mockReturnValue(true);
 
       // Call the controller
       await permissionController.resolvePermission(
@@ -106,11 +106,11 @@ describe('Permission Controller', () => {
       );
 
       // Verify the response
-      expect(mockAgentService.resolvePermission).toHaveBeenCalledWith('test-permission-id', true);
+      expect(mockAgentService.resolvePermissionByExecutionId).toHaveBeenCalledWith('test-execution-id', true);
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({
         sessionId: testSessionId,
-        permissionId: 'test-permission-id',
+        executionId: 'test-execution-id',
         granted: true,
         resolved: true,
       });
@@ -122,12 +122,12 @@ describe('Permission Controller', () => {
       // Mock request body
       mockRequest.body = {
         sessionId: testSessionId,
-        permissionId: 'non-existent-id',
+        executionId: 'non-existent-id',
         granted: true,
       };
 
       // Mock permission resolution failure
-      mockAgentService.resolvePermission.mockReturnValue(false);
+      mockAgentService.resolvePermissionByExecutionId.mockReturnValue(false);
 
       // Call the controller
       await permissionController.resolvePermission(
