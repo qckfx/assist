@@ -25,8 +25,8 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
     // Get the agent service
     const agentService = getAgentService();
     
-    // Create a new session
-    const session = agentService.startSession(body.config);
+    // Create a new session - now awaiting to ensure container is initialized
+    const session = await agentService.startSession(body.config);
     
     // Return the session info
     res.status(201).json({
@@ -149,6 +149,66 @@ export async function getStatus(req: Request, res: Response, next: NextFunction)
       lastActiveAt: session.lastActiveAt.toISOString(),
       pendingPermissionRequests: permissionRequests.length > 0 ? permissionRequests : undefined,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Save session state
+ * @route POST /api/sessions/:sessionId/state/save
+ */
+export async function saveSessionState(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { sessionId } = req.params;
+    const agentService = getAgentService();
+    
+    // Verify the session exists
+    try {
+      sessionManager.getSession(sessionId);
+    } catch {
+      res.status(404).json({ success: false, message: 'Session not found' });
+      return;
+    }
+    
+    await agentService.saveSessionState(sessionId);
+    res.status(200).json({ success: true, message: 'Session state saved successfully' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * List persisted sessions
+ * @route GET /api/sessions/persisted
+ */
+export async function listPersistedSessions(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const agentService = getAgentService();
+    
+    const sessions = await agentService.listPersistedSessions();
+    res.status(200).json({ sessions });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Delete a persisted session
+ * @route DELETE /api/sessions/persisted/:sessionId
+ */
+export async function deletePersistedSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { sessionId } = req.params;
+    const agentService = getAgentService();
+    
+    const success = await agentService.deletePersistedSession(sessionId);
+    
+    if (success) {
+      res.status(200).json({ success: true, message: 'Session deleted successfully' });
+    } else {
+      res.status(500).json({ success: false, message: 'Failed to delete session' });
+    }
   } catch (error) {
     next(error);
   }

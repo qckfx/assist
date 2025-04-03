@@ -54,6 +54,16 @@ export class BasicPromptManager implements PromptManager {
                "Please correct your approach accordingly.";
     }
     
+    // Add tool limit reached context if applicable
+    if (sessionState?.toolLimitReached) {
+      prompt += `\n\nYou have reached the maximum limit of tool operations for this session.
+
+Please summarize what you've accomplished so far and what remains to be done. 
+Check in with the user on how they'd like to proceed. The user can continue with a new message.
+
+DO NOT suggest using more tools - you have reached your limit for this interaction.`;
+    }
+    
     return prompt;
   }
   

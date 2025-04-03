@@ -19,6 +19,7 @@ export interface FileEditToolArgs {
 export interface FileEditToolSuccessResult {
   success: true;
   path: string;
+  displayPath?: string; // Optional formatted path for UI display
   originalContent: string;
   newContent: string;
 }
@@ -26,6 +27,7 @@ export interface FileEditToolSuccessResult {
 export interface FileEditToolErrorResult {
   success: false;
   path: string;
+  displayPath?: string; // Optional formatted path for UI display
   error: string;
 }
 

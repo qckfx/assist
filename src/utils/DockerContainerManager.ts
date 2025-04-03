@@ -71,24 +71,38 @@ export class DockerContainerManager {
       return true;
     } catch (error) {
       // Provide more detailed error messages based on error type
-      if ((error as any).code === 'ENOENT') {
+      if ((error as {code?: string}).code === 'ENOENT') {
         this.logger?.error('Docker not found on system PATH', 'system');
-      } else if ((error as any).code === 'EACCES') {
+      } else if ((error as {code?: string}).code === 'EACCES') {
         this.logger?.error('Permission denied when checking Docker availability', 'system');
       } else {
         this.logger?.error(`Docker not available: ${(error as Error).message}`, 'system');
-        if ((error as any).stderr) {
-          this.logger?.error(`Docker error details: ${(error as any).stderr}`, 'system');
+        if ((error as {stderr?: string}).stderr) {
+          this.logger?.error(`Docker error details: ${(error as {stderr: string}).stderr}`, 'system');
         }
       }
       return false;
     }
   }
 
+  // Cache container info to avoid repeated lookups
+  private containerInfoCache: ContainerInfo | null = null;
+  private containerInfoCacheTimestamp: number = 0;
+  private readonly containerInfoCacheTTL: number = 30000; // 30 seconds TTL (increased from 5 seconds)
+
   /**
-   * Get information about the container
+   * Get information about the container with caching to reduce Docker CLI calls
    */
   public async getContainerInfo(): Promise<ContainerInfo | null> {
+    // Check if we have a valid cached result
+    const now = Date.now();
+    if (
+      this.containerInfoCache &&
+      now - this.containerInfoCacheTimestamp < this.containerInfoCacheTTL
+    ) {
+      return this.containerInfoCache;
+    }
+    
     try {
       // Get container ID using docker-compose
       const { stdout: idOutput } = await execAsync(
@@ -97,6 +111,9 @@ export class DockerContainerManager {
       
       const containerId = idOutput.trim();
       if (!containerId) {
+        // Update cache with null result
+        this.containerInfoCache = null;
+        this.containerInfoCacheTimestamp = now;
         return null;
       }
       
@@ -111,15 +128,22 @@ export class DockerContainerManager {
       // Get project path - this is our local directory that's mounted
       const projectPath = path.resolve(__dirname, '..', '..');
       
-      return {
+      // Create and cache the result
+      const result: ContainerInfo = {
         id: containerId,
         name: containerName,
         status: isRunning ? 'running' : 'stopped',
         projectPath,
         workspacePath: '/workspace'
       };
+      
+      this.containerInfoCache = result;
+      this.containerInfoCacheTimestamp = now;
+      return result;
     } catch {
       // If there's an error, the container probably doesn't exist
+      this.containerInfoCache = null;
+      this.containerInfoCacheTimestamp = now;
       return null;
     }
   }
@@ -277,8 +301,8 @@ export class DockerContainerManager {
               break;
             }
             
-            // Wait before retry
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Wait before retry (reduced from 1000ms for faster initialization)
+            await new Promise(resolve => setTimeout(resolve, 100));
           } catch (healthError) {
             this.logger?.warn(`Health check attempt ${attempts} failed: ${(healthError as Error).message}`, 'system');
             
@@ -286,8 +310,8 @@ export class DockerContainerManager {
               throw healthError;
             }
             
-            // Wait before retry
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Wait before retry (reduced from 1000ms for faster initialization)
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
         

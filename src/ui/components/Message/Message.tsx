@@ -1,12 +1,13 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { StructuredContent, TextContentPart, parseStructuredContent } from '../../../types/message';
 
 export type MessageType = 'user' | 'assistant' | 'system' | 'error';
 
 export interface MessageProps {
-  content: string;
+  content: StructuredContent | string; // Allow string for backward compatibility
   type: MessageType;
-  timestamp?: Date;
+  timestamp?: number; // Timestamp in milliseconds
   className?: string;
   showTimestamp?: boolean;
   enableAnsiColors?: boolean;
@@ -95,8 +96,42 @@ export function Message({
   isStreaming = false,
   streamingContent = '',
 }: MessageProps) {
-  // Process content for ANSI colors if enabled
-  const processedContent = enableAnsiColors ? parseAnsi(content) : content;
+  // Process structured content to render properly
+  const renderStructuredContent = () => {
+    // Parse string content if needed
+    let structuredContent: StructuredContent;
+    
+    if (typeof content === 'string') {
+      // Try to parse as structured content using Zod
+      const parsed = parseStructuredContent(content);
+      
+      if (parsed) {
+        // Successfully parsed as structured content
+        structuredContent = parsed;
+      } else {
+        // Use as plain text content if parsing fails
+        structuredContent = [{ type: 'text', text: content }];
+      }
+    } else {
+      // Already structured content
+      structuredContent = content;
+    }
+    
+    // Handle structured content
+    return structuredContent.map((part, index) => {
+      if (part.type === 'text') {
+        const textPart = part as TextContentPart;
+        // Process ANSI colors if enabled
+        return (
+          <div key={index} className="whitespace-pre-wrap break-words">
+            {enableAnsiColors ? parseAnsi(textPart.text) : textPart.text}
+          </div>
+        );
+      }
+      // Add handlers for other content types here (images, code blocks, etc.)
+      return null;
+    });
+  };
   
   // Get CSS variables based on message type
   const getTypeStyles = () => {
@@ -160,7 +195,7 @@ export function Message({
           <span className="animate-pulse cursor">|</span>
         </div>
       ) : (
-        <div className="whitespace-pre-wrap break-words">{processedContent}</div>
+        renderStructuredContent()
       )}
       
       {showTimestamp && timestamp && !isStreaming && (
@@ -172,7 +207,56 @@ export function Message({
           }}
           aria-hidden="true"
         >
-          {timestamp.toLocaleTimeString()}
+          {(() => {
+            // Add debugging for timestamp
+            console.log('Timestamp in Message component:', {
+              timestamp,
+              type: typeof timestamp,
+              value: timestamp
+            });
+            
+            const now = new Date();
+            // Handle timestamp as number (milliseconds since epoch)
+            const messageDate = new Date(timestamp);
+            
+            // Check if the message is more than 1 day old
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const msDiff = now.getTime() - messageDate.getTime();
+            const isOlderThanOneDay = msDiff > msPerDay;
+            
+            // Check if message is from today (same calendar date)
+            const isToday = now.toDateString() === messageDate.toDateString();
+            
+            // Check if message is from yesterday
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const isYesterday = yesterday.toDateString() === messageDate.toDateString();
+            
+            // Format time consistently
+            const formattedTime = messageDate.toLocaleTimeString(undefined, {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+            
+            if (isToday) {
+              // Messages from today: "Today at 3:45 PM"
+              return `Today at ${formattedTime}`;
+            } else if (isYesterday) {
+              // Messages from yesterday: "Yesterday at 3:45 PM"
+              return `Yesterday at ${formattedTime}`;
+            } else if (isOlderThanOneDay) {
+              // Format: "Apr 2, 2025 at 3:45 PM"
+              return `${messageDate.toLocaleDateString(undefined, { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric' 
+              })} at ${formattedTime}`;
+            } else {
+              // Show only time for other messages from today
+              return formattedTime;
+            }
+          })()}
         </div>
       )}
     </div>

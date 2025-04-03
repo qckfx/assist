@@ -27,6 +27,8 @@ interface GlobToolSuccessResult {
   matches: string[];
   count: number;
   hasMore: boolean;
+  truncated: boolean; // Flag to indicate if results were truncated
+  totalMatches: number; // Original count before truncation
 }
 
 interface GlobToolErrorResult {
@@ -34,6 +36,8 @@ interface GlobToolErrorResult {
   pattern: string;
   cwd: string;
   error: string;
+  truncated: boolean;
+  totalMatches: number;
 }
 
 export type GlobToolResult = GlobToolSuccessResult | GlobToolErrorResult;
@@ -120,7 +124,34 @@ export const createGlobTool = (): Tool => {
         
         // Execute the glob
         context.logger?.debug(`Executing glob: ${pattern} in ${cwd}`);
-        const matches = await globAsync(pattern, options);
+        let matches = await globAsync(pattern, options);
+        
+        // Track the total number of matches before truncation
+        const totalMatches = matches.length;
+        
+        // Convert absolute paths to relative paths for better readability
+        matches = matches.map(filePath => {
+          // If the cwd is "." (current directory), use path.relative with process.cwd()
+          if (cwd === '.') {
+            return path.relative(process.cwd(), filePath);
+          }
+          // Otherwise, for absolute paths, make them relative to the specified cwd
+          if (path.isAbsolute(filePath) && path.isAbsolute(cwd)) {
+            return path.relative(cwd, filePath);
+          }
+          return filePath;
+        });
+        
+        // Handle large result sets - if there are too many matches, we need to truncate
+        // to avoid exceeding message size limits (approximating 500 chars per file path)
+        const MAX_RESULTS_SIZE = 40; // Limit to 40 results max to avoid token limits
+        let truncated = false;
+        
+        if (matches.length > MAX_RESULTS_SIZE) {
+          context.logger?.info(`GlobTool: Truncating ${matches.length} results to ${MAX_RESULTS_SIZE} to avoid message size limits`);
+          matches = matches.slice(0, MAX_RESULTS_SIZE);
+          truncated = true;
+        }
         
         return {
           success: true,
@@ -128,7 +159,9 @@ export const createGlobTool = (): Tool => {
           cwd: cwd,
           matches,
           count: matches.length,
-          hasMore: matches.length >= maxResults
+          hasMore: matches.length >= options.limit || truncated,
+          truncated: truncated,
+          totalMatches: totalMatches
         };
       } catch (error: unknown) {
         const err = error as Error;
@@ -137,7 +170,9 @@ export const createGlobTool = (): Tool => {
           success: false,
           pattern,
           cwd,
-          error: err.message
+          error: err.message,
+          truncated: false,
+          totalMatches: 0
         };
       }
     }

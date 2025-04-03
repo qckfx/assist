@@ -35,6 +35,36 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
   ) {
     this.containerManager = containerManager;
     this.logger = options?.logger;
+    
+    // Start container initialization immediately in the background
+    // Fire and forget - we don't await this promise in the constructor
+    this.initializeContainer().catch(error => {
+      this.logger?.error(`Background Docker initialization failed: ${(error as Error).message}`, error, LogCategory.SYSTEM);
+    });
+  }
+  
+  /**
+   * Initialize the Docker container in the background
+   * This allows eager initialization without blocking construction
+   * @returns Promise that resolves when container is initialized
+   */
+  public initializeContainer(): Promise<ContainerInfo | null> {
+    this.logger?.info('Starting Docker container initialization', LogCategory.SYSTEM);
+    
+    // Return the promise instead of using .then() so caller can await if needed
+    return this.containerManager.ensureContainer()
+      .then(container => {
+        if (container) {
+          this.logger?.info('Docker container initialized successfully', LogCategory.SYSTEM);
+        } else {
+          this.logger?.warn('Docker container initialization failed', LogCategory.SYSTEM);
+        }
+        return container;
+      })
+      .catch(error => {
+        this.logger?.error(`Error initializing Docker container: ${(error as Error).message}`, error, LogCategory.SYSTEM);
+        throw error;
+      });
   }
 
   /**
@@ -45,45 +75,62 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
     stderr: string;
     exitCode: number;
   }> {
+    console.log('⚠️ DOCKER EXECUTE: Starting execution of command:', command);
     try {
       // Convert working directory to container path if provided
       let containerWorkingDir: string | undefined;
       
       if (workingDir) {
+        console.log('⚠️ DOCKER EXECUTE: Getting container info for working dir conversion');
         const containerInfo = await this.containerManager.getContainerInfo();
         if (!containerInfo) {
+          console.log('⚠️ DOCKER EXECUTE: No container info available');
           throw new Error('Container is not available');
         }
         
         containerWorkingDir = this.toContainerPath(workingDir, containerInfo);
+        console.log('⚠️ DOCKER EXECUTE: Converted working dir to:', containerWorkingDir);
       }
       
       this.logger?.debug(`Executing command in container: ${command}`, LogCategory.TOOLS);
+      console.log('⚠️ DOCKER EXECUTE: Calling container manager to execute command');
       
       // Try to execute the command
       try {
-        return await this.containerManager.executeCommand(command, containerWorkingDir);
+        console.log('⚠️ DOCKER EXECUTE: Awaiting containerManager.executeCommand');
+        const result = await this.containerManager.executeCommand(command, containerWorkingDir);
+        console.log('⚠️ DOCKER EXECUTE: Completed execution with exitCode:', result.exitCode);
+        return result;
       } catch (error) {
+        console.log('⚠️ DOCKER EXECUTE: Inner catch - Error executing command:', (error as Error).message);
         // Check if container needs to be restarted
         if ((error as Error).message.includes('container not running') || 
             (error as Error).message.includes('No such container')) {
           
+          console.log('⚠️ DOCKER EXECUTE: Container not running, attempting to restart');
           this.logger?.warn('Container not running, attempting to restart', LogCategory.TOOLS);
           
           // Try to restart container
+          console.log('⚠️ DOCKER EXECUTE: Calling ensureContainer');
           const containerInfo = await this.containerManager.ensureContainer();
           if (!containerInfo) {
+            console.log('⚠️ DOCKER EXECUTE: Failed to restart container');
             throw new Error('Failed to restart container');
           }
           
           // Retry command after restart
-          return await this.containerManager.executeCommand(command, containerWorkingDir);
+          console.log('⚠️ DOCKER EXECUTE: Retrying command after container restart');
+          const retryResult = await this.containerManager.executeCommand(command, containerWorkingDir);
+          console.log('⚠️ DOCKER EXECUTE: Retry completed with exitCode:', retryResult.exitCode);
+          return retryResult;
         }
         
         // If it's not a container availability issue, rethrow
+        console.log('⚠️ DOCKER EXECUTE: Rethrowing error:', (error as Error).message);
         throw error;
       }
     } catch (error) {
+      console.log('⚠️ DOCKER EXECUTE: Outer catch - Error executing command:', (error as Error).message);
       this.logger?.error(`Error executing command in container: ${(error as Error).message}`, error, LogCategory.TOOLS);
       return {
         stdout: '',
@@ -124,10 +171,14 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       // Check if file exists
       const { exitCode: fileExists } = await this.executeCommand(`[ -f "${containerPath}" ]`);
       if (fileExists !== 0) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
-          error: `File does not exist: ${filepath}`
+          displayPath,
+          error: `File does not exist: ${displayPath}`
         };
       }
       
@@ -136,17 +187,25 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       const fileSize = parseInt(fileSizeStr.trim(), 10);
       
       if (isNaN(fileSize)) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
-          error: `Unable to determine file size: ${filepath}`
+          displayPath,
+          error: `Unable to determine file size: ${displayPath}`
         };
       }
       
       if (fileSize > maxSize) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
+          displayPath,
           error: `File is too large (${fileSize} bytes) to read. Max size: ${maxSize} bytes`
         };
       }
@@ -178,9 +237,13 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
           ? Math.min(startLine + lineCount, totalLines) 
           : totalLines;
         
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: true as const,
           path: filepath,
+          displayPath, // Add formatted path for UI display
           content: content,
           size: fileSize,
           encoding,
@@ -193,9 +256,13 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         };
       }
       
+      // Format path for display
+      const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+      
       return {
         success: true as const,
         path: filepath,
+        displayPath, // Add formatted path for UI display
         content: content,
         size: fileSize,
         encoding
@@ -271,6 +338,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         return {
           success: false as const,
           path: filepath,
+          displayPath: fileResult.displayPath || this.formatPathForDisplay(filepath, containerInfo),
           error: fileResult.error
         };
       }
@@ -281,17 +349,25 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       const occurrences = fileContent.split(searchCode).length - 1;
       
       if (occurrences === 0) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
-          error: `Search code not found in file: ${filepath}`
+          displayPath,
+          error: `Search code not found in file: ${displayPath}`
         };
       }
       
       if (occurrences > 1) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
         return {
           success: false as const,
           path: filepath,
+          displayPath,
           error: `Found ${occurrences} instances of the search code. Please provide a more specific search code that matches exactly once.`
         };
       }
@@ -302,9 +378,13 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       // Write the new content
       await this.writeFile(filepath, newContent);
       
+      // Format path for display
+      const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+      
       return {
         success: true as const,
         path: filepath,
+        displayPath,
         originalContent: fileContent,
         newContent: newContent
       };
@@ -312,6 +392,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       return {
         success: false as const,
         path: filepath,
+        displayPath: filepath, // Use original path for display in case of early errors
         error: `Error editing file: ${(error as Error).message}`
       };
     }
@@ -354,23 +435,33 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
    * List directory contents
    */
   async ls(dirPath: string, showHidden: boolean = false, details: boolean = false): Promise<LSToolSuccessResult | LSToolErrorResult> {
+    console.log('⚠️ DOCKER LS OPERATION STARTING for path:', dirPath);
     try {
       // Get container info
+      console.log('⚠️ DOCKER LS - Getting container info');
       const containerInfo = await this.containerManager.getContainerInfo();
       if (!containerInfo) {
+        console.log('⚠️ DOCKER LS - No container info available');
         return {
           success: false as const,
           path: dirPath,
           error: 'Container is not available'
         };
       }
+      console.log('⚠️ DOCKER LS - Container info received:', containerInfo.id.substring(0, 12));
       
       // Convert to container path
+      console.log('⚠️ DOCKER LS - Converting to container path:', dirPath);
       const containerPath = this.toContainerPath(dirPath, containerInfo);
+      console.log('⚠️ DOCKER LS - Container path resolved to:', containerPath);
       
       // Check if directory exists
+      console.log('⚠️ DOCKER LS - Checking if directory exists');
       const { exitCode } = await this.executeCommand(`[ -d "${containerPath}" ]`);
+      console.log('⚠️ DOCKER LS - Directory existence check result:', exitCode === 0 ? 'Directory exists' : 'Directory not found');
+      
       if (exitCode !== 0) {
+        console.log('⚠️ DOCKER LS - Directory not found, returning error');
         return {
           success: false as const,
           path: dirPath,
@@ -467,6 +558,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         }
       }
       
+      console.log('⚠️ DOCKER LS - Processing completed successfully with', results.length, 'entries');
       return {
         success: true as const,
         path: dirPath,
@@ -474,11 +566,14 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         count: results.length
       };
     } catch (error) {
+      console.log('⚠️ DOCKER LS - Error occurred:', (error as Error).message);
       return {
         success: false as const,
         path: dirPath,
         error: `Error listing directory: ${(error as Error).message}`
       };
+    } finally {
+      console.log('⚠️ DOCKER LS - Operation complete');
     }
   }
 
@@ -522,6 +617,25 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       );
     }
     return containerPath;
+  }
+  
+  /**
+   * Format a path for display by converting absolute paths to relative ones
+   * This is used in tool results to show more user-friendly paths
+   */
+  private formatPathForDisplay(absolutePath: string, containerInfo: ContainerInfo): string {
+    // If it's a container path, convert to relative project path
+    if (absolutePath.startsWith(containerInfo.workspacePath)) {
+      return path.posix.relative(containerInfo.workspacePath, absolutePath);
+    }
+    
+    // If it's a host path, try to make it relative to the project directory
+    if (absolutePath.startsWith(containerInfo.projectPath)) {
+      return path.relative(containerInfo.projectPath, absolutePath);
+    }
+    
+    // If path is outside known directories, return as is
+    return absolutePath;
   }
 
   /**

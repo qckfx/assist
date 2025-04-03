@@ -7,6 +7,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import { TerminalProvider } from '@/context/TerminalContext';
 import WebSocketTerminal from '@/components/WebSocketTerminal';
 import apiClient from '@/services/apiClient';
+import { ToolPreferencesProvider } from '@/context/ToolPreferencesContext';
 
 // Mock apiClient
 vi.mock('@/services/apiClient', () => ({
@@ -67,17 +68,38 @@ vi.mock('@/context/WebSocketContext', () => ({
   })
 }));
 
+// Mock ToolPreferencesContext
+vi.mock('@/context/ToolPreferencesContext', () => ({
+  ToolPreferencesProvider: ({ children }: { children: React.ReactNode }) => children,
+  useToolPreferencesContext: () => ({
+    preferences: {
+      defaultViewMode: 'brief',
+      persistPreferences: true,
+      toolOverrides: {}
+    },
+    initialized: true,
+    setDefaultViewMode: vi.fn(),
+    setToolViewMode: vi.fn(),
+    togglePersistPreferences: vi.fn(),
+    resetPreferences: vi.fn(),
+    getToolViewMode: vi.fn(() => 'brief'),
+    clearToolOverride: vi.fn()
+  })
+}));
+
 // Test component with simplified integration 
 const IntegrationTestApp = () => {
   return (
     <ThemeProvider defaultTheme="dark">
       <TerminalProvider>
         <WebSocketTerminalProvider>
-          <WebSocketTerminal
-            fullScreen
-            autoConnect={true}
-            showConnectionStatus={true}
-          />
+          <ToolPreferencesProvider>
+            <WebSocketTerminal
+              fullScreen
+              autoConnect={true}
+              showConnectionStatus={true}
+            />
+          </ToolPreferencesProvider>
         </WebSocketTerminalProvider>
       </TerminalProvider>
     </ThemeProvider>

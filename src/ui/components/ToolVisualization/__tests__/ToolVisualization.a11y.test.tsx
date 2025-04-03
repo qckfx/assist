@@ -1,7 +1,7 @@
 import React from 'react';
 import { render } from '@testing-library/react';
-import { vi } from 'vitest';
 import { ToolVisualization } from '../ToolVisualization';
+import { PreviewMode } from '../../../../types/preview';
 
 // Note: In a real implementation, we would use jest-axe for a11y testing
 // But for this placeholder, we'll just check for the necessary ARIA attributes
@@ -17,6 +17,7 @@ describe('ToolVisualization Accessibility', () => {
     startTime: Date.now() - 1000,
     endTime: Date.now(),
     executionTime: 1000,
+    viewMode: PreviewMode.BRIEF,
   };
   
   const mockRunningTool = {
@@ -27,6 +28,7 @@ describe('ToolVisualization Accessibility', () => {
     args: { pattern: '**/*.ts' },
     paramSummary: 'pattern: **/*.ts',
     startTime: Date.now(),
+    viewMode: PreviewMode.BRIEF,
   };
   
   const mockErrorTool = {
@@ -40,6 +42,7 @@ describe('ToolVisualization Accessibility', () => {
     startTime: Date.now() - 500,
     endTime: Date.now(),
     executionTime: 500,
+    viewMode: PreviewMode.BRIEF,
   };
   
   it('should have proper role attribute', () => {
@@ -93,22 +96,22 @@ describe('ToolVisualization Accessibility', () => {
     expect(statusElement).toHaveAttribute('aria-live', 'off');
   });
   
-  it('adds clickable style to parameters when onToggleExpand is provided', () => {
-    const onToggleExpand = vi.fn();
+  it('renders parameters with appropriate styling', () => {
     const { container } = render(
-      <ToolVisualization tool={mockCompletedTool} onToggleExpand={onToggleExpand} />
+      <ToolVisualization tool={mockCompletedTool} />
     );
     
-    // Check that parameters have cursor style when onToggleExpand is provided
-    const paramsElement = container.querySelector('.truncate');
-    expect(paramsElement).toHaveAttribute('style', expect.stringContaining('cursor: pointer'));
+    // Check that description element exists and uses break-words for long text
+    const descriptionElement = container.querySelector('.break-words');
+    expect(descriptionElement).toBeInTheDocument();
+    expect(descriptionElement?.textContent).toContain('command: ls -la');
   });
   
-  it('does not add clickable style to parameters when onToggleExpand is not provided', () => {
+  it('contains appropriate text content', () => {
     const { container } = render(<ToolVisualization tool={mockCompletedTool} />);
     
-    // Check that parameters do not have cursor: pointer when onToggleExpand is not provided
-    const paramsElement = container.querySelector('.truncate');
-    expect(paramsElement).toHaveAttribute('style', expect.stringContaining('cursor: default'));
+    // Check that parameters show the correct content
+    expect(container.textContent).toContain('BashTool');
+    expect(container.textContent).toContain('command: ls -la');
   });
 });

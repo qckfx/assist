@@ -341,7 +341,6 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
       
       // If this event happened after abort, ignore it
       if (abortTimestamp && eventTimestamp > abortTimestamp) {
-        console.log('Ignoring tool completion event after abort:', data.tool.id);
         return;
       }
       
@@ -560,7 +559,9 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
    * Flush all tool buffers
    */
   public flushAllToolBuffers(): void {
-    Object.keys(this.toolResultBuffer).forEach(toolId => {
+    const toolIds = Object.keys(this.toolResultBuffer);
+    
+    toolIds.forEach(toolId => {
       this.flushToolBuffer(toolId);
     });
   }
@@ -726,12 +727,6 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
         }
       });
       console.log('RealWebSocketService: Applied garbage collection hints');
-      
-      // In Node.js testing environments, we could force GC if available
-      // This is commented out because it requires special Node.js flags
-      // if (global.gc) {
-      //   global.gc();
-      // }
     }
     
     console.log('RealWebSocketService: Reset complete');

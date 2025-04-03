@@ -54,6 +54,14 @@ export const createPermissionManager = (
      * @returns Whether permission was granted
      */
     async requestPermission(toolId: string, args: Record<string, unknown>): Promise<boolean> {
+      // Debug logging for all permission requests
+      logger?.info(`Permission request for tool: ${toolId}`, LogCategory.PERMISSIONS, {
+        toolId,
+        argsKeys: Object.keys(args),
+        fastEditMode,
+        dangerMode
+      });
+      
       // When DANGER_MODE is enabled, auto-approve everything
       if (dangerMode) {
         logger?.info(`DANGER_MODE enabled, auto-approving tool: ${toolId}`, LogCategory.PERMISSIONS);
@@ -62,13 +70,26 @@ export const createPermissionManager = (
       
       const tool = toolRegistry.getTool(toolId);
       
+      // Log tool info
+      if (tool) {
+        logger?.info(`Tool info for ${toolId}:`, LogCategory.PERMISSIONS, {
+          requiresPermission: tool.requiresPermission,
+          alwaysRequirePermission: tool.alwaysRequirePermission,
+          category: tool.category
+        });
+      } else {
+        logger?.warn(`Unknown tool ${toolId} requesting permission`, LogCategory.PERMISSIONS);
+      }
+      
       // Handle unknown tools - require permission by default
       if (!tool) {
+        logger?.info(`Unknown tool ${toolId}, requesting permission from user`, LogCategory.PERMISSIONS);
         return await uiHandler.requestPermission(toolId, args);
       }
       
       // If tool always requires permission, always prompt regardless of mode
       if (tool.alwaysRequirePermission) {
+        logger?.info(`Tool ${toolId} has alwaysRequirePermission=true, requesting permission`, LogCategory.PERMISSIONS);
         return await uiHandler.requestPermission(toolId, args);
       }
       
@@ -80,14 +101,22 @@ export const createPermissionManager = (
       
       // If the tool doesn't require permission, auto-approve
       if (!tool.requiresPermission) {
+        logger?.info(`Tool ${toolId} has requiresPermission=false, auto-approving`, LogCategory.PERMISSIONS);
         return true;
       }
       
       // Otherwise, request permission normally
+      logger?.info(`Requesting user permission for tool: ${toolId}`, LogCategory.PERMISSIONS);
       const granted = await uiHandler.requestPermission(toolId, args);
+      
+      // Log the permission decision
       if (granted) {
+        logger?.info(`Permission granted for tool: ${toolId}`, LogCategory.PERMISSIONS);
         grantedPermissions.set(toolId, true);
+      } else {
+        logger?.info(`Permission denied for tool: ${toolId}`, LogCategory.PERMISSIONS);
       }
+      
       return granted;
     },
     

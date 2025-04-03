@@ -19,6 +19,12 @@ export const API_ENDPOINTS = {
   PERMISSIONS_RESOLVE: '/permissions/resolve',
   FAST_EDIT_MODE: '/permissions/fast-edit-mode',
   DOCS: '/docs',
+  // Add session management endpoints
+  SESSIONS_LIST: '/sessions/persisted',
+  SESSIONS_SAVE: '/sessions/:sessionId/state/save',
+  SESSIONS_DELETE: '/sessions/persisted/:sessionId',
+  // Timeline endpoint
+  TIMELINE: '/sessions/:sessionId/timeline',
 };
 
 // API request timeout in milliseconds

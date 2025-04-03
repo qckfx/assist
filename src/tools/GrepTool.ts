@@ -25,6 +25,8 @@ interface GrepToolSuccessResult {
   results: GrepResult[];
   count: number;
   hasMore: boolean;
+  truncated: boolean; // Flag to indicate if results were truncated
+  totalMatches: number; // Original count before truncation
 }
 
 interface GrepToolErrorResult {
@@ -33,6 +35,8 @@ interface GrepToolErrorResult {
   path: string;
   error: string;
   stderr?: string;
+  truncated: boolean;
+  totalMatches: number;
 }
 
 export type GrepToolResult = GrepToolSuccessResult | GrepToolErrorResult;
@@ -136,14 +140,19 @@ export const createGrepTool = (): Tool => {
         
         // Parse the results
         const lines = stdout.trim().split('\n');
-        const results: GrepResult[] = lines
+        let results: GrepResult[] = lines
           .filter(line => line.trim() !== '')
           .map(line => {
             // Try to parse the grep output format (filename:line:content)
             const match = line.match(/^([^:]+):(\d+):(.*)$/);
             if (match) {
+              // Convert absolute file paths to more manageable relative paths
+              const filePath = match[1];
+              const relativePath = filePath.startsWith(searchPath) && searchPath !== '.' ? 
+                filePath.substring(searchPath.length + 1) : filePath;
+              
               return {
-                file: match[1],
+                file: relativePath,
                 line: parseInt(match[2], 10),
                 content: match[3]
               };
@@ -151,13 +160,29 @@ export const createGrepTool = (): Tool => {
             return { raw: line };
           });
         
+        // Track total matches before potential truncation
+        const totalMatches = results.length;
+        
+        // Handle large result sets - if there are too many matches, truncate
+        // to avoid exceeding message size limits
+        const MAX_RESULTS_SIZE = 30; // Limit to 30 results max to avoid token limits
+        let truncated = false;
+        
+        if (results.length > MAX_RESULTS_SIZE) {
+          context.logger?.info(`GrepTool: Truncating ${results.length} results to ${MAX_RESULTS_SIZE} to avoid message size limits`);
+          results = results.slice(0, MAX_RESULTS_SIZE);
+          truncated = true;
+        }
+        
         return {
           success: true,
           pattern,
           path: searchPath,
           results,
           count: results.length,
-          hasMore: results.length >= maxResults
+          hasMore: results.length >= maxResults || truncated,
+          truncated,
+          totalMatches
         };
       } catch (error: unknown) {
         // Check if it's just "no results" error
@@ -168,7 +193,9 @@ export const createGrepTool = (): Tool => {
             path: searchPath,
             results: [],
             count: 0,
-            hasMore: false
+            hasMore: false,
+            truncated: false,
+            totalMatches: 0
           };
         }
         
@@ -178,7 +205,9 @@ export const createGrepTool = (): Tool => {
           pattern,
           path: searchPath,
           error: (error as Error).message,
-          stderr: (error as { stderr?: string }).stderr
+          stderr: (error as { stderr?: string }).stderr,
+          truncated: false,
+          totalMatches: 0
         };
       }
     }

@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import * as apiController from '../controllers/api';
 import * as permissionController from '../controllers/permissions';
+import * as timelineController from '../controllers/timeline';
 import { validateBody, validateQuery } from '../middleware/validation';
 import {
   startSessionSchema,
@@ -15,6 +16,7 @@ import {
   permissionResolutionSchema,
   fastEditModeToggleSchema,
   fastEditModeQuerySchema,
+  timelineQuerySchema,
 } from '../schemas/api';
 import { apiDocumentation } from '../docs/api';
 
@@ -74,6 +76,29 @@ router.post('/permissions/fast-edit-mode', validateBody(fastEditModeToggleSchema
  */
 router.get('/permissions/fast-edit-mode', validateQuery(fastEditModeQuerySchema), permissionController.getFastEditMode);
 
+/**
+ * @route   POST /api/sessions/:sessionId/state/save
+ * @desc    Save session state
+ */
+router.post('/sessions/:sessionId/state/save', apiController.saveSessionState);
+
+/**
+ * @route   GET /api/sessions/persisted
+ * @desc    List persisted sessions
+ */
+router.get('/sessions/persisted', apiController.listPersistedSessions);
+
+/**
+ * @route   DELETE /api/sessions/persisted/:sessionId
+ * @desc    Delete a persisted session
+ */
+router.delete('/sessions/persisted/:sessionId', apiController.deletePersistedSession);
+
+/**
+ * @route   GET /api/sessions/:sessionId/timeline
+ * @desc    Get timeline for a session
+ */
+router.get('/sessions/:sessionId/timeline', validateQuery(timelineQuerySchema), timelineController.getSessionTimeline);
 
 /**
  * @route   GET /api/docs

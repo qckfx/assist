@@ -41,21 +41,21 @@ export async function getPermissionRequests(req: Request, res: Response, next: N
  */
 export async function resolvePermission(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { sessionId, permissionId, granted } = permissionResolutionSchema.parse(req.body);
+    const { sessionId, executionId, granted } = permissionResolutionSchema.parse(req.body);
     
     // Get the agent service
     const agentService = getAgentService();
     
-    // Resolve the permission
-    const resolved = agentService.resolvePermission(permissionId, granted);
+    // Use the new direct method that takes executionId
+    const resolved = agentService.resolvePermissionByExecutionId(executionId, granted);
     
     if (!resolved) {
-      throw new NotFoundError(`Permission request ${permissionId} not found or already resolved`);
+      throw new NotFoundError(`Execution ${executionId} not found or permission already resolved`);
     }
     
     res.status(200).json({
       sessionId,
-      permissionId,
+      executionId,
       granted,
       resolved: true,
     });

@@ -24,7 +24,7 @@ let mockSessionId = 'test-session-id';
 
 // Mock usePermissionKeyboardHandler
 vi.mock('@/hooks/usePermissionKeyboardHandler', () => ({
-  usePermissionKeyboardHandler: (props: { sessionId?: string }) => mockUsePermissionKeyboardHandler(props)
+  usePermissionKeyboardHandler: () => mockUsePermissionKeyboardHandler()
 }));
 
 // Mock WebSocketTerminalContext
@@ -93,16 +93,6 @@ vi.mock('../TypingIndicator', () => ({
   TypingIndicator: vi.fn(() => <div data-testid="typing-indicator" />)
 }));
 
-// Mock PermissionRequest
-vi.mock('../PermissionRequest', () => ({
-  PermissionRequest: vi.fn(({ onResolved }) => (
-    <div data-testid="permission-request">
-      <button data-testid="resolve-permission" onClick={() => onResolved('test-id', true)}>
-        Approve
-      </button>
-    </div>
-  ))
-}));
 
 // Import the component after all mocks are set up
 import { WebSocketTerminal } from '../WebSocketTerminal';

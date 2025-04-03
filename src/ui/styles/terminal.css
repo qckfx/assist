@@ -188,3 +188,39 @@
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Session manager panel */
+.terminal-session-manager {
+  position: absolute;
+  top: 40px; /* Height of the toolbar */
+  right: 0;
+  width: 320px;
+  max-height: calc(100% - 40px);
+  background-color: rgba(0, 0, 0, 0.9); /* Fallback for browsers without backdrop-filter */
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border-radius: 0 0 0 8px;
+  border-left: 1px solid rgba(100, 100, 100, 0.2);
+  border-bottom: 1px solid rgba(100, 100, 100, 0.2);
+  animation: fade-in-slide 0.2s ease-out;
+}
+
+@supports (backdrop-filter: blur(10px)) {
+  .terminal-session-manager {
+    background-color: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(10px);
+  }
+}
+
+@keyframes fade-in-slide {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Add responsive styles for session manager */
+@media (max-width: 768px) {
+  .terminal-session-manager {
+    width: 100%;
+  }
+}

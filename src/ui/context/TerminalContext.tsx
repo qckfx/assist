@@ -3,15 +3,16 @@ import { TerminalState, TerminalAction, TerminalMessage } from '@/types/terminal
 import { MessageType } from '@/components/Message';
 import { WebSocketEvent, SessionData } from '@/types/api';
 import { useWebSocketContext } from './WebSocketContext';
+import { PreviewMode } from '../../types/preview';
 
 // Initial state
 const initialState: TerminalState = {
   messages: [
     {
       id: 'greeting',
-      content: 'How can I help you today?',
+      content: [{ type: 'text', text: 'How can I help you today?' }],
       type: 'assistant',
-      timestamp: new Date(),
+      timestamp: Date.now(),
     },
   ],
   isProcessing: false,
@@ -25,6 +26,13 @@ const initialState: TerminalState = {
   isStreaming: false,
   typingIndicator: false,
   streamBuffer: [],
+  
+  // Add default preview preferences
+  previewPreferences: {
+    defaultViewMode: PreviewMode.BRIEF,
+    persistPreference: true,
+    toolOverrides: {}
+  }
 };
 
 // Terminal reducer
@@ -137,6 +145,38 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
         streamBuffer: [],
       };
       
+    // Preview-related actions
+    case 'SET_PREVIEW_MODE':
+      return {
+        ...state,
+        previewPreferences: {
+          ...state.previewPreferences,
+          toolOverrides: {
+            ...state.previewPreferences.toolOverrides,
+            [action.payload.toolId]: {
+              viewMode: action.payload.mode
+            }
+          }
+        }
+      };
+      
+    case 'SET_DEFAULT_PREVIEW_MODE':
+      return {
+        ...state,
+        previewPreferences: {
+          ...state.previewPreferences,
+          defaultViewMode: action.payload
+        }
+      };
+      
+    case 'SET_PREVIEW_PERSISTENCE':
+      return {
+        ...state,
+        previewPreferences: {
+          ...state.previewPreferences,
+          persistPreference: action.payload
+        }
+      };
       
     default:
       return state;
@@ -209,7 +249,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
           type: 'ADD_MESSAGE', 
           payload: {
             id: generateUniqueId('error'),
-            content: `Error: ${error.message}`,
+            content: [{ type: 'text', text: `Error: ${error.message}` }],
             type: 'error',
             timestamp: new Date()
           }
@@ -230,7 +270,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
         type: 'ADD_MESSAGE', 
         payload: {
           id: generateUniqueId('system'),
-          content: 'Operation stopped. You can continue with a new message.',
+          content: [{ type: 'text', text: 'Operation stopped. You can continue with a new message.' }],
           type: 'system',
           timestamp: new Date()
         }
@@ -316,67 +356,72 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       
       // If we found a history array, process it
       if (historyToProcess && historyToProcess.length > 0) {
-        // Get the last message from history
-        const lastMessage = historyToProcess[historyToProcess.length - 1];
-        console.log('Last message:', JSON.stringify(lastMessage, null, 2));
+        console.log('Processing full conversation history of', historyToProcess.length, 'messages');
         
-        // Only process if it's an assistant message
-        if (lastMessage && lastMessage.role === 'assistant') {
-          let textContent = '';
-          
-          // Debug content structure
-          console.log('Assistant message content type:', 
-            Array.isArray(lastMessage.content) ? 'array' : typeof lastMessage.content);
-          
-          // Handle different formats of message content
-          if (Array.isArray(lastMessage.content)) {
-            // For array content, extract all text blocks
-            console.log('Content array length:', lastMessage.content.length);
+        // First, clear existing messages to avoid duplicates, but keep the welcome message
+        dispatch({ type: 'CLEAR_MESSAGES' });
+        
+        // Re-add initial greeting 
+        dispatch({ 
+          type: 'ADD_MESSAGE', 
+          payload: {
+            id: 'greeting',
+            content: [{ type: 'text', text: 'How can I help you today?' }],
+            type: 'assistant',
+            timestamp: Date.now(),
+          }
+        });
+        
+        // Process each message in the history
+        const messagesToAdd = [];
+        
+        for (const message of historyToProcess) {
+          // Only process user and assistant messages
+          if (message && (message.role === 'user' || message.role === 'assistant')) {
+            let textContent = '';
             
-            // Extract text content based on content structure
-            textContent = lastMessage.content
-              .filter(item => {
-                // Log item type for debugging
-                console.log('Content item type:', 
-                  typeof item, 
-                  typeof item === 'object' ? Object.keys(item) : '');
-                
-                // Check for { type: 'text', text: string } format
-                if (typeof item === 'object' && item !== null && 'type' in item && item.type === 'text' && 'text' in item) {
-                  return true;
-                }
-                // Check for simple string content
-                return typeof item === 'string';
-              })
-              .map(item => {
-                if (typeof item === 'string') return item;
-                if (typeof item === 'object' && 'text' in item) return item.text;
-                return '';
-              })
-              .join('\n');
-          } else if (typeof lastMessage.content === 'string') {
-            // Handle simple string content
-            textContent = lastMessage.content;
-          }
-          
-          console.log('Extracted text content:', textContent.substring(0, 100) + (textContent.length > 100 ? '...' : ''));
-          
-          if (textContent.trim()) {
-            console.log('Adding assistant message to terminal');
-            dispatch({ 
-              type: 'ADD_MESSAGE', 
-              payload: {
-                id: generateUniqueId('assistant'),
-                content: textContent,
-                type: 'assistant',
+            // Handle different formats of message content
+            if (Array.isArray(message.content)) {
+              // For array content, extract all text blocks
+              textContent = message.content
+                .filter(item => {
+                  // Check for { type: 'text', text: string } format
+                  if (typeof item === 'object' && item !== null && 'type' in item && item.type === 'text' && 'text' in item) {
+                    return true;
+                  }
+                  // Check for simple string content
+                  return typeof item === 'string';
+                })
+                .map(item => {
+                  if (typeof item === 'string') return item;
+                  if (typeof item === 'object' && 'text' in item) return item.text;
+                  return '';
+                })
+                .join('\n');
+            } else if (typeof message.content === 'string') {
+              // Handle simple string content
+              textContent = message.content;
+            }
+            
+            // Only add if there's actual content
+            if (textContent.trim()) {
+              messagesToAdd.push({
+                id: generateUniqueId(message.role),
+                content: [{ type: 'text' as const, text: textContent }],
+                type: message.role,
+                // Use current time for all messages from history
                 timestamp: new Date()
-              }
-            });
-          } else {
-            console.log('No text content found in assistant message');
+              });
+            }
           }
+        }
+        
+        // Add all messages at once to avoid too many re-renders
+        if (messagesToAdd.length > 0) {
+          console.log('Adding', messagesToAdd.length, 'messages from history');
+          dispatch({ type: 'ADD_MESSAGES', payload: messagesToAdd });
         } else {
-          console.log('Last message is not from assistant or is invalid');
+          console.log('No valid messages found in history');
         }
       } else {
         console.log('No history or empty history in session data');
@@ -414,10 +459,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
         } 
       });
     
-    const permissionResolvedWrapper = (data: { sessionId: string, permissionId: string, resolution: boolean }) => 
+    const permissionResolvedWrapper = (data: { sessionId: string, executionId: string, resolution: boolean }) => 
       handlePermissionResolved({ 
         _sessionId: data.sessionId, 
-        permissionId: data.permissionId, 
+        permissionId: data.executionId, // Map executionId to permissionId for compatibility
         resolution: data.resolution 
       });
     
@@ -453,9 +498,9 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
   const addMessage = (content: string, type: MessageType = 'system') => {
     const message: TerminalMessage = {
       id: generateUniqueId(type),
-      content,
+      content: [{ type: 'text', text: content }],
       type,
-      timestamp: new Date(),
+      timestamp: Date.now(),
     };
     
     dispatch({ type: 'ADD_MESSAGE', payload: message });

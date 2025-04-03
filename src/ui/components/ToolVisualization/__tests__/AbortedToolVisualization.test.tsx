@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ToolVisualization } from '../ToolVisualization';
+import { PreviewMode } from '../../../../types/preview';
 
 // Mock the WebSocketTerminalContext functions
 vi.mock('../../../context/WebSocketTerminalContext', () => ({
@@ -29,9 +30,9 @@ describe('ToolVisualization Abort State', () => {
             aborted: true,
             message: 'Operation aborted by user'
           },
-          startTime: Date.now() // Required property
+          startTime: Date.now(), // Required property
+          viewMode: PreviewMode.BRIEF // Add required viewMode property
         }}
-        sessionId="test-session-id"
       />
     );
     
@@ -51,9 +52,9 @@ describe('ToolVisualization Abort State', () => {
           toolName: 'TestTool',
           args: { test: 'arg' },
           startTime: Date.now(), // Required property
-          status: 'aborted' // Change the status to aborted to match our updated component
+          status: 'aborted', // Change the status to aborted to match our updated component
+          viewMode: PreviewMode.BRIEF // Add required viewMode property
         }}
-        sessionId="test-session-id"
       />
     );
     
@@ -70,9 +71,9 @@ describe('ToolVisualization Abort State', () => {
           toolName: 'TestTool',
           args: { test: 'arg' },
           startTime: Date.now(), // Required property
-          status: 'running'
+          status: 'running',
+          viewMode: PreviewMode.BRIEF // Add required viewMode property
         }}
-        sessionId="test-session-id"
       />
     );
     

@@ -84,7 +84,7 @@ export class Logger {
       [LogLevel.DEBUG]: 4
     };
     
-    return levels[this.level] >= levels[messageLevel];
+    return levels[this.level] <= levels[messageLevel];
   }
 
   // Implementation for overloaded debug method

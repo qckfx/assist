@@ -37,15 +37,38 @@ vi.mock('@/hooks/useFastEditMode', () => ({
   })
 }));
 
-// Mock the useToolStream hook
-vi.mock('@/hooks/useToolStream', () => ({
-  useToolStream: () => ({
-    getActiveTools: () => [],
-    getRecentTools: () => [],
+// Mock the useToolVisualization hook
+vi.mock('@/hooks/useToolVisualization', () => ({
+  useToolVisualization: () => ({
+    tools: [],
+    activeTools: [],
+    recentTools: [],
     hasActiveTools: false,
     activeToolCount: 0,
-    toolHistory: []
+    getToolById: () => undefined,
+    setToolViewMode: vi.fn(),
+    setDefaultViewMode: vi.fn(),
+    defaultViewMode: 'brief'
   })
+}));
+
+// Mock the ToolPreferencesContext
+vi.mock('@/context/ToolPreferencesContext', () => ({
+  useToolPreferencesContext: () => ({
+    preferences: {
+      defaultViewMode: 'brief',
+      persistPreferences: true,
+      toolOverrides: {}
+    },
+    initialized: true,
+    setDefaultViewMode: vi.fn(),
+    setToolViewMode: vi.fn(),
+    togglePersistPreferences: vi.fn(),
+    resetPreferences: vi.fn(),
+    getToolViewMode: vi.fn(() => 'brief'),
+    clearToolOverride: vi.fn()
+  }),
+  ToolPreferencesProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }));
 
 // Mock the ThemeProvider
@@ -63,7 +86,7 @@ describe('Terminal Accessibility and Theming', () => {
           messages={[
             {
               id: '1',
-              content: 'Test message',
+              content: [{ type: 'text', text: 'Test message' }],
               type: 'system',
               timestamp: new Date(),
             },

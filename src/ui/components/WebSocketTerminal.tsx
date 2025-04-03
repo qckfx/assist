@@ -3,10 +3,6 @@
  */
 import React, { useState, useEffect } from 'react';
 import Terminal from './Terminal/Terminal';
-// ConnectionIndicator is included in Terminal
-import { ConnectionIndicator as _ConnectionIndicator } from './ConnectionIndicator';
-// TypingIndicator is included in Terminal
-import { TypingIndicator as _TypingIndicator } from './TypingIndicator';
 import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTerminal } from '@/context/TerminalContext';
 import { usePermissionKeyboardHandler } from '@/hooks/usePermissionKeyboardHandler';
@@ -18,6 +14,8 @@ interface WebSocketTerminalProps {
   autoConnect?: boolean;
   showConnectionStatus?: boolean;
   showTypingIndicator?: boolean;
+  showNewSessionHint?: boolean;
+  onUserInput?: () => void;
 }
 
 /**
@@ -29,14 +27,13 @@ export function WebSocketTerminal({
   autoConnect = true,
   showConnectionStatus = true,
   showTypingIndicator = true,
+  showNewSessionHint = false,
+  onUserInput,
 }: WebSocketTerminalProps) {
   const {
     handleCommand,
     connectionStatus,
     isConnected,
-    isProcessing: _isProcessing,
-    isStreaming: _isStreaming,
-    abortProcessing: _abortProcessing,
     sessionId
   } = useWebSocketTerminal();
   
@@ -45,7 +42,7 @@ export function WebSocketTerminal({
   const [hasConnected, setHasConnected] = useState(false);
   
   // Add keyboard handler for permission requests
-  usePermissionKeyboardHandler({ sessionId });
+  usePermissionKeyboardHandler();
   
   // Add keyboard handler for abort operations
   useAbortShortcuts(isConnected);
@@ -70,6 +67,17 @@ export function WebSocketTerminal({
     }
   }, [autoConnect, hasConnected]);
   
+  // Create a wrapper for handleCommand that notifies parent component of user input
+  const handleCommandWithNotification = (command: string) => {
+    // Call the parent's onUserInput callback if provided
+    if (onUserInput) {
+      onUserInput();
+    }
+    
+    // Call the original handleCommand function
+    handleCommand(command);
+  };
+
   return (
     <div className="relative w-full max-w-full flex flex-col" style={{ height: "calc(100% - 20px)" }} data-testid="websocket-terminal">
       {/* Connection indicator now integrated directly in the Terminal title bar */}
@@ -77,15 +85,15 @@ export function WebSocketTerminal({
       <Terminal
         className={className}
         messages={state.messages}
-        onCommand={handleCommand}
+        onCommand={handleCommandWithNotification}
         inputDisabled={!isConnected && hasConnected}
         fullScreen={fullScreen}
         onClear={clearMessages}
         sessionId={sessionId}
         showConnectionIndicator={showConnectionStatus}
         showTypingIndicator={showTypingIndicator}
-        showToolVisualizations={true}
         connectionStatus={connectionStatus}
+        showNewSessionHint={showNewSessionHint}
       />
       
       {/* Typing indicator is now handled inside the Terminal component */}

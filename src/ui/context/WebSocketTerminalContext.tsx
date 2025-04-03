@@ -10,7 +10,7 @@ import { useTerminalWebSocket } from '@/hooks/useTerminalWebSocket';
 import { useStreamingMessages } from '@/hooks/useStreamingMessages';
 import { useTerminalCommands } from '@/hooks/useTerminalCommands';
 import { usePermissionManager } from '@/hooks/usePermissionManager';
-import { useToolStream } from '@/hooks/useToolStream';
+import { useToolVisualization } from '@/hooks/useToolVisualization';
 import { ConnectionStatus, WebSocketEvent } from '@/types/api';
 import apiClient from '@/services/apiClient';
 import { getWebSocketService } from '@/services/WebSocketService';
@@ -36,7 +36,7 @@ interface WebSocketTerminalContextProps {
   
   // Permission management
   hasPendingPermissions: boolean;
-  resolvePermission: (permissionId: string, granted: boolean) => Promise<boolean>;
+  resolvePermission: (executionId: string, granted: boolean) => Promise<boolean>;
 }
 
 /**
@@ -113,9 +113,7 @@ export function WebSocketTerminalProvider({
   } = useTerminalWebSocket(sessionId) || {};
   
   // Initialize feature hooks with stable sessionId reference
-  const { isStreaming } = useStreamingMessages({ 
-    sessionId: sessionIdRef.current 
-  });
+  const { isStreaming } = useStreamingMessages();
   
   const { handleCommand } = useTerminalCommands({ 
     sessionId: sessionIdRef.current 
@@ -162,6 +160,9 @@ export function WebSocketTerminalProvider({
         sessionStorage.setItem('currentSessionId', newSessionId);
         console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
         
+        // Store in localStorage as a fallback
+        localStorage.setItem('sessionId', newSessionId);
+        
         // Update session state
         setSessionId(newSessionId);
         sessionIdRef.current = newSessionId;
@@ -170,6 +171,9 @@ export function WebSocketTerminalProvider({
         if (isConnected && typeof connectToSession === 'function') {
           connectToSession(newSessionId);
         }
+        
+        // Update URL to include session ID without page reload
+        window.history.pushState({}, '', `/sessions/${newSessionId}`);
         
         // Don't show session ID to users - they don't need to see this
         return newSessionId;
@@ -184,10 +188,10 @@ export function WebSocketTerminalProvider({
     } finally {
       setProcessing(false);
     }
-  }, [addSystemMessage, addErrorMessage, setProcessing, isConnected, connectToSession]);
+  }, [addErrorMessage, setProcessing, isConnected, connectToSession]);
   
-  // Get the tool stream for abort processing
-  const toolStream = useToolStream();
+  // Get the tool visualization hook for abort processing
+  const toolVisualization = useToolVisualization();
 
   // Abort processing with error handling
   const abortProcessing = useCallback(async () => {
@@ -203,7 +207,7 @@ export function WebSocketTerminalProvider({
       setProcessing(false);
       
       // Get active tools before aborting to find which ones to mark
-      const activeTools = toolStream?.getActiveTools() || [];
+      const activeTools = toolVisualization?.activeTools || [];
       const activeToolIds = new Set(activeTools.map(tool => tool.id));
       
       // Create a timestamp for the abort event 
@@ -232,7 +236,7 @@ export function WebSocketTerminalProvider({
                 aborted: true,
                 abortTimestamp
               },
-              timestamp: new Date().toISOString(),
+              timestamp: Date.now(),
               executionTime: 0, // No execution time for aborted operations
             };
             
@@ -259,7 +263,7 @@ export function WebSocketTerminalProvider({
     } catch (error) {
       addErrorMessage(`Failed to abort: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [addSystemMessage, addErrorMessage, setProcessing, toolStream]);
+  }, [addSystemMessage, addErrorMessage, setProcessing, toolVisualization]);
   
   // Automatically create a session on mount if none provided, with retries
   useEffect(() => {

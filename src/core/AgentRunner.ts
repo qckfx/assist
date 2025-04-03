@@ -11,8 +11,10 @@ import {
 } from '../types/agent';
 import { ToolCall, ConversationMessage, SessionState } from '../types/model';
 import { LogCategory, createLogger, LogLevel } from '../utils/logger';
+import Anthropic from '@anthropic-ai/sdk';
+import { MESSAGE_ADDED } from '../server/services/TimelineService';
 
-import { isSessionAborted } from '../utils/sessionUtils';
+import { isSessionAborted, clearSessionAborted, AgentEvents, AgentEventType } from '../utils/sessionUtils';
 
 /**
  * Creates a standard response for aborted operations
@@ -90,6 +92,13 @@ function summarizeArgs(args: Record<string, unknown>): string {
  * @returns The agent runner interface
  */
 export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
+  // Listen for abort events just for logging purposes
+  const removeAbortListener = AgentEvents.on(
+    AgentEventType.ABORT_SESSION,
+    (sessionId: string) => {
+      console.log(`AgentRunner received abort event for session: ${sessionId}`);
+    }
+  );
   // Validate required dependencies
   if (!config.modelClient) throw new Error('AgentRunner requires a modelClient');
   if (!config.toolRegistry) throw new Error('AgentRunner requires a toolRegistry');
@@ -101,9 +110,11 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
   const permissionManager = config.permissionManager;
   const executionAdapter = config.executionAdapter;
   const logger = config.logger || createLogger({
-    level: LogLevel.INFO,
+    level: LogLevel.DEBUG,
     prefix: 'AgentRunner'
   });
+  
+  // No need for a separate helper function anymore
   
   // Return the public interface
   return {
@@ -117,6 +128,18 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
      * history before this call is made.
      */
     async processQuery(query: string, sessionState: SessionState): Promise<ProcessQueryResult> {
+      // Extract the sessionId from the state
+      const sessionId = sessionState.id as string;
+      
+      if (!sessionId) {
+        logger.error('Cannot process query: Missing sessionId in session state', LogCategory.SYSTEM);
+        return {
+          error: 'Missing sessionId in session state',
+          sessionState,
+          done: true,
+          aborted: false
+        };
+      }
       try {
         // Initialize tracking variables
         let currentQuery = query;
@@ -131,22 +154,33 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           sessionState.conversationHistory = [];
         }
         
+        // Always reset the tool limit reached flag at the start of processing a new query
+        sessionState.toolLimitReached = false;
+        
         // Always add the user query to conversation history after an abort
         // or if it's the first message or if the last message wasn't from the user
-        if (sessionState.__aborted === true || 
+        if (isSessionAborted(sessionId) || 
             sessionState.conversationHistory.length === 0 || 
             sessionState.conversationHistory[sessionState.conversationHistory.length - 1].role !== 'user') {
           
           // Reset abort status if it was previously set
-          if (sessionState.__aborted === true) {
+          if (isSessionAborted(sessionId)) {
             logger.info("Clearing abort status as new user message received", LogCategory.SYSTEM);
-            sessionState.__aborted = false;
-            delete sessionState.__abortTimestamp;
+            // Clear from the centralized registry
+            clearSessionAborted(sessionId);
           }
           
-          sessionState.conversationHistory.push({
+          // Create properly typed message following Anthropic's expected structure
+          const userMessage: Anthropic.Messages.MessageParam = {
             role: 'user',
             content: [{ type: 'text', text: query }]
+          };
+          sessionState.conversationHistory.push(userMessage);
+          
+          // Emit message:added event for TimelineService to pick up
+          AgentEvents.emit(MESSAGE_ADDED, {
+            sessionId,
+            message: userMessage
           });
         }
         
@@ -161,19 +195,50 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         };
         
         // Loop until we get a final response or reach max iterations
+        console.log('⚠️ STARTING AGENT LOOP with maxIterations:', maxIterations);
+        console.log('⚠️ LOOP INITIAL STATE:', {
+          initialIterations: iterations,
+          maxIterations: maxIterations,
+          hasToolResults: toolResults.length > 0,
+          hasFinalResponse: !!finalResponse,
+          sessionId: sessionId,
+          isAborted: isSessionAborted(sessionId),
+          conversationHistoryLength: sessionState.conversationHistory?.length || 0,
+          currentQuery: currentQuery ? currentQuery.substring(0, 50) + '...' : 'none'
+        });
+        
         while (iterations < maxIterations) {
+          console.log(`⚠️ LOOP CHECK: ITERATION ${iterations}/${maxIterations}, HAS FINAL RESPONSE: ${!!finalResponse}`);
+          console.log('⚠️ LOOP ENTRY STATE:', {
+            toolResults: toolResults.length,
+            firstToolId: toolResults.length > 0 ? toolResults[0].toolId : 'none',
+            lastToolId: toolResults.length > 0 ? toolResults[toolResults.length - 1].toolId : 'none',
+            conversationHistoryLength: sessionState.conversationHistory?.length || 0
+          });
+          
           // Add this check at the beginning of each iteration
-          if (isSessionAborted(sessionState)) {
+          if (isSessionAborted(sessionId)) {
             logger.info("Operation aborted - stopping processing", LogCategory.SYSTEM);
             return createAbortResponse(toolResults, iterations, sessionState);
           }
           
           iterations++;
+          console.log(`⚠️ STARTING ITERATION ${iterations}/${maxIterations} - ABOUT TO BEGIN EXECUTION`);
           logger.debug(`Iteration ${iterations}/${maxIterations}`, LogCategory.SYSTEM);
+          
+          // Also log the state before each model call
+          console.log('⚠️ PRE-MODEL CALL STATE:', {
+            currentQuery: currentQuery ? currentQuery.substring(0, 50) + '...' : 'none',
+            toolsCount: toolRegistry.getAllTools().length,
+            conversationHistoryLength: sessionState.conversationHistory?.length || 0,
+            sessionId
+          });
           
           try {
             // 1. Ask the model what to do next
             logger.debug('Getting tool call from model', LogCategory.MODEL);
+            
+            console.log(`⚠️ AGENT_LOOP: About to call modelClient.getToolCall with query: ${currentQuery?.substring(0, 50)}...`);
             
             const toolCallChat = await modelClient.getToolCall(
               currentQuery, 
@@ -181,8 +246,13 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               sessionState
             );
             
+            console.log(`⚠️ AGENT_LOOP: Received toolCallChat response, toolChosen: ${toolCallChat.toolChosen}, aborted: ${toolCallChat.aborted}`);
+            if (toolCallChat.toolCall) {
+              console.log(`⚠️ AGENT_LOOP: Tool selected: ${toolCallChat.toolCall.toolId}`);
+            }
+            
             // Check if the operation was aborted during the model call
-            if (toolCallChat.aborted || isSessionAborted(sessionState)) {
+            if (toolCallChat.aborted || isSessionAborted(sessionId)) {
               logger.info("Operation aborted during or after LLM response - stopping processing", LogCategory.SYSTEM);
               
               // Add an aborted tool result to the conversation if a tool was chosen but not executed
@@ -247,7 +317,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             delete sessionState.lastToolError;
             
             // Check for abort before executing the tool
-            if (isSessionAborted(sessionState)) {
+            if (isSessionAborted(sessionId)) {
               logger.info("Operation aborted before tool execution - stopping processing", LogCategory.SYSTEM);
               
               // Add an aborted tool result
@@ -285,15 +355,28 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             // 3. Execute the tool
             const argSummary = summarizeArgs(toolCall.args as Record<string, unknown>);
             logger.debug(`Executing tool ${tool.name} with args: ${argSummary}`, LogCategory.TOOLS);
+            logger.debug(`AgentRunner execution progress - preparing to execute tool in iteration ${iterations}`, LogCategory.SYSTEM);
             let result;
             try {
               // Use the new executeToolWithCallbacks method instead of direct execution
-              result = await toolRegistry.executeToolWithCallbacks(
-                toolCall.toolId, 
-                toolCall.args as Record<string, unknown>, 
-                context
-              );
+              logger.debug(`STARTING tool execution for ${tool.name}`, LogCategory.TOOLS);
+              console.log('⚠️ EXECUTING TOOL:', toolCall.toolId, 'with args:', JSON.stringify(toolCall.args));
+              console.log(`⚠️ TOOL_EXECUTION: Starting executeToolWithCallbacks for ${toolCall.toolId}`);
+              
+              try {
+                result = await toolRegistry.executeToolWithCallbacks(
+                  toolCall.toolId, 
+                  toolCall.args as Record<string, unknown>, 
+                  context
+                );
+                console.log('⚠️ TOOL EXECUTION COMPLETE:', toolCall.toolId, 'with result type:', typeof result, 'result:', JSON.stringify(result).substring(0, 100));
+                logger.debug(`COMPLETED tool execution for ${tool.name} successfully`, LogCategory.TOOLS);
+              } catch (toolError) {
+                console.error(`⚠️ TOOL_EXECUTION ERROR: Failed to execute ${toolCall.toolId}:`, toolError);
+                throw toolError;
+              }
             } catch (error: unknown) {
+              logger.error(`FAILED tool execution for ${tool.name}`, error, LogCategory.TOOLS);
               // Handle validation errors specifically
               const errorObj = error as Error;
               
@@ -320,7 +403,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                     role: "user",
                     content: [
                       {
-                        type: "tool_result",
+                        type: "tool_result" as const,
                         tool_use_id: toolCall.toolUseId,
                         content: JSON.stringify(permissionDeniedResult)
                       } 
@@ -379,7 +462,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             sessionState.lastResult = result;
             
             // After tool execution, check for abort again
-            if (isSessionAborted(sessionState)) {
+            if (isSessionAborted(sessionId)) {
               logger.info("Operation aborted after tool execution - stopping processing", LogCategory.SYSTEM);
               
               // In this case, we've already executed the tool and have its result
@@ -400,11 +483,12 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               
               // If for some reason the tool result wasn't added, add it now
               if (!hasToolResultMessage && sessionState.conversationHistory && toolCall.toolUseId) {
+                logger.info('Adding tool result to conversation history', LogCategory.SYSTEM);
                 sessionState.conversationHistory.push({
                   role: "user",
                   content: [
                     {
-                      type: "tool_result",
+                      type: "tool_result" as const,
                       tool_use_id: toolCall.toolUseId,
                       content: JSON.stringify(result)
                     } 
@@ -416,16 +500,30 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             }
             
             // Add tool result to conversation history if it exists
+            console.log('⚠️ HISTORY: Adding tool result to conversation history for tool:', toolCall.toolId);
             if (sessionState.conversationHistory && toolCall.toolUseId) {
-              sessionState.conversationHistory.push({
+              // Create the message with proper Anthropic types
+              const resultMessage: Anthropic.Messages.MessageParam = {
                 role: "user",
                 content: [
                   {
-                    type: "tool_result",
+                    type: "tool_result" as const,
                     tool_use_id: toolCall.toolUseId,
                     content: JSON.stringify(result)
                   } 
                 ]
+              };
+              sessionState.conversationHistory.push(resultMessage);
+              console.log('⚠️ HISTORY: Added tool result to conversation history, history length now:', sessionState.conversationHistory.length);
+              
+              // Type assertion to safely access properties
+              const contentBlock = resultMessage.content[0] as { type: string; tool_use_id: string };
+              console.log('⚠️ HISTORY: Last message type:', contentBlock.type, 'for tool use ID:', contentBlock.tool_use_id);
+            } else {
+              console.log('⚠️ HISTORY ERROR: Could not add tool result to conversation history:', {
+                hasHistory: !!sessionState.conversationHistory,
+                hasToolUseId: !!toolCall.toolUseId,
+                toolUseId: toolCall.toolUseId
               });
             }
             
@@ -437,8 +535,28 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               toolUseId: toolCall.toolUseId
             });
             
+            console.log('⚠️ RESULTS: Added tool result to toolResults array:', {
+              toolId: toolCall.toolId,
+              toolResultsCount: toolResults.length,
+              hasToolUseId: !!toolCall.toolUseId,
+              resultType: typeof result
+            });
+            
             // Ask the model to decide what to do next
             currentQuery = `Based on the result of using ${tool.name}, what should I do next to answer: ${query}`;
+            logger.debug(`Tool execution complete, preparing for next iteration (${iterations+1})`, LogCategory.SYSTEM);
+            logger.debug(`Next query for model: "${currentQuery}"`, LogCategory.SYSTEM);
+            
+            console.log('⚠️ LOOP CHECK: About to exit tool execution block and continue to next iteration');
+            console.log('⚠️ LOOP STATE:', {
+              iteration: iterations,
+              maxIterations: maxIterations,
+              hasToolResults: toolResults.length > 0,
+              hasFinalResponse: !!finalResponse,
+              sessionId: sessionId,
+              isAborted: isSessionAborted(sessionId),
+              conversationHistoryLength: sessionState.conversationHistory?.length || 0
+            });
           } catch (error: unknown) {
             logger.error(`Error in iteration ${iterations}:`, error, LogCategory.SYSTEM);
             
@@ -461,44 +579,70 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         }
         
         // Before generating final response, check for abort
-        if (isSessionAborted(sessionState)) {
+        if (isSessionAborted(sessionId)) {
           logger.info("Operation aborted before final response - stopping processing", LogCategory.SYSTEM);
           return createAbortResponse(toolResults, iterations, sessionState);
         }
         
         // If we reached max iterations without a response, generate one
         if (!finalResponse) {
-          logger.debug('Reached maximum iterations, generating response', LogCategory.MODEL);
+          logger.info(`Reached maximum iterations (${maxIterations}), generating final response with tool usage disabled`, LogCategory.MODEL);
           
+          // Set a flag to indicate we reached the tool limit
+          sessionState.toolLimitReached = true;
+          
+          // Generate a response with tool usage explicitly disabled
           finalResponse = await modelClient.generateResponse(
             query,
             toolRegistry.getToolDescriptions(),
-            sessionState
+            sessionState,
+            { tool_choice: { type: "none" } }  // Explicitly disable tool usage for this response
           );
           
           // Check for abort after final response generation
-          if (isSessionAborted(sessionState)) {
+          if (isSessionAborted(sessionId)) {
             logger.info("Operation aborted during final response generation - stopping processing", LogCategory.SYSTEM);
             return createAbortResponse(toolResults, iterations, sessionState);
           }
         }
 
-        // Add the assistant's response to conversation history
-        if (finalResponse && finalResponse.content && finalResponse.content.length > 0) {
-          (sessionState.conversationHistory as ConversationMessage[]).push({
+        // Add the assistant's response to conversation history ONLY if not aborted
+        if (!isSessionAborted(sessionId) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
+          // Create properly typed message following Anthropic's expected structure
+          const assistantMessage: Anthropic.Messages.MessageParam = {
             role: 'assistant',
             content: finalResponse.content
+          };
+          sessionState.conversationHistory.push(assistantMessage);
+          
+          // Emit message:added event for TimelineService to pick up
+          AgentEvents.emit(MESSAGE_ADDED, {
+            sessionId,
+            message: assistantMessage
           });
+        } else if (isSessionAborted(sessionId)) {
+          logger.info("Skipping assistant response because session was aborted", LogCategory.SYSTEM);
         }
         
         // Extract the text response from the first content item
         let responseText = '';
-        if (finalResponse && finalResponse.content && finalResponse.content.length > 0) {
+        if (!isSessionAborted(sessionId) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
           const firstContent = finalResponse.content[0];
           if (firstContent.type === 'text' && firstContent.text) {
             responseText = firstContent.text;
           }
         }
+        
+        console.log('⚠️ END OF PROCESSING QUERY - returning final result with', toolResults.length, 'tool results after', iterations, 'iterations');
+        console.log('⚠️ FINAL RESULT STATE:', {
+          toolResultsCount: toolResults.length,
+          toolResultIds: toolResults.map(tr => tr.toolId),
+          iterations,
+          hasResponse: !!responseText,
+          responseTextLength: responseText ? responseText.length : 0,
+          conversationHistoryLength: sessionState.conversationHistory?.length || 0,
+          isAborted: isSessionAborted(sessionId)
+        });
         
         return {
           result: {
@@ -508,15 +652,17 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           response: responseText,
           sessionState,
           done: true,
-          aborted: isSessionAborted(sessionState)
+          aborted: isSessionAborted(sessionId)
         };
       } catch (error: unknown) {
         logger.error('Error in processQuery:', error, LogCategory.SYSTEM);
+        // No need to clean up anymore - single source of truth
+        
         return {
           error: (error as Error).message,
           sessionState,
           done: true,
-          aborted: isSessionAborted(sessionState)
+          aborted: isSessionAborted(sessionId)
         };
       }
     },

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { useTerminal } from '@/context/TerminalContext';
 import { useExecutionEnvironment } from '@/hooks/useExecutionEnvironment';
 import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
+import { ToolPreferencesToggle } from '../ToolPreferencesToggle';
 
 export interface TerminalSettingsProps {
   isOpen: boolean;
@@ -185,6 +186,14 @@ export function TerminalSettings({
             <p id="color-scheme-description" className="text-xs text-gray-400 mt-1">
               This setting only changes the terminal appearance and is separate from the application theme toggle in the top-right corner.
             </p>
+          </div>
+
+          {/* Tool Visualization Section */}
+          <div className="space-y-2 border border-gray-700 rounded p-3">
+            <h3 className="text-gray-300 text-sm font-medium">Tool Visualization</h3>
+            <div className="mt-2">
+              <ToolPreferencesToggle />
+            </div>
           </div>
 
           {/* Execution Environment Section */}

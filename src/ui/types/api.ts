@@ -1,4 +1,7 @@
 // Basic API response and request types
+import { ToolPreviewData } from '../../types/preview';
+import { TimelineItem } from '../../types/timeline';
+import { StructuredContent } from '../../types/message';
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -57,7 +60,7 @@ export interface PermissionRequest {
 
 export interface PermissionResolveRequest {
   sessionId: string;
-  permissionId: string;
+  executionId: string;  // Changed from permissionId to executionId
   granted: boolean;
 }
 
@@ -106,6 +109,25 @@ export enum WebSocketEvent {
   
   // Environment information event
   INIT = 'init',
+  
+  
+  // Timeline events
+  TIMELINE_UPDATE = 'timeline_update',
+  TIMELINE_HISTORY = 'timeline_history',
+  
+  // Message events (new)
+  MESSAGE_RECEIVED = 'message_received',
+  MESSAGE_UPDATED = 'message_updated',
+  
+  // Tool timeline events (new)
+  TOOL_EXECUTION_RECEIVED = 'tool_execution_received',
+  TOOL_EXECUTION_UPDATED = 'tool_execution_updated',
+  
+  // Session management events
+  SESSION_LOADED = 'session_loaded',
+  SESSION_SAVED = 'session_saved',
+  SESSION_DELETED = 'session_deleted',
+  SESSION_LIST_UPDATED = 'session_list_updated',
 }
 
 /**
@@ -163,6 +185,8 @@ export interface WebSocketEventMap {
     timestamp: string;
     isActive: false;
     startTime?: string;
+    // Include preview data
+    preview?: ToolPreviewData;
   };
   [WebSocketEvent.TOOL_EXECUTION_ERROR]: { 
     sessionId: string;
@@ -178,6 +202,8 @@ export interface WebSocketEventMap {
     timestamp: string;
     isActive: false;
     startTime?: string;
+    // Include preview data for errors
+    preview?: ToolPreviewData;
   };
   [WebSocketEvent.TOOL_EXECUTION_ABORTED]: {
     sessionId: string;
@@ -195,11 +221,14 @@ export interface WebSocketEventMap {
     permission: { 
       id: string; 
       toolId: string; 
+      toolName?: string;
       args: Record<string, unknown>;
       timestamp: string;
+      preview?: ToolPreviewData;
+      executionId?: string;
     };
   };
-  [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; permissionId: string; resolution: boolean; };
+  [WebSocketEvent.PERMISSION_RESOLVED]: { sessionId: string; executionId: string; resolution: boolean; };
   [WebSocketEvent.SESSION_UPDATED]: SessionData;
   [WebSocketEvent.STREAM_CONTENT]: { sessionId: string; content: string; };
   [WebSocketEvent.FAST_EDIT_MODE_ENABLED]: { sessionId: string; enabled: true; };
@@ -208,5 +237,115 @@ export interface WebSocketEventMap {
     sessionId: string; 
     executionEnvironment: 'local' | 'docker' | 'e2b'; 
     e2bSandboxId?: string; 
+  };
+  
+  
+  // Timeline events
+  [WebSocketEvent.TIMELINE_UPDATE]: {
+    sessionId: string;
+    item: TimelineItem;
+  };
+  
+  [WebSocketEvent.TIMELINE_HISTORY]: {
+    sessionId: string;
+    items: TimelineItem[];
+    nextPageToken?: string;
+    totalCount: number;
+  };
+  
+  // Message events (new)
+  [WebSocketEvent.MESSAGE_RECEIVED]: {
+    sessionId: string;
+    message: {
+      id: string;
+      role: 'user' | 'assistant' | 'system';
+      content: StructuredContent;
+      timestamp: string;
+    };
+  };
+  
+  [WebSocketEvent.MESSAGE_UPDATED]: {
+    sessionId: string;
+    messageId: string;
+    content: StructuredContent;
+    isComplete: boolean;
+  };
+  
+  // Tool execution events (new)
+  [WebSocketEvent.TOOL_EXECUTION_RECEIVED]: {
+    sessionId: string;
+    toolExecution: {
+      id: string;
+      toolId: string;
+      toolName: string;
+      status: string;
+      args: Record<string, unknown>;
+      startTime: string;
+      endTime?: string;
+      executionTime?: number;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+    };
+  };
+  
+  [WebSocketEvent.TOOL_EXECUTION_UPDATED]: {
+    sessionId: string;
+    toolExecution: {
+      id: string;
+      toolId: string;
+      toolName: string;
+      status: string;
+      args?: Record<string, unknown>;
+      startTime: string;
+      endTime?: string;
+      executionTime?: number;
+      result?: unknown;
+      error?: { message: string; stack?: string; };
+      // The preview is part of the toolExecution object
+      preview?: ToolPreviewData;
+      // Additional fields to help client detection
+      hasPreview?: boolean;
+      previewContentType?: string;
+    };
+  };
+  
+  // Session management events
+  [WebSocketEvent.SESSION_LOADED]: { 
+    sessionId: string;
+    timestamp: string;
+  };
+  
+  [WebSocketEvent.SESSION_SAVED]: {
+    sessionId: string;
+    timestamp: string;
+  };
+  
+  [WebSocketEvent.SESSION_DELETED]: {
+    sessionId: string;
+    timestamp: string;
+  };
+  
+  [WebSocketEvent.SESSION_LIST_UPDATED]: {
+    sessions: Array<{
+      id: string;
+      createdAt: string;
+      lastActiveAt: string;
+      messageCount: number;
+      toolCount: number;
+      initialQuery?: string;
+      lastMessage?: {
+        role: 'user' | 'assistant';
+        content: string;
+        timestamp: string;
+      };
+      repositoryInfo?: {
+        repoName: string;
+        commitHash: string;
+        branch: string;
+        remoteUrl?: string;
+        isDirty?: boolean;
+        workingDirectory?: string;
+      };
+    }>;
   };
 }

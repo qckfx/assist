@@ -2,6 +2,7 @@
  * API request/response schemas
  */
 import { z } from 'zod';
+import { TimelineItemType } from '../../types/timeline';
 
 /**
  * Schema for session start request
@@ -97,7 +98,7 @@ export const permissionRequestQuerySchema = z.object({
  */
 export const permissionResolutionSchema = z.object({
   sessionId: z.string().uuid(),
-  permissionId: z.string(),
+  executionId: z.string(),  // Changed from permissionId to executionId
   granted: z.boolean(),
 });
 
@@ -108,7 +109,7 @@ export const permissionRequestsResponseSchema = z.object({
   sessionId: z.string().uuid(),
   permissionRequests: z.array(
     z.object({
-      permissionId: z.string(),
+      executionId: z.string(),  // Changed from permissionId to executionId
       toolId: z.string(),
       args: z.record(z.any()),
       timestamp: z.string().datetime(),
@@ -121,7 +122,7 @@ export const permissionRequestsResponseSchema = z.object({
  */
 export const permissionResolutionResponseSchema = z.object({
   sessionId: z.string().uuid(),
-  permissionId: z.string(),
+  executionId: z.string(),  // Changed from permissionId to executionId
   granted: z.boolean(),
   resolved: z.boolean(),
 });
@@ -138,7 +139,7 @@ export const fastEditModeToggleSchema = z.object({
  * Schema for fast edit mode query
  */
 export const fastEditModeQuerySchema = z.object({
-  sessionId: z.string().uuid(),
+  sessionId: z.string().uuid().or(z.string()), // More permissive validation for debugging
 });
 
 /**
@@ -166,3 +167,19 @@ export type PermissionResolutionResponse = z.infer<typeof permissionResolutionRe
 export type FastEditModeToggle = z.infer<typeof fastEditModeToggleSchema>;
 export type FastEditModeQuery = z.infer<typeof fastEditModeQuerySchema>;
 export type FastEditModeResponse = z.infer<typeof fastEditModeResponseSchema>;
+
+/**
+ * Schema for timeline query
+ */
+export const timelineQuerySchema = z.object({
+  // sessionId comes from route params, not query params
+  limit: z.coerce.number().int().positive().optional(),
+  pageToken: z.string().optional(),
+  types: z.array(z.nativeEnum(TimelineItemType)).optional(),
+  includeRelated: z.coerce.boolean().optional(),
+});
+
+/**
+ * Type for timeline query
+ */
+export type TimelineQuery = z.infer<typeof timelineQuerySchema>;

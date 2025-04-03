@@ -1,7 +1,8 @@
 import { createServer, Server as HTTPServer } from 'http';
 import { AddressInfo } from 'net';
 import { Socket as ClientSocket } from 'socket.io-client';
-import { WebSocketService, WebSocketEvent } from '../WebSocketService';
+import { WebSocketService } from '../WebSocketService'; 
+import { WebSocketEvent } from '../../../types/websocket';
 import { AgentServiceEvent, getAgentService } from '../AgentService';
 // We don't need to import EventEmitter since we get it from requireActual
 
@@ -16,6 +17,18 @@ jest.mock('../AgentService', () => {
   
   // Add methods
   mockAgentService.getPermissionRequests = jest.fn().mockReturnValue([]);
+  mockAgentService.getToolArgs = jest.fn().mockReturnValue({});
+  mockAgentService.getToolExecution = jest.fn().mockImplementation((executionId) => ({
+    id: executionId || 'mock-execution-id',
+    sessionId: 'test-session-id',
+    toolId: 'file_read',
+    toolName: 'File Read',
+    status: 2, // RUNNING
+    args: {},
+    startTime: new Date().toISOString(),
+    summary: 'test parameter summary'
+  }));
+  mockAgentService.getToolExecutionsForSession = jest.fn().mockReturnValue([]);
   
   // Initialize the event emitter
   EventEmitter.call(mockAgentService);
@@ -86,7 +99,7 @@ describe('WebSocketService', () => {
     };
 
     // Initialize the WebSocketService
-    webSocketService = WebSocketService.getInstance(httpServer);
+    webSocketService = WebSocketService.create(httpServer);
     
     // Use type assertion here to access private members for testing
     // TypeScript won't allow this normally, but it's a common pattern in testing
@@ -105,10 +118,11 @@ describe('WebSocketService', () => {
     jest.clearAllMocks();
   });
 
-  it('should be a singleton', () => {
-    const instance1 = WebSocketService.getInstance();
-    const instance2 = WebSocketService.getInstance();
-    expect(instance1).toBe(instance2);
+  it('should create independent instances', () => {
+    const instance1 = WebSocketService.create(httpServer);
+    const instance2 = WebSocketService.create(httpServer);
+    // We no longer expect them to be the same instance
+    expect(instance1).not.toBe(instance2);
   });
 
   it('should expose expected methods and properties', () => {
@@ -135,10 +149,14 @@ describe('WebSocketService', () => {
       (webSocketService as any).activeTools = new Map();
     });
     
-    it('should track active tools', () => {
+    it('should track active tools', async () => {
       // Initial state should have no active tools
       const initialTools = webSocketService.getActiveTools('test-session-id');
       expect(initialTools).toEqual([]);
+      
+      // Re-create active tools map to ensure clean state
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (webSocketService as any).activeTools = new Map();
       
       // Emit a tool execution started event
       const startEvent = {
@@ -172,14 +190,24 @@ describe('WebSocketService', () => {
         executionTime: 123,
         timestamp: '2023-01-01T00:00:00.000Z'
       };
-      agentService.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, completeEvent);
+      
+      // Use a wrapped version of the event emission to make sure deletion logic is applied
+      await new Promise<void>((resolve) => {
+        agentService.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, completeEvent);
+        // Add a small delay to ensure tool removal logic completes
+        setTimeout(resolve, 50);
+      });
       
       // Check that the tool is no longer being tracked
       const finalTools = webSocketService.getActiveTools('test-session-id');
       expect(finalTools).toEqual([]);
     });
     
-    it('should handle multiple active tools for a session', () => {
+    it('should handle multiple active tools for a session', async () => {
+      // Re-create active tools map to ensure clean state
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (webSocketService as any).activeTools = new Map();
+      
       // Emit two tool execution started events
       const startEvent1 = {
         sessionId: 'test-session-id',
@@ -221,7 +249,12 @@ describe('WebSocketService', () => {
         timestamp: '2023-01-01T00:00:02.000Z'
       };
       
-      agentService.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, completeEvent);
+      // Use a wrapped version of the event emission to make sure deletion logic is applied
+      await new Promise<void>((resolve) => {
+        agentService.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, completeEvent);
+        // Add a small delay to ensure tool removal logic completes
+        setTimeout(resolve, 50);
+      });
       
       // Check that only one tool remains active
       const remainingTools = webSocketService.getActiveTools('test-session-id');
@@ -243,14 +276,23 @@ describe('WebSocketService', () => {
         timestamp: '2023-01-01T00:00:03.000Z'
       };
       
-      agentService.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, errorEvent);
+      // Use a wrapped version of the event emission to make sure deletion logic is applied
+      await new Promise<void>((resolve) => {
+        agentService.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, errorEvent);
+        // Add a small delay to ensure tool removal logic completes
+        setTimeout(resolve, 50);
+      });
       
       // Check that no tools remain active
       const finalTools = webSocketService.getActiveTools('test-session-id');
       expect(finalTools).toEqual([]);
     });
     
-    it('should track tools across multiple sessions independently', () => {
+    it('should track tools across multiple sessions independently', async () => {
+      // Re-create active tools map to ensure clean state
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (webSocketService as any).activeTools = new Map();
+      
       // Start tools in two different sessions
       const session1Event = {
         sessionId: 'session-1',
@@ -298,7 +340,12 @@ describe('WebSocketService', () => {
         timestamp: '2023-01-01T00:00:02.000Z'
       };
       
-      agentService.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, completeEvent);
+      // Use a wrapped version of the event emission to make sure deletion logic is applied
+      await new Promise<void>((resolve) => {
+        agentService.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, completeEvent);
+        // Add a small delay to ensure tool removal logic completes
+        setTimeout(resolve, 50);
+      });
       
       // Session 1 should have no active tools now
       expect(webSocketService.getActiveTools('session-1')).toEqual([]);
@@ -313,6 +360,15 @@ describe('WebSocketService', () => {
       // Reset mocks before each test
       mockIo.to.mockClear();
       mockIo.emit.mockClear();
+      
+      // Set up the event handlers before each test
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handler = (webSocketService as any).setupAgentEventListeners.bind(webSocketService);
+      handler();
+      
+      // Clear any existing active tools
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (webSocketService as any).activeTools = new Map();
     });
     
     it('should forward tool execution started events', () => {
@@ -351,11 +407,15 @@ describe('WebSocketService', () => {
       );
     });
     
-    it('should forward tool execution completed events', () => {
+    it('should forward tool execution completed events', async () => {
       // Set up the handler
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handler = (webSocketService as any).setupAgentEventListeners.bind(webSocketService);
       handler();
+      
+      // Re-create active tools map to ensure clean state
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (webSocketService as any).activeTools = new Map();
       
       // First start a tool to populate the active tools map
       const startEvent = {
@@ -385,8 +445,12 @@ describe('WebSocketService', () => {
         timestamp: '2023-01-01T00:00:10.000Z'
       };
       
-      // Emit the event from agentService
-      agentService.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, mockEvent);
+      // Emit the event from agentService with a small delay to ensure it completes
+      await new Promise<void>((resolve) => {
+        agentService.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, mockEvent);
+        // Add a small delay to ensure event forwarding completes
+        setTimeout(resolve, 50);
+      });
       
       // Verify the event was forwarded through the WebSocket
       expect(mockIo.to).toHaveBeenCalledWith('test-session-id');

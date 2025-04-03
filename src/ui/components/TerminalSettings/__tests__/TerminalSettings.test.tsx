@@ -3,12 +3,31 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { vi } from 'vitest';
 import { TerminalSettings } from '../TerminalSettings';
 import { TerminalProvider } from '@/context/TerminalContext';
+import { WebSocketTerminalProvider } from '@/context/WebSocketTerminalContext';
+import { WebSocketProvider } from '@/context/WebSocketContext';
+import { ToolPreferencesProvider } from '@/context/ToolPreferencesContext';
+
+// Mock WebSocketTerminalContext
+vi.mock('@/context/WebSocketTerminalContext', () => ({
+  WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useWebSocketTerminal: () => ({
+    sessionId: 'test-session-id',
+    isConnected: true,
+    isProcessing: false,
+  }),
+}));
 
 const renderWithContext = (ui: React.ReactElement) => {
   return render(
-    <TerminalProvider>
-      {ui}
-    </TerminalProvider>
+    <WebSocketProvider>
+      <TerminalProvider>
+        <WebSocketTerminalProvider>
+          <ToolPreferencesProvider>
+            {ui}
+          </ToolPreferencesProvider>
+        </WebSocketTerminalProvider>
+      </TerminalProvider>
+    </WebSocketProvider>
   );
 };
 

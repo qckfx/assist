@@ -30,7 +30,7 @@ export function useFastEditMode(sessionId?: string) {
     };
     
     // Handle permission resolution (might be auto-approved through Fast Edit Mode)
-    const handlePermissionResolved = (data: { sessionId: string; permissionId: string; resolution: boolean }) => {
+    const handlePermissionResolved = (data: { sessionId: string; executionId: string; resolution: boolean }) => {
       console.log('Permission resolved:', data);
       // No direct action needed, will be handled by the permission hooks
     };

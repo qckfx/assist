@@ -4,6 +4,7 @@ import { Terminal } from '@/components/Terminal/Terminal';
 import { TerminalProvider, useTerminal } from '@/context/TerminalContext';
 import { WebSocketTerminalProvider } from '@/context/WebSocketTerminalContext';
 import { WebSocketProvider } from '@/context/WebSocketContext';
+import { ToolPreferencesProvider } from '@/context/ToolPreferencesContext';
 import { vi } from 'vitest';
 
 // Mock the WebSocketTerminalContext
@@ -18,15 +19,36 @@ vi.mock('@/context/WebSocketTerminalContext', () => ({
   WebSocketTerminalProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }));
 
+// Mock ToolPreferencesContext
+vi.mock('@/context/ToolPreferencesContext', () => ({
+  useToolPreferencesContext: () => ({
+    preferences: {
+      defaultViewMode: 'brief',
+      persistPreferences: true,
+      toolOverrides: {}
+    },
+    initialized: true,
+    setDefaultViewMode: vi.fn(),
+    setToolViewMode: vi.fn(),
+    togglePersistPreferences: vi.fn(),
+    resetPreferences: vi.fn(),
+    getToolViewMode: vi.fn(() => 'brief'),
+    clearToolOverride: vi.fn()
+  }),
+  ToolPreferencesProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
+
 // Test App component for integration testing
 const TestApp = () => {
   return (
     <WebSocketProvider testMode={true}>
       <WebSocketTerminalProvider>
         <TerminalProvider>
-          <div className="app-container">
-            <TerminalContainer />
-          </div>
+          <ToolPreferencesProvider>
+            <div className="app-container">
+              <TerminalContainer />
+            </div>
+          </ToolPreferencesProvider>
         </TerminalProvider>
       </WebSocketTerminalProvider>
     </WebSocketProvider>

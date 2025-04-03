@@ -14,11 +14,17 @@ import { generateAriaId, prefersReducedMotion } from '@/utils/accessibility';
 import { useIsSmallScreen } from '@/hooks/useMediaQuery';
 import { TypingIndicator } from '@/components/TypingIndicator';
 import { EnvironmentConnectionIndicator } from '@/components/EnvironmentConnectionIndicator';
-import { useToolStream } from '@/hooks/useToolStream';
+import { useToolVisualization } from '@/hooks/useToolVisualization';
 import { useFastEditModeKeyboardShortcut } from '@/hooks/useFastEditModeKeyboardShortcut';
 import { FastEditModeIndicator } from '@/components/FastEditModeIndicator';
-// We'll use this component in the future
-import _ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
+import { useToolPreferencesContext } from '@/context/ToolPreferencesContext';
+import { PreviewMode } from '../../../types/preview';
+// Import the SessionManager
+import { SessionManager } from '../SessionManagement';
+// Import the API client
+import apiClient from '@/services/apiClient';
+// Import timeline types
+import { TimelineItemType } from '../../../types/timeline';
 
 export interface TerminalProps {
   className?: string;
@@ -37,8 +43,8 @@ export interface TerminalProps {
   sessionId?: string;
   showConnectionIndicator?: boolean;
   showTypingIndicator?: boolean;
-  showToolVisualizations?: boolean;
   connectionStatus?: string;
+  showNewSessionHint?: boolean;
 }
 
 export function Terminal({
@@ -54,7 +60,7 @@ export function Terminal({
   sessionId,
   showConnectionIndicator = true,
   showTypingIndicator = true,
-  showToolVisualizations = true,
+  showNewSessionHint = false,
   // Not used with the new indicator
   connectionStatus: _connectionStatus,
 }: TerminalProps) {
@@ -76,8 +82,21 @@ export function Terminal({
     input: generateAriaId('terminal-input'),
   });
   
-  // Initialize the tool stream hook to get active tool information
-  const { getActiveTools, getRecentTools, hasActiveTools, toolHistory, activeToolCount } = useToolStream();
+  // Initialize the tool visualization hook to get tool visualization state
+  const { 
+    activeTools, 
+    recentTools, 
+    hasActiveTools, 
+    tools, 
+    activeToolCount
+  } = useToolVisualization();
+  
+  // Use the preferences context for view mode handling
+  const {
+    preferences,
+    setToolViewMode,
+    setDefaultViewMode
+  } = useToolPreferencesContext();
   
   // Use provided theme or get from context
   const terminalContext = useTerminal();
@@ -106,7 +125,7 @@ export function Terminal({
   // Track tool execution status for UI updates
   useEffect(() => {
     // Monitor tool activity to update UI accordingly
-  }, [toolHistory, activeToolCount, hasActiveTools]);
+  }, [tools, activeToolCount, hasActiveTools]);
   
   // Determine color scheme class and vars directly
   // If terminal is set to system, use the app theme, otherwise use terminal's setting
@@ -164,6 +183,55 @@ export function Terminal({
   // Define keyboard shortcuts - use metaKey (cmd) on macOS
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   
+  // Get createSession from WebSocketTerminal context
+  const { createSession } = wsTerminalContext;
+  
+  // Create a new session handler
+  const handleNewSession = async () => {
+    try {
+      // Show a toast message
+      setSaveMessage('Creating new session...');
+      
+      // Create a loading toast notification
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-14 left-0 right-0 mx-auto w-max bg-black/90 text-white px-4 py-2 rounded-md shadow-lg z-50 flex items-center';
+      toast.innerHTML = `
+        <span class="inline-block animate-spin mr-2">⟳</span>
+        <span>Creating new session...</span>
+      `;
+      document.body.appendChild(toast);
+      
+      // Save current session first if we have one
+      if (sessionId) {
+        await saveSession();
+      }
+      
+      // Create a new session
+      const newSessionId = await createSession();
+      if (newSessionId) {
+        console.log('Created new session:', newSessionId);
+        
+        // Store the new session ID and reload
+        localStorage.setItem('sessionId', newSessionId);
+        
+        // Update the toast
+        toast.innerHTML = `
+          <span class="mr-2">✓</span>
+          <span>New session created, redirecting...</span>
+        `;
+        
+        // Brief delay before reloading to let the user see the message
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error creating new session:', error);
+      setSaveMessage('Failed to create new session');
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+  };
+  
   const shortcuts: KeyboardShortcut[] = [
     {
       key: 'k',
@@ -194,6 +262,13 @@ export function Terminal({
       action: () => setShowSettings(!showSettings),
       description: `${isMac ? 'Cmd' : 'Ctrl'}+,: Open settings`,
     },
+    // Add new session shortcut (Cmd+. or Ctrl+.)
+    {
+      key: '.',
+      [isMac ? 'metaKey' : 'ctrlKey']: true,
+      action: handleNewSession,
+      description: `${isMac ? 'Cmd' : 'Ctrl'}+.: New session`,
+    },
     // Add abort shortcuts
     {
       key: 'c',
@@ -216,6 +291,85 @@ export function Terminal({
 
   // Register Fast Edit Mode keyboard shortcut (Shift+Tab)
   useFastEditModeKeyboardShortcut(sessionId, !inputDisabled);
+  
+  // Add state for session manager
+  const [showSessionManager, setShowSessionManager] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  
+  // Toggle session manager
+  const toggleSessionManager = () => {
+    setShowSessionManager(!showSessionManager);
+  };
+  
+  // Close the session manager if Escape is pressed
+  useEffect(() => {
+    if (!showSessionManager) return;
+    
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowSessionManager(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showSessionManager]);
+  
+  // Save current session
+  const saveSession = async () => {
+    if (!sessionId) {
+      setSaveMessage("No active session to save");
+      setTimeout(() => setSaveMessage(null), 3000);
+      return;
+    }
+    
+    setIsSaving(true);
+    setSaveMessage("Saving...");
+    
+    try {
+      // Use the apiClient to save the session
+      console.log('Saving session via apiClient:', sessionId);
+      
+      const response = await apiClient.saveSession(sessionId);
+      console.log('Session save response:', response);
+      
+      if (response.success) {
+        setSaveMessage("Session saved");
+        
+        // Store the session ID in localStorage for persistence
+        localStorage.setItem('sessionId', sessionId);
+        console.log('Stored session ID in localStorage:', sessionId);
+      } else {
+        setSaveMessage("Failed to save");
+      }
+    } catch (error) {
+      console.error('Failed to save session:', error);
+      setSaveMessage("Error saving session");
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+  };
+
+  // Handle tool view mode changes with preference persistence
+  const handleViewModeChange = React.useCallback((toolId: string, mode: PreviewMode) => {
+    // Save the tool-specific preference
+    setToolViewMode(toolId, mode);
+    
+    // If we should persist preferences, update the default mode based on user action
+    if (preferences.persistPreferences) {
+      // If the user expanded a tool, set brief as default for future tools
+      // If the user collapsed a tool, set retracted as default for future tools
+      if (mode === PreviewMode.COMPLETE || mode === PreviewMode.BRIEF) {
+        setDefaultViewMode(PreviewMode.BRIEF);
+      } else if (mode === PreviewMode.RETRACTED) {
+        setDefaultViewMode(PreviewMode.RETRACTED);
+      }
+    }
+  }, [setToolViewMode, setDefaultViewMode, preferences.persistPreferences]);
 
   return (
     <div
@@ -291,6 +445,41 @@ export function Terminal({
         <div className="flex items-center space-x-2">
           <button
             className="hover:text-white text-sm group relative"
+            onClick={handleNewSession}
+            aria-label="New Session"
+            data-testid="new-session"
+          >
+            ➕
+            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              New Session ({isMac ? 'Cmd' : 'Ctrl'}+.)
+            </span>
+          </button>
+          <button
+            className="hover:text-white text-sm group relative"
+            onClick={saveSession}
+            aria-label="Save Current Session"
+            data-testid="quick-save-session"
+          >
+            💾
+            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              Save Session
+            </span>
+          </button>
+          <button
+            className="hover:text-white text-sm group relative"
+            onClick={toggleSessionManager}
+            aria-label="Session Management"
+            data-testid="show-session-manager"
+            aria-haspopup="dialog"
+            aria-expanded={showSessionManager}
+          >
+            📋
+            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              {showSessionManager ? 'Close Sessions' : 'Session List'}
+            </span>
+          </button>
+          <button
+            className="hover:text-white text-sm group relative"
             onClick={() => setShowSettings(true)}
             aria-label="Terminal settings"
             data-testid="show-settings"
@@ -317,6 +506,19 @@ export function Terminal({
           </button>
         </div>
       </div>
+      {/* Save message toast */}
+      {saveMessage && (
+        <div className="absolute top-14 left-4 bg-black/80 text-white px-3 py-2 rounded text-sm z-50">
+          {isSaving ? (
+            <span className="flex items-center">
+              <span className="inline-block mr-2 animate-spin">⟳</span> {saveMessage}
+            </span>
+          ) : (
+            <span>{saveMessage}</span>
+          )}
+        </div>
+      )}
+      
       <div 
         className="flex flex-col flex-grow overflow-auto terminal-scrollbar"
         style={{ 
@@ -329,30 +531,15 @@ export function Terminal({
       >
         {/* Main scrollable content area */}
         <div className="flex-grow overflow-y-auto">
-          {/* Recalculate tools on each render to ensure updates */}
-          {(() => {
-            // Capture current tools on each render - now showing all tools
-            const activeTools = getActiveTools();
-            const completedTools = getRecentTools(); // No limit
-            
-            // Get current tools for rendering
-            
-            const allTools = [...activeTools, ...completedTools];
-            const toolMap = Object.fromEntries(
-              allTools.map(tool => [tool.id, tool])
-            );
-            
-            return (
-              <MessageFeed 
-                messages={messages} 
-                className="terminal-message-animation"
-                ariaLabelledBy={ids.output}
-                toolExecutions={showToolVisualizations ? toolMap : {}}
-                showToolsInline={showToolVisualizations}
-                isDarkTheme={shouldUseDarkTerminal}
-              />
-            );
-          })()}
+          {/* MessageFeed now gets data from TimelineContext and useToolVisualization directly */}
+          <MessageFeed 
+            sessionId={sessionId || null} 
+            className="terminal-message-animation"
+            ariaLabelledBy={ids.output}
+            isDarkTheme={shouldUseDarkTerminal}
+            onNewSession={handleNewSession}
+            showNewSessionMessage={showNewSessionHint && messages.length > 1}
+          />
         </div>
         
         {/* Fixed indicators area */}
@@ -416,7 +603,16 @@ export function Terminal({
         onClose={() => setShowSettings(false)}
         ariaLabelledBy={`${ids.terminal}-settings-title`}
       />
-      <Announcer messages={messages} />
+      {showSessionManager && (
+        <div className="terminal-session-manager">
+          <SessionManager onClose={() => setShowSessionManager(false)} />
+        </div>
+      )}
+      <Announcer messages={messages.map(msg => ({
+        id: msg.id,
+        content: Array.isArray(msg.content) ? msg.content : [{ type: 'text', text: String(msg.content) }],
+        role: msg.type
+      }))} />
       
       {/* Hidden elements for screen reader description */}
       <div className="sr-only" id={`${ids.terminal}-shortcuts-title`}>Keyboard shortcuts</div>

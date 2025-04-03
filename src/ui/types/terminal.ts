@@ -1,10 +1,11 @@
-import { MessageType } from '@/components/Message';
+import { MessageType } from '../components/Message';
+import { StructuredContent } from '../../types/message';
 
 export interface TerminalMessage {
   id: string;
-  content: string;
+  content: StructuredContent | string; // Allow string for backward compatibility
   type: MessageType;
-  timestamp: Date;
+  timestamp: number; // Timestamp in milliseconds
 }
 
 export interface TerminalState {
@@ -21,6 +22,9 @@ export interface TerminalState {
   isStreaming: boolean;
   typingIndicator: boolean;
   streamBuffer: string[];
+  
+  // Add preview preferences
+  previewPreferences: ToolPreviewPreferences;
 }
 
 export enum ToolState {
@@ -29,6 +33,22 @@ export enum ToolState {
   COMPLETED = 'completed',
   ERROR = 'error',
   ABORTED = 'aborted'
+}
+
+import { PreviewMode } from '../../types/preview';
+
+/**
+ * User preferences for tool preview display
+ */
+export interface ToolPreviewPreferences {
+  // Default view mode for tool previews
+  defaultViewMode: PreviewMode;
+  
+  // Whether to apply user preference to all tools
+  persistPreference: boolean;
+  
+  // Overrides for specific tools
+  toolOverrides?: Record<string, { viewMode: PreviewMode }>;
 }
 
 export type TerminalAction =
@@ -44,4 +64,7 @@ export type TerminalAction =
   | { type: 'SET_TYPING_INDICATOR'; payload: boolean }
   | { type: 'SET_STREAMING'; payload: boolean }
   | { type: 'ADD_TO_STREAM_BUFFER'; payload: string }
-  | { type: 'CLEAR_STREAM_BUFFER' };
+  | { type: 'CLEAR_STREAM_BUFFER' }
+  | { type: 'SET_PREVIEW_MODE'; payload: { toolId: string; mode: PreviewMode } }
+  | { type: 'SET_DEFAULT_PREVIEW_MODE'; payload: PreviewMode }
+  | { type: 'SET_PREVIEW_PERSISTENCE'; payload: boolean };

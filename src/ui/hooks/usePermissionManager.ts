@@ -12,6 +12,7 @@ interface PermissionRequest {
   toolName?: string;
   args: Record<string, unknown>;
   timestamp: string;
+  executionId: string; // Added executionId field
 }
 
 interface UsePermissionManagerOptions {
@@ -67,6 +68,7 @@ export function usePermissionManager({
             toolName: (permission.toolName as string) || (permission.toolId as string),
             args: (permission.args as Record<string, unknown>) || {},
             timestamp: (permission.timestamp as string) || new Date().toISOString(),
+            executionId: permission.executionId as string,
           },
         ];
         
@@ -77,14 +79,14 @@ export function usePermissionManager({
     
     const handlePermissionResolved = (data: { 
       sessionId: string; 
-      permissionId: string; 
+      executionId: string;  // Now using executionId instead of permissionId 
       resolution: boolean;
     }) => {
       console.log('[usePermissionManager] Permission resolved:', data);
       
-      // Remove from pending permissions
+      // Remove from pending permissions - comparing by executionId
       setPendingPermissions(prev => {
-        const filteredPermissions = prev.filter(p => p.id !== data.permissionId);
+        const filteredPermissions = prev.filter(p => p.executionId !== data.executionId);
         console.log('[usePermissionManager] Removed permission from pending list, remaining:', filteredPermissions);
         return filteredPermissions;
       });
@@ -110,7 +112,7 @@ export function usePermissionManager({
   
   // Resolve a permission request
   const resolvePermission = useCallback(async (
-    permissionId: string,
+    executionId: string,
     granted: boolean
   ): Promise<boolean> => {
     // If sessionId is not provided as a prop, try to get it from sessionStorage
@@ -125,7 +127,7 @@ export function usePermissionManager({
     }
     
     try {
-      const response = await apiClient.resolvePermission(permissionId, granted);
+      const response = await apiClient.resolvePermission(executionId, granted);
       
       if (!response.success) {
         // Just log to console, don't show error message to user
@@ -135,7 +137,7 @@ export function usePermissionManager({
       
       // Remove from pending permissions
       setPendingPermissions(prev => 
-        prev.filter(p => p.id !== permissionId)
+        prev.filter(p => p.executionId !== executionId)
       );
       
       return true;

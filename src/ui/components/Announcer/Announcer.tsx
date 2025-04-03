@@ -1,8 +1,19 @@
 import React, { useEffect, useState } from 'react';
+import { StructuredContent, TextContentPart } from '../../../types/message';
 
 interface AnnouncerProps {
-  messages: { id: string; content: string; role?: string }[];
+  messages: { id: string; content: StructuredContent; role?: string }[];
   assertive?: boolean;
+}
+
+/**
+ * Helper function to extract text from structured content
+ */
+function getTextFromStructuredContent(content: StructuredContent): string {
+  return content
+    .filter(part => part.type === 'text')
+    .map(part => (part as TextContentPart).text)
+    .join(' ');
 }
 
 /**
@@ -15,16 +26,17 @@ export function Announcer({ messages, assertive = false }: AnnouncerProps) {
     // Only announce if there are messages and the last message changed
     if (messages.length > 0) {
       const latestMessage = messages[messages.length - 1];
+      const textContent = getTextFromStructuredContent(latestMessage.content);
       
       // Check for abort-related system messages
       if (latestMessage.role === 'system' && 
-          (latestMessage.content.includes('aborted') || 
-           latestMessage.content.includes('Aborting'))) {
+          (textContent.includes('aborted') || 
+           textContent.includes('Aborting'))) {
         setLastMessage('Operation aborted');
       }
       // Standard announcement behavior
-      else if (latestMessage.content !== lastMessage) {
-        setLastMessage(latestMessage.content);
+      else if (textContent !== lastMessage) {
+        setLastMessage(textContent);
       }
     }
   }, [messages, lastMessage]);
