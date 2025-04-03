@@ -459,10 +459,6 @@ export class WebSocketService {
       this.broadcastEvent(WebSocketEvent.SESSION_SAVED, data);
     });
     
-    this.agentService.on(AgentServiceEvent.SESSION_LOADED, (data) => {
-      this.broadcastEvent(WebSocketEvent.SESSION_LOADED, data);
-    });
-    
     this.agentService.on(AgentServiceEvent.SESSION_DELETED, (data) => {
       this.broadcastEvent(WebSocketEvent.SESSION_DELETED, data);
     });
@@ -1201,14 +1197,14 @@ export class WebSocketService {
     permissionId: string;
     toolId: string;
     toolName?: string;
-    executionId?: string;
+    executionId: string; // Required field
     args?: Record<string, unknown>;
     timestamp?: string;
   }): void {
     const { sessionId, executionId } = data;
     
     // Get the full execution state
-    const execution = this.agentService.getToolExecution(executionId!);
+    const execution = this.agentService.getToolExecution(executionId);
     
     if (!execution) {
       serverLogger.warn(`Tool execution not found for permission request: ${executionId}`);
@@ -1241,14 +1237,14 @@ export class WebSocketService {
     sessionId: string;
     permissionId: string;
     toolId: string;
-    executionId?: string;
+    executionId: string; // Required field
     granted: boolean;
     timestamp?: string;
   }): void {
     const { sessionId, executionId, granted } = data;
     
     // Get the full execution state
-    const execution = this.agentService.getToolExecution(executionId!);
+    const execution = this.agentService.getToolExecution(executionId);
     
     if (!execution) {
       serverLogger.warn(`Tool execution not found for permission resolution: ${executionId}`);

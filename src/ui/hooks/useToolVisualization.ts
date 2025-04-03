@@ -32,8 +32,6 @@ export interface ToolVisualizationItem {
   endTime?: number;
   /** Duration of tool execution in milliseconds */
   executionTime?: number;
-  /** Permission request ID if tool requires permission */
-  permissionId?: string;
   /** Preview data for visualization */
   preview?: {
     contentType: string;
@@ -123,7 +121,6 @@ export function useToolVisualization(): UseToolVisualizationResult {
         executionTime: item.toolExecution.executionTime,
         result: item.toolExecution.result,
         error: item.toolExecution.error,
-        permissionId: item.toolExecution.permissionId,
         // Use preview directly from toolExecution
         preview: item.toolExecution.preview,
         // Apply view mode: from specific setting, or default

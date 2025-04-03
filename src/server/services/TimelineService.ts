@@ -120,6 +120,9 @@ export class TimelineService extends EventEmitter {
   private itemsCache: TimelineItemsCache = {};
   private cacheExpiryMs = 30 * 1000; // 30 seconds
   private cleanup: () => void = () => {};
+  private processingSessionIds: Map<string, number> = new Map();
+  private sessionProcessingThresholdMs = 2000; // 2 seconds
+  private lastToolUpdates: Map<string, number> = new Map<string, number>();
 
   constructor(
     private sessionManager: SessionManager,
@@ -146,11 +149,12 @@ export class TimelineService extends EventEmitter {
     // Log that we're retrieving timeline items
     serverLogger.debug(`Retrieving timeline items for session ${sessionId}`);
     
-    // Try to load the session from persistence first
+    // Try to load the session from persistence first WITHOUT triggering SESSION_LOADED events
     const sessionStatePersistence = getSessionStatePersistence();
     if (sessionStatePersistence) {
       try {
-        const persistedData = await sessionStatePersistence.loadSession(sessionId);
+        // Use getSessionDataWithoutEvents instead of loadSession to avoid the event loop
+        const persistedData = await sessionStatePersistence.getSessionDataWithoutEvents(sessionId);
         if (persistedData) {
           serverLogger.debug(`API request: Loaded persisted session ${sessionId} with ${persistedData.messages?.length || 0} messages`);
         }
@@ -221,6 +225,7 @@ export class TimelineService extends EventEmitter {
 
   /**
    * Add or update a tool execution in the timeline
+   * with built-in circuit breaker to prevent infinite loops
    */
   private async addToolExecutionToTimeline(
     sessionId: string,
@@ -228,6 +233,45 @@ export class TimelineService extends EventEmitter {
     preview?: ToolPreviewState,
     parentMessageId?: string
   ): Promise<ToolExecutionTimelineItem> {
+    // Implement circuit breaker for tool execution updates
+    // This prevents infinite recursion when multiple services update the same tool
+    const executionId = toolExecution.id;
+    const now = Date.now();
+    const recentKey = `tool_${executionId}_${Math.floor(now / 1000)}`;
+    
+    // Initialize the updates tracking map if needed
+    if (!this.lastToolUpdates) {
+      this.lastToolUpdates = new Map<string, number>();
+    }
+    
+    const lastUpdate = this.lastToolUpdates.get(recentKey);
+    
+    // Skip if recently updated (within 1 second)
+    if (lastUpdate && (now - lastUpdate < 1000)) {
+      serverLogger.warn(`[ToolExecution] Skipping duplicate tool execution update for ${executionId} (${now - lastUpdate}ms since last update)`);
+      
+      // Return a minimal item with just the necessary information
+      return {
+        id: executionId,
+        type: TimelineItemType.TOOL_EXECUTION,
+        timestamp: toolExecution.startTime,
+        sessionId,
+        toolExecution,
+        permissionRequest: toolExecution.permissionId,
+        preview,
+        parentMessageId
+      };
+    }
+    
+    // Record this update
+    this.lastToolUpdates.set(recentKey, now);
+    
+    // Clean up the key after a reasonable time
+    setTimeout(() => {
+      if (this.lastToolUpdates) {
+        this.lastToolUpdates.delete(recentKey);
+      }
+    }, 5000);
     // Create the timeline item with the provided preview
     const timelineItem: ToolExecutionTimelineItem = {
       id: toolExecution.id,
@@ -360,12 +404,43 @@ export class TimelineService extends EventEmitter {
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
     
     // In our new model, permissions updates should come through as tool updates
-    // Update the associated tool execution if it exists
+    // Update the associated tool execution if it exists, but with circuit breaker
     if (permissionRequest.executionId) {
-      const toolExecution = this.getAgentService()?.getToolExecution(permissionRequest.executionId);
+      // Use a unique key combining the execution ID and a timestamp rounded to seconds
+      // to prevent multiple updates for the same permission within close time proximity
+      const executionId = permissionRequest.executionId;
+      const now = Date.now();
+      const key = `${executionId}_${Math.floor(now / 1000)}`;
+      
+      // Use a weak map to store last update times (we don't want to grow memory indefinitely)
+      if (!this.lastToolUpdates) {
+        this.lastToolUpdates = new Map<string, number>();
+      }
+      
+      const lastUpdate = this.lastToolUpdates.get(key);
+      
+      // If we've already processed this combination recently, skip it
+      if (lastUpdate && (now - lastUpdate < 1000)) {
+        serverLogger.warn(`[Permission] Skipping duplicate tool update for ${executionId} (${now - lastUpdate}ms since last update)`);
+        return timelineItem;
+      }
+      
+      // Record this update
+      this.lastToolUpdates.set(key, now);
+      
+      // Set cleanup for this key
+      setTimeout(() => {
+        if (this.lastToolUpdates) {
+          this.lastToolUpdates.delete(key);
+        }
+      }, 5000);
+      
+      // Now get and update the tool execution
+      const toolExecution = this.getAgentService()?.getToolExecution(executionId);
       
       if (toolExecution) {
         // Update the tool execution with the permission state and preview
+        serverLogger.debug(`[Permission] Updating tool execution ${executionId} with permission state`);
         this.addToolExecutionToTimeline(sessionId, toolExecution, preview);
       }
     }
@@ -378,26 +453,30 @@ export class TimelineService extends EventEmitter {
    */
   private emitToSession(sessionId: string, event: string, data: Record<string, unknown>): void {
     try {
+      serverLogger.debug(`[emitToSession] Attempting to emit ${event} to session ${sessionId} with stack trace: ${new Error().stack}`);
+      
       // Type-safe access to WebSocketService properties
       // Access the socket.io instance directly
       const socketIoServer = this.getSocketIOServer();
       
       if (socketIoServer) {
+        serverLogger.debug(`[emitToSession] Using Socket.IO to emit ${event} to session ${sessionId}`);
         socketIoServer.to(sessionId).emit(event, data);
-        serverLogger.debug(`Emitted ${event} to session ${sessionId}`);
+        serverLogger.debug(`[emitToSession] Emitted ${event} to session ${sessionId} via Socket.IO`);
       } else {
         // Fallback method if direct io access is not available
         const agentService = this.getAgentService();
         if (agentService) {
           // If AgentService is accessible, emit the event through it
+          serverLogger.debug(`[emitToSession] Using AgentService to emit timeline:${event} for session ${sessionId}`);
           agentService.emit(`timeline:${event}`, { sessionId, ...data });
-          serverLogger.debug(`Emitted timeline:${event} through AgentService for session ${sessionId}`);
+          serverLogger.debug(`[emitToSession] Emitted timeline:${event} through AgentService for session ${sessionId}`);
         } else {
-          serverLogger.warn(`Could not emit ${event} to session ${sessionId}: No socket.io or AgentService instance found`);
+          serverLogger.warn(`[emitToSession] Could not emit ${event} to session ${sessionId}: No socket.io or AgentService instance found`);
         }
       }
     } catch (error) {
-      serverLogger.error(`Error emitting to session ${sessionId}:`, error instanceof Error ? error.message : String(error));
+      serverLogger.error(`[emitToSession] Error emitting to session ${sessionId}:`, error instanceof Error ? error.message : String(error));
     }
   }
   
@@ -573,54 +652,69 @@ export class TimelineService extends EventEmitter {
         });
     });
     
-    // Listen for permission request events
+    // Listen for permission request events - use a debounce mechanism to prevent cascading permission events
+    const permissionDebounce = new Map<string, number>();
+    const permissionThresholdMs = 1000; // 1 second 
+    
     agentService.on(AgentServiceEvent.PERMISSION_REQUESTED, (data: PermissionRequestEvent) => {
+      if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
+        serverLogger.error('[PERMISSION] Missing required data in PERMISSION_REQUESTED event', data);
+        return;
+      }
+      
+      const permissionId = data.permissionRequest.id;
+      const now = Date.now();
+      const lastProcessed = permissionDebounce.get(permissionId);
+      
+      // Skip if we've already processed this permission recently
+      if (lastProcessed && (now - lastProcessed < permissionThresholdMs)) {
+        serverLogger.warn(`[PERMISSION] Skipping duplicate PERMISSION_REQUESTED for ${permissionId}, last processed ${now - lastProcessed}ms ago`);
+        return;
+      }
+      
+      // Mark as processing
+      permissionDebounce.set(permissionId, now);
+      
+      // Process the permission request
+      serverLogger.debug(`[PERMISSION] Processing permission request ${permissionId}`);
       this.addPermissionRequestToTimeline(data.sessionId, data.permissionRequest, data.preview);
+      
+      // Clean up after a delay
+      setTimeout(() => permissionDebounce.delete(permissionId), 2000);
     });
     
     agentService.on(AgentServiceEvent.PERMISSION_RESOLVED, (data: PermissionRequestEvent) => {
+      if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
+        serverLogger.error('[PERMISSION] Missing required data in PERMISSION_RESOLVED event', data);
+        return;
+      }
+      
+      const permissionId = data.permissionRequest.id;
+      const now = Date.now();
+      const lastProcessed = permissionDebounce.get(permissionId);
+      
+      // Skip if we've already processed this permission recently
+      if (lastProcessed && (now - lastProcessed < permissionThresholdMs)) {
+        serverLogger.warn(`[PERMISSION] Skipping duplicate PERMISSION_RESOLVED for ${permissionId}, last processed ${now - lastProcessed}ms ago`);
+        return;
+      }
+      
+      // Mark as processing
+      permissionDebounce.set(permissionId, now);
+      
+      // Process the permission resolution
+      serverLogger.debug(`[PERMISSION] Processing permission resolution ${permissionId}`);
       this.addPermissionRequestToTimeline(data.sessionId, data.permissionRequest, data.preview);
+      
+      // Clean up after a delay
+      setTimeout(() => permissionDebounce.delete(permissionId), 2000);
     });
     
-    // Handle session loading
+    // Completely disable SESSION_LOADED event handling as a more drastic fix
+    // This breaks the event chain that's likely causing infinite loops
     agentService.on(AgentServiceEvent.SESSION_LOADED, (data: SessionEvent) => {
-      // Clear the cache for this session to force a rebuild
-      delete this.itemsCache[data.sessionId];
-      
-      // Force load the session from persistence before building the timeline
-      const sessionStatePersistence = getSessionStatePersistence();
-      
-      // Wrap in an async function so we can use await
-      (async () => {
-        try {
-          // Try to load from persistence first
-          if (sessionStatePersistence) {
-            try {
-              const persistedData = await sessionStatePersistence.loadSession(data.sessionId);
-              if (persistedData) {
-                serverLogger.debug(`Loaded persisted session ${data.sessionId} with ${persistedData.messages?.length || 0} messages`);
-              }
-            } catch (err) {
-              serverLogger.debug(`No persisted data for session ${data.sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-            }
-          }
-          
-          // Build the timeline with either persisted or in-memory data
-          const timeline = await this.buildSessionTimeline(data.sessionId, true);
-          
-          // Log for debugging
-          serverLogger.debug(`Sending TIMELINE_HISTORY for session ${data.sessionId} with ${timeline.items.length} items`);
-          
-          // Send timeline history to clients
-          this.emitToSession(data.sessionId, WebSocketEvent.TIMELINE_HISTORY, {
-            sessionId: data.sessionId,
-            items: timeline.items,
-            totalCount: timeline.items.length
-          });
-        } catch (err) {
-          serverLogger.error(`Error building timeline for session ${data.sessionId}:`, err);
-        }
-      })();
+      // Implementation removed to break the event chain
+      serverLogger.warn(`[SESSION_LOADED] SESSION_LOADED event received for ${data.sessionId} but intentionally not processed to prevent infinite loops`);
     });
     
     // Listen for Tool Execution Manager events (if available)
@@ -687,7 +781,8 @@ export class TimelineService extends EventEmitter {
       
       if (sessionStatePersistence) {
         try {
-          persistedSessionData = await sessionStatePersistence.loadSession(sessionId);
+          // Use the non-event-emitting method to avoid recursive event emission
+          persistedSessionData = await sessionStatePersistence.getSessionDataWithoutEvents(sessionId);
           // If we have persisted data, use it instead of in-memory session
           if (persistedSessionData) {
             serverLogger.debug(`Loaded persisted session data for ${sessionId} with ${persistedSessionData.messages?.length || 0} messages`);

@@ -487,6 +487,21 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
    * Helper method to emit events
    */
   private emitEvent(event: ToolExecutionEvent | string, data: unknown): void {
+    // Validate data before emitting events to prevent null/undefined from causing issues
+    if (!data) {
+      serverLogger.error(`Cannot emit ${event} event with invalid data: ${data}`);
+      return;
+    }
+    
+    // For permission events, ensure permissionRequest is defined and has an id
+    if (event === ToolExecutionEvent.PERMISSION_REQUESTED || event === ToolExecutionEvent.PERMISSION_RESOLVED) {
+      const typedData = data as { permission?: PermissionRequestState; execution?: ToolExecutionState };
+      if (!typedData.permission || !typedData.permission.id || !typedData.execution) {
+        serverLogger.error(`Cannot emit ${event} with invalid permission data:`, typedData);
+        return;
+      }
+    }
+    
     this.eventEmitter.emit(event, data);
   }
 

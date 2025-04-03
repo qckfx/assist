@@ -36,7 +36,7 @@ interface WebSocketTerminalContextProps {
   
   // Permission management
   hasPendingPermissions: boolean;
-  resolvePermission: (permissionId: string, granted: boolean) => Promise<boolean>;
+  resolvePermission: (executionId: string, granted: boolean) => Promise<boolean>;
 }
 
 /**

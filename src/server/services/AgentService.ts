@@ -642,7 +642,7 @@ export class AgentService extends EventEmitter {
           fullContent,
           { 
             ...permissionPreview.metadata,
-            permissionId: permission.id
+            executionId: execution.id
           }
         );
         
@@ -1395,6 +1395,10 @@ export class AgentService extends EventEmitter {
             
             // Create the permission request in the manager
             const permission = this.toolExecutionManager.requestPermission(executionId, args);
+            if (!permission || !permission.id) {
+              serverLogger.error(`Failed to create permission request for tool execution ${executionId}`);
+              return Promise.resolve(false);
+            }
             
             // Generate a preview for the permission request
             this.generatePermissionPreview(executionId, toolId, args);

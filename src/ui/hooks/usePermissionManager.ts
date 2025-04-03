@@ -112,7 +112,7 @@ export function usePermissionManager({
   
   // Resolve a permission request
   const resolvePermission = useCallback(async (
-    permissionId: string,
+    executionId: string,
     granted: boolean
   ): Promise<boolean> => {
     // If sessionId is not provided as a prop, try to get it from sessionStorage
@@ -127,7 +127,7 @@ export function usePermissionManager({
     }
     
     try {
-      const response = await apiClient.resolvePermission(permissionId, granted);
+      const response = await apiClient.resolvePermission(executionId, granted);
       
       if (!response.success) {
         // Just log to console, don't show error message to user
@@ -137,7 +137,7 @@ export function usePermissionManager({
       
       // Remove from pending permissions
       setPendingPermissions(prev => 
-        prev.filter(p => p.id !== permissionId)
+        prev.filter(p => p.executionId !== executionId)
       );
       
       return true;

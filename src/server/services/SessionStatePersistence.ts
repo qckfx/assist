@@ -80,9 +80,10 @@ export class SessionStatePersistence extends EventEmitter {
   }
   
   /**
-   * Load complete session data
+   * Load complete session data without emitting events
+   * @internal This method is used internally by loadSession and should not be called directly
    */
-  async loadSession(sessionId: string): Promise<SavedSessionData | undefined> {
+  private async loadSessionInternal(sessionId: string): Promise<SavedSessionData | undefined> {
     await this.initialize();
     
     try {
@@ -100,17 +101,42 @@ export class SessionStatePersistence extends EventEmitter {
       
       serverLogger.debug(`Loaded session data for session ${sessionId}`);
       
-      // Emit the loaded event
-      this.emit(SessionPersistenceEvent.SESSION_LOADED, {
-        sessionId,
-        metadata: this.createSessionListEntry(sessionData)
-      });
+      return sessionData;
+    } catch (error) {
+      serverLogger.error(`Failed to load session data for session ${sessionId}:`, error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Load complete session data
+   * This method will emit a SESSION_LOADED event, which can trigger listeners
+   */
+  async loadSession(sessionId: string): Promise<SavedSessionData | undefined> {
+    try {
+      const sessionData = await this.loadSessionInternal(sessionId);
+      
+      if (sessionData) {
+        // Emit the loaded event
+        this.emit(SessionPersistenceEvent.SESSION_LOADED, {
+          sessionId,
+          metadata: this.createSessionListEntry(sessionData)
+        });
+      }
       
       return sessionData;
     } catch (error) {
       serverLogger.error(`Failed to load session data for session ${sessionId}:`, error);
       return undefined;
     }
+  }
+  
+  /**
+   * Load session data without emitting events
+   * Use this method when you need the data but don't want to trigger event listeners
+   */
+  async getSessionDataWithoutEvents(sessionId: string): Promise<SavedSessionData | undefined> {
+    return this.loadSessionInternal(sessionId);
   }
   
   /**
