@@ -25,7 +25,6 @@ import { SessionManager } from '../SessionManagement';
 import apiClient from '@/services/apiClient';
 // Import timeline types
 import { TimelineItemType } from '../../../types/timeline';
-// No longer using ToolVisualizations component
 
 export interface TerminalProps {
   className?: string;
@@ -44,7 +43,6 @@ export interface TerminalProps {
   sessionId?: string;
   showConnectionIndicator?: boolean;
   showTypingIndicator?: boolean;
-  showToolVisualizations?: boolean;
   connectionStatus?: string;
   showNewSessionHint?: boolean;
 }
@@ -62,7 +60,6 @@ export function Terminal({
   sessionId,
   showConnectionIndicator = true,
   showTypingIndicator = true,
-  showToolVisualizations = true,
   showNewSessionHint = false,
   // Not used with the new indicator
   connectionStatus: _connectionStatus,

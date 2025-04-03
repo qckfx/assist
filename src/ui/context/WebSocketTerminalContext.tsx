@@ -113,9 +113,7 @@ export function WebSocketTerminalProvider({
   } = useTerminalWebSocket(sessionId) || {};
   
   // Initialize feature hooks with stable sessionId reference
-  const { isStreaming } = useStreamingMessages({ 
-    sessionId: sessionIdRef.current 
-  });
+  const { isStreaming } = useStreamingMessages();
   
   const { handleCommand } = useTerminalCommands({ 
     sessionId: sessionIdRef.current 

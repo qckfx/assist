@@ -69,11 +69,17 @@ vi.mock('@/hooks/useWebSocket', () => ({
   })
 }));
 
-vi.mock('@/hooks/useToolStream', () => ({
-  useToolStream: vi.fn().mockReturnValue({
-    getActiveTools: vi.fn().mockReturnValue([]),
+vi.mock('@/hooks/useToolVisualization', () => ({
+  useToolVisualization: vi.fn().mockReturnValue({
+    tools: [],
+    activeTools: [],
+    recentTools: [],
     hasActiveTools: false,
     activeToolCount: 0,
+    getToolById: vi.fn(),
+    setToolViewMode: vi.fn(),
+    setDefaultViewMode: vi.fn(),
+    defaultViewMode: PreviewMode.BRIEF
   })
 }));
 

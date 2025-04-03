@@ -3,10 +3,6 @@
  */
 import React, { useState, useEffect } from 'react';
 import Terminal from './Terminal/Terminal';
-// ConnectionIndicator is included in Terminal
-import { ConnectionIndicator as _ConnectionIndicator } from './ConnectionIndicator';
-// TypingIndicator is included in Terminal
-import { TypingIndicator as _TypingIndicator } from './TypingIndicator';
 import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTerminal } from '@/context/TerminalContext';
 import { usePermissionKeyboardHandler } from '@/hooks/usePermissionKeyboardHandler';
@@ -38,9 +34,6 @@ export function WebSocketTerminal({
     handleCommand,
     connectionStatus,
     isConnected,
-    isProcessing: _isProcessing,
-    isStreaming: _isStreaming,
-    abortProcessing: _abortProcessing,
     sessionId
   } = useWebSocketTerminal();
   
@@ -99,7 +92,6 @@ export function WebSocketTerminal({
         sessionId={sessionId}
         showConnectionIndicator={showConnectionStatus}
         showTypingIndicator={showTypingIndicator}
-        showToolVisualizations={true}
         connectionStatus={connectionStatus}
         showNewSessionHint={showNewSessionHint}
       />

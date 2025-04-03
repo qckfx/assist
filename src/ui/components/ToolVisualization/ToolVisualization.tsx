@@ -143,20 +143,6 @@ export function ToolVisualization({
   defaultViewMode = PreviewMode.BRIEF,
   onViewModeChange,
 }: ToolVisualizationProps) {
-  // Add detailed component lifecycle logging
-  console.log('🔍 ToolVisualization RENDER', { 
-    id: tool.id, 
-    status: tool.status, 
-    hasPreview: !!tool.preview,
-    previewType: tool.preview?.contentType,
-    toolName: tool.toolName,
-    executionTime: tool.executionTime,
-    hasResult: !!tool.result,
-    hasError: !!tool.error,
-    timestamp: new Date().toISOString(),
-    startTime: tool.startTime ? new Date(tool.startTime).toISOString() : undefined,
-    endTime: tool.endTime ? new Date(tool.endTime).toISOString() : undefined
-  });
   // Determine the tool state from the status
   const toolState = 
     tool.status === 'running' ? ToolState.RUNNING :
@@ -166,15 +152,6 @@ export function ToolVisualization({
     tool.status === 'awaiting-permission' ? 'awaiting-permission' as ToolState :
     ToolState.PENDING;
     
-  // Log detailed tool state for debugging
-  console.log(`Tool state calculation for ${tool.id} (${tool.toolName}):`, {
-    currentStatus: tool.status,
-    calculatedState: toolState,
-    hasPreview: !!tool.preview,
-    previewContentType: tool.preview?.contentType,
-    briefContentExists: !!tool.preview?.briefContent,
-    fullContentExists: !!tool.preview?.fullContent
-  });
   
   // Track view mode locally with the provided default
   const [viewMode, setViewMode] = useState<PreviewMode>(
@@ -197,23 +174,11 @@ export function ToolVisualization({
       e.stopPropagation();
     }
     
-    console.log('setViewModeWithCallback called:', {
-      toolId: tool.id,
-      currentMode: viewMode,
-      nextMode,
-      hasPreview: !!tool.preview
-    });
-    
     // If tool has no preview or is in a state that can't show previews, do nothing
     if (!tool.preview || (
         toolState !== ToolState.COMPLETED && 
         toolState !== ToolState.RUNNING && 
         tool.status !== 'awaiting-permission')) {
-      console.log('setViewModeWithCallback early return - condition not met:', { 
-        toolState, 
-        status: tool.status,
-        hasPreview: !!tool.preview 
-      });
       return;
     }
     
@@ -275,18 +240,6 @@ export function ToolVisualization({
   const _timestamp = new Date(tool.startTime).toLocaleTimeString();
   
   // Determine if we should show a preview - use multiple detection methods for robustness
-  // Log the exact tool preview data to diagnose the issue
-  console.log(`[DEBUG] ToolVisualization preview data for ${tool.id}:`, {
-    preview: tool.preview,
-    toolProps: Object.keys(tool),
-    explicitHasPreview: tool.hasPreview === true,
-    previewDetails: tool.preview ? {
-      contentType: tool.preview.contentType,
-      briefContentLength: tool.preview?.briefContent?.length,
-      fullContentLength: tool.preview?.fullContent?.length,
-      hasActualContent: tool.preview.hasActualContent === true
-    } : null
-  });
 
   // Use multiple methods to detect valid preview
   const hasPreview = (
@@ -307,22 +260,6 @@ export function ToolVisualization({
     tool.status === 'awaiting-permission'
   );
   
-  console.log(`Preview availability check for ${tool.id}:`, {
-    hasPreviewObject: !!tool.preview,
-    hasActualPreviewContent: hasPreview,
-    previewContentType: tool.preview?.contentType,
-    briefContent: tool.preview?.briefContent ? 
-      tool.preview.briefContent.substring(0, 50) + (tool.preview.briefContent.length > 50 ? '...' : '') : undefined,
-    briefContentType: typeof tool.preview?.briefContent,
-    briefContentLength: tool.preview?.briefContent?.length || 0,
-    fullContentLength: tool.preview?.fullContent?.length || 0,
-    canExpandCollapse,
-    toolState,
-    contentSizes: tool.preview ? {
-      briefLength: tool.preview.briefContent?.length || 0,
-      fullLength: tool.preview.fullContent?.length || 0
-    } : null
-  });
   
   return (
     <div 
@@ -516,18 +453,6 @@ function PreviewContent({
     );
   }
   
-  // Log preview content info for debugging
-  console.log('PreviewContent component render:', {
-    toolId,
-    toolStatus,
-    viewMode,
-    contentType,
-    hasBriefContent: !!briefContent,
-    briefContentLength: briefContent?.length,
-    hasFullContent: !!fullContent,
-    fullContentLength: fullContent?.length,
-    areContentsDifferent: fullContent !== briefContent,
-  });
   
   // Determine content to show based on view mode
   const content = viewMode === PreviewMode.BRIEF ? briefContent : (fullContent || briefContent) as string;
@@ -606,39 +531,18 @@ function PreviewContent({
       const isPlaceholder = metadata?.isPlaceholder === true;
       
       // Log all metadata to help debug
-      console.log('Diff preview metadata details:', {
-        filePath,
-        contentType,
-        isEmptyFile,
-        isFileEdit,
-        isPlaceholder,
-        changesSummary,
-        metadataKeys: metadata ? Object.keys(metadata) : [],
-        fullMetadata: metadata
-      });
       
       // Extract original and modified text from metadata
       const oldString = metadata?.oldString as string || '';
       const newString = metadata?.newString as string || '';
       
-      console.log('Diff strings:', {
-        oldStringExists: !!oldString,
-        newStringExists: !!newString,
-        oldStringLength: oldString?.length,
-        newStringLength: newString?.length,
-        oldStringEmpty: oldString === '',
-        newStringEmpty: newString === ''
-      });
       
       // Handle empty file or placeholder cases
       if (isEmptyFile || (isPlaceholder && isFileEdit)) {
         // This is a special case for file edits with placeholder content
         if (isFileEdit) {
-          console.log('Rendering file edit placeholder for:', filePath);
-          
           // For file edits, if we have placeholder strings, try to use Monaco diff viewer
           if (oldString && newString && oldString !== newString) {
-            console.log('Using Monaco diff viewer for placeholder content');
             return (
               <div 
                 className={baseStyles}

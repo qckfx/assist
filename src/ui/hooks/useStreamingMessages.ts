@@ -7,7 +7,6 @@ import { WebSocketEvent } from '@/types/api';
 import { useTerminal } from '@/context/TerminalContext';
 
 interface UseStreamingMessagesOptions {
-  sessionId?: string;
   bufferInterval?: number;
   maxBufferLength?: number;
 }
@@ -16,7 +15,6 @@ interface UseStreamingMessagesOptions {
  * Hook that manages real-time streaming of message content from WebSocket events
  */
 export function useStreamingMessages({
-  sessionId: _sessionId, // Parameter renamed to mark as unused
   bufferInterval = 100, // Update buffer every 100ms
   maxBufferLength = 1000 // Limit buffer size to avoid excess rendering
 }: UseStreamingMessagesOptions = {}) {
