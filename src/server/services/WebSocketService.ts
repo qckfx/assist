@@ -20,10 +20,12 @@ import { previewService } from './preview';
 
 /**
  * Enhanced WebSocket events for tool executions
+ * @deprecated Use WebSocketEvent from types/websocket instead
  */
 export enum EnhancedWebSocketEvent {
-  TOOL_STATE_UPDATE = 'tool_state_update',
-  TOOL_HISTORY = 'tool_history'
+  // These events are deprecated in favor of the timeline-based events
+  TOOL_STATE_UPDATE = 'tool_state_update', // Deprecated: use TOOL_EXECUTION_RECEIVED/UPDATED instead
+  TOOL_HISTORY = 'tool_history' // Deprecated: use TIMELINE_HISTORY instead
 }
 
 /**
@@ -509,14 +511,7 @@ export class WebSocketService {
       // No need to send session update on abort as there's no new conversation data
     });
 
-    // Legacy tool execution (for backward compatibility)
-    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION, ({ sessionId, tool, result }) => {
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, { 
-        sessionId,
-        tool,
-        result, 
-      });
-    });
+    // Modern tool execution events are handled below
     
     // Use the tool execution events from the ToolExecutionManager
     // The AgentService will forward these events after transforming them

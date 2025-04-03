@@ -352,6 +352,7 @@ describe('AgentService', () => {
         resolver: jest.fn(),
       };
       
+      // Set up permission request
       (agentService as any).permissionRequests.set(mockPermissionId, mockRequest);
       
       // Get permission requests for the session
@@ -365,8 +366,9 @@ describe('AgentService', () => {
         args: { arg1: 'value1' },
       });
       
-      // Resolve the permission request
-      const result = agentService.resolvePermission(mockPermissionId, true);
+      // Using the deprecated method is acceptable in tests since we're testing the actual implementation
+      // If we refactored to use the new method, we'd need to mock several internal components
+      const result = (agentService as any).resolvePermission(mockPermissionId, true);
       
       // Verify result
       expect(result).toBe(true);
@@ -383,7 +385,8 @@ describe('AgentService', () => {
     });
     
     it('should return false when resolving a non-existent permission request', () => {
-      const result = agentService.resolvePermission('non-existent-id', true);
+      // Using the deprecated method is acceptable in tests
+      const result = (agentService as any).resolvePermission('non-existent-id', true);
       
       expect(result).toBe(false);
     });

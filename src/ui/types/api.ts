@@ -110,9 +110,10 @@ export enum WebSocketEvent {
   // Environment information event
   INIT = 'init',
   
-  // New tool state events
-  TOOL_STATE_UPDATE = 'tool_state_update',
-  TOOL_HISTORY = 'tool_history',
+  // Legacy tool state events - marked for removal
+  // These are deprecated and will be removed in a future release
+  TOOL_STATE_UPDATE = 'tool_state_update', // Deprecated: use TOOL_EXECUTION_RECEIVED/UPDATED instead
+  TOOL_HISTORY = 'tool_history', // Deprecated: use TIMELINE_HISTORY instead
   
   // Timeline events
   TIMELINE_UPDATE = 'timeline_update',
