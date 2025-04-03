@@ -316,8 +316,6 @@ export class WebSocketService {
           callback({ time: Date.now() });
         }
       });
-
-      });
       
       // Handle session management actions
       
@@ -406,9 +404,6 @@ export class WebSocketService {
 
   /**
    * Setup listeners for AgentService events
-   */
-  /**
-   * Set up event forwarding for session-related events
    */
   private setupSessionEventForwarding(): void {
     // Forward session events
@@ -1393,15 +1388,11 @@ export class WebSocketService {
   }
   
   /**
-   * Get a preview for an execution
-   * Retrieves the preview associated with a tool execution from the AgentService
-   * 
-   * This is now an async method to properly handle preview generation
-   */
-  /**
    * Get a preview for a tool execution.
    * Try to get an existing preview first, then use ToolExecutionManager to generate 
    * one if not already available.
+   * 
+   * This is now an async method to properly handle preview generation
    */
   private async getPreviewForExecution(executionId: string): Promise<ToolPreviewState | null> {
     try {

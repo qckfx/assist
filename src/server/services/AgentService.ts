@@ -1326,14 +1326,17 @@ export class AgentService extends EventEmitter {
               // The UI will call resolvePermissionByExecutionId which will trigger resolution
               
               // Create a one-time event listener for permission resolution
-              const onPermissionResolved = (data: { execution: ToolExecutionState; permission: PermissionRequestState }) => {
+              const onPermissionResolved = (data: unknown) => {
+                // Type check and cast the data
+                const typedData = data as { execution: ToolExecutionState; permission: PermissionRequestState };
+                
                 // Check if this is our permission request
-                if (data.permission.id === permission.id) {
+                if (typedData.permission.id === permission.id) {
                   // Remove the listener to avoid memory leaks
                   const removeListener = this.toolExecutionManager.on(ToolExecutionEvent.PERMISSION_RESOLVED, onPermissionResolved);
                   removeListener();
                   // Resolve with the permission status
-                  resolve(data.permission.granted || false);
+                  resolve(typedData.permission.granted || false);
                 }
               };
               
