@@ -18,15 +18,6 @@ import {
 } from '../../types/tool-execution';
 import { previewService } from './preview';
 
-/**
- * Enhanced WebSocket events for tool executions
- * @deprecated Use WebSocketEvent from types/websocket instead
- */
-export enum EnhancedWebSocketEvent {
-  // These events are deprecated in favor of the timeline-based events
-  TOOL_STATE_UPDATE = 'tool_state_update', // Deprecated: use TOOL_EXECUTION_RECEIVED/UPDATED instead
-  TOOL_HISTORY = 'tool_history' // Deprecated: use TIMELINE_HISTORY instead
-}
 
 /**
  * Interface for tracking active tool execution
@@ -326,42 +317,6 @@ export class WebSocketService {
         }
       });
 
-      // Handle requests for tool execution history
-      socket.on(EnhancedWebSocketEvent.TOOL_HISTORY, ({ sessionId, includeCompleted = true }) => {
-        try {
-          if (!sessionId) {
-            socket.emit(WebSocketEvent.ERROR, {
-              message: 'Session ID is required',
-            });
-            return;
-          }
-          
-          // Get all tool executions for the session
-          const executions = this.agentService.getToolExecutionsForSession(sessionId);
-          
-          // Filter based on includeCompleted flag
-          const filteredExecutions = includeCompleted 
-            ? executions 
-            : executions.filter(e => 
-                e.status === ToolExecutionStatus.RUNNING || 
-                e.status === ToolExecutionStatus.AWAITING_PERMISSION);
-          
-          // Convert to the simplified format
-          const toolState = filteredExecutions.map(execution => 
-            this.convertExecutionToClientFormat(execution)
-          );
-          
-          // Send the tool history
-          socket.emit(EnhancedWebSocketEvent.TOOL_HISTORY, {
-            sessionId,
-            tools: toolState
-          });
-        } catch (error) {
-          serverLogger.error('Error handling tool history request:', error);
-          socket.emit(WebSocketEvent.ERROR, {
-            message: `Error fetching tool history: ${error instanceof Error ? error.message : String(error)}`,
-          });
-        }
       });
       
       // Handle session management actions
@@ -844,10 +799,6 @@ export class WebSocketService {
         };
         
         this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, enhancedData);
-        this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-          sessionId,
-          tool: clientData
-        });
       })
       .catch(error => {
         serverLogger.error(`Error processing tool execution start for ${executionId}:`, error);
@@ -897,10 +848,6 @@ export class WebSocketService {
       
       // Only emit the WebSocket events once we have the complete data with preview
       this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, data);
-      this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-        sessionId,
-        tool: clientData
-      });
       
       // If we have a preview, also send a separate update to ensure clients catch it
       if (clientData && typeof clientData === 'object' && clientData.hasPreview) {
@@ -978,11 +925,6 @@ export class WebSocketService {
           previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined
         });
         
-        // Also emit tool state update
-        this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-          sessionId,
-          tool: clientData
-        });
         
         // If we have a preview, also send a dedicated update event
         if (clientData.hasPreview) {
@@ -1100,10 +1042,6 @@ export class WebSocketService {
       
       // Emit both formats
       this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ERROR, data);
-      this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-        sessionId,
-        tool: clientData
-      });
     } else {
       // For backward compatibility with tests
       // Create error preview data using the PreviewService
@@ -1167,10 +1105,6 @@ export class WebSocketService {
       
       // Emit both formats
       this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ABORTED, data);
-      this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-        sessionId,
-        tool: clientData
-      });
     } else {
       // For backward compatibility with tests
       // Forward the event to clients
@@ -1218,11 +1152,6 @@ export class WebSocketService {
       }
     });
     
-    // Also send the tool state update
-    this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-      sessionId,
-      tool: clientData
-    });
   }
   
   /**
@@ -1256,11 +1185,6 @@ export class WebSocketService {
       resolution: granted
     });
     
-    // Also emit the updated tool state
-    this.io.to(sessionId).emit(EnhancedWebSocketEvent.TOOL_STATE_UPDATE, {
-      sessionId,
-      tool: clientData
-    });
   }
   
   /**

@@ -110,10 +110,6 @@ export enum WebSocketEvent {
   // Environment information event
   INIT = 'init',
   
-  // Legacy tool state events - marked for removal
-  // These are deprecated and will be removed in a future release
-  TOOL_STATE_UPDATE = 'tool_state_update', // Deprecated: use TOOL_EXECUTION_RECEIVED/UPDATED instead
-  TOOL_HISTORY = 'tool_history', // Deprecated: use TIMELINE_HISTORY instead
   
   // Timeline events
   TIMELINE_UPDATE = 'timeline_update',
@@ -243,54 +239,6 @@ export interface WebSocketEventMap {
     e2bSandboxId?: string; 
   };
   
-  // New tool state events
-  [WebSocketEvent.TOOL_STATE_UPDATE]: {
-    sessionId: string;
-    tool: {
-      id: string;
-      tool: string;
-      toolName: string;
-      status: string;
-      args: Record<string, unknown>;
-      startTime: number;
-      endTime?: number;
-      executionTime?: number;
-      paramSummary?: string;
-      result?: unknown;
-      error?: { message: string; stack?: string; };
-      permissionId?: string;
-      preview?: {
-        contentType: string;
-        briefContent: string;
-        fullContent?: string;
-        metadata?: Record<string, unknown>;
-      };
-    };
-  };
-  
-  [WebSocketEvent.TOOL_HISTORY]: {
-    sessionId: string;
-    tools: Array<{
-      id: string;
-      tool: string;
-      toolName: string;
-      status: string;
-      args: Record<string, unknown>;
-      startTime: number;
-      endTime?: number;
-      executionTime?: number;
-      paramSummary?: string;
-      result?: unknown;
-      error?: { message: string; stack?: string; };
-      permissionId?: string;
-      preview?: {
-        contentType: string;
-        briefContent: string;
-        fullContent?: string;
-        metadata?: Record<string, unknown>;
-      };
-    }>;
-  };
   
   // Timeline events
   [WebSocketEvent.TIMELINE_UPDATE]: {
