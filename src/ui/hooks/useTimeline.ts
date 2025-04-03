@@ -194,14 +194,31 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
         );
         
         if (existingTool && existingTool.type === TimelineItemType.TOOL_EXECUTION && isUpdate) {
+          // Create a merged toolExecution object with updated properties
+          const updatedToolExecution = {
+            ...existingTool.toolExecution,
+            ...data.toolExecution
+          };
+          
+          // Create the updated timeline item
           timelineItem = {
             ...existingTool,
-            toolExecution: {
-              ...existingTool.toolExecution,
-              ...data.toolExecution
-            },
-            preview: data.preview
+            toolExecution: updatedToolExecution
+            // Let toolExecution object contain the preview, don't store at top level
           };
+          
+          // Log the timeline item after update
+          console.log('Timeline item after update:', {
+            id: timelineItem.id,
+            toolId: timelineItem.toolExecution.toolId,
+            previewInToolExecution: !!timelineItem.toolExecution.preview,
+            previewDetails: timelineItem.toolExecution.preview ? {
+              contentType: timelineItem.toolExecution.preview.contentType,
+              hasBriefContent: !!timelineItem.toolExecution.preview.briefContent,
+              briefContentLength: timelineItem.toolExecution.preview.briefContent?.length || 0,
+              hasActualContent: timelineItem.toolExecution.preview.hasActualContent === true
+            } : null
+          });
         } else {
           // New tool execution
           timelineItem = {
@@ -209,8 +226,8 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
             type: TimelineItemType.TOOL_EXECUTION,
             sessionId: data.sessionId, 
             timestamp: data.toolExecution.startTime || new Date().toISOString(),
-            toolExecution: data.toolExecution,
-            preview: data.preview
+            toolExecution: data.toolExecution
+            // Let toolExecution object contain the preview, don't store at top level
           };
         }
       } else if ('messageId' in data) {
@@ -299,10 +316,37 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
     
     // Subscribe to tool execution events
     const unsubscribeToolReceived = subscribe(WebSocketEvent.TOOL_EXECUTION_RECEIVED,
-      data => handleTimelineItem(data, false));
+      data => {
+        // Log the raw data from WebSocket
+        console.log('TOOL_EXECUTION_RECEIVED raw data:', {
+          hasToolExecution: !!data.toolExecution,
+          hasPreview: !!data.toolExecution.preview,
+          hasPreviewFlag: data.toolExecution.hasPreview === true,
+          previewContentType: data.toolExecution.previewContentType,
+          fullData: JSON.parse(JSON.stringify(data)) // Deep copy for logging
+        });
+        handleTimelineItem(data, false);
+      });
     
     const unsubscribeToolUpdated = subscribe(WebSocketEvent.TOOL_EXECUTION_UPDATED,
-      data => handleTimelineItem(data, true));
+      data => {
+        // Log the raw data from WebSocket
+        console.log('TOOL_EXECUTION_UPDATED raw data:', {
+          hasToolExecution: !!data.toolExecution,
+          hasPreview: !!data.toolExecution.preview,
+          hasPreviewFlag: data.toolExecution.hasPreview === true,
+          previewContentType: data.toolExecution.previewContentType,
+          previewDetails: data.toolExecution.preview ? {
+            contentType: data.toolExecution.preview.contentType,
+            hasBriefContent: !!data.toolExecution.preview.briefContent,
+            briefContentLength: data.toolExecution.preview.briefContent?.length || 0,
+            hasFullContent: !!data.toolExecution.preview.fullContent,
+            hasActualContent: data.toolExecution.preview.hasActualContent === true
+          } : null,
+          fullData: JSON.parse(JSON.stringify(data)) // Deep copy for logging
+        });
+        handleTimelineItem(data, true);
+      });
     
     // Handle session load/reload by refreshing from server
     const unsubscribeSessionLoaded = subscribe(WebSocketEvent.SESSION_LOADED, (data: { sessionId: string }) => {

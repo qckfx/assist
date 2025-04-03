@@ -89,6 +89,25 @@ export function useToolVisualization(): UseToolVisualizationResult {
         throw new Error(`Expected TOOL_EXECUTION type but got ${item.type}`);
       }
       
+      // Log the timeline item received from TimelineContext
+      console.log(`Timeline item received in useToolVisualization for ${item.id}:`, {
+        hasTopLevelPreview: !!item.preview,
+        hasToolExecutionPreview: !!item.toolExecution.preview,
+        hasPreviewFlag: item.toolExecution.hasPreview === true,
+        previewInToolExecution: item.toolExecution.preview ? {
+          contentType: item.toolExecution.preview.contentType,
+          hasBriefContent: !!item.toolExecution.preview.briefContent,
+          briefContentLength: item.toolExecution.preview.briefContent?.length || 0,
+          hasActualContent: item.toolExecution.preview.hasActualContent === true
+        } : null,
+        previewTopLevel: item.preview ? {
+          contentType: item.preview.contentType,
+          hasBriefContent: !!item.preview.briefContent,
+          briefContentLength: item.preview.briefContent?.length || 0
+        } : null,
+        toolExecutionProps: Object.keys(item.toolExecution)
+      });
+      
       // The mapping from timeline item to tool visualization item
       return {
         id: item.id,
@@ -105,13 +124,8 @@ export function useToolVisualization(): UseToolVisualizationResult {
         result: item.toolExecution.result,
         error: item.toolExecution.error,
         permissionId: item.toolExecution.permissionId,
-        // Copy preview data if available
-        preview: item.preview && {
-          contentType: item.preview.contentType,
-          briefContent: item.preview.briefContent,
-          fullContent: item.preview.fullContent,
-          metadata: item.preview.metadata
-        },
+        // Use preview directly from toolExecution
+        preview: item.toolExecution.preview,
         // Apply view mode: from specific setting, or default
         viewMode: viewModes[item.id] || defaultViewMode
       };

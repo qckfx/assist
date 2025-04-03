@@ -274,8 +274,32 @@ export function ToolVisualization({
   // Format timestamp - unused for now but keeping for future reference
   const _timestamp = new Date(tool.startTime).toLocaleTimeString();
   
-  // Determine if we should show a preview - check for actual content, not just the preview object
-  const hasPreview = !!tool.preview && (!!tool.preview.briefContent || !!tool.preview.fullContent);
+  // Determine if we should show a preview - use multiple detection methods for robustness
+  // Log the exact tool preview data to diagnose the issue
+  console.log(`[DEBUG] ToolVisualization preview data for ${tool.id}:`, {
+    preview: tool.preview,
+    toolProps: Object.keys(tool),
+    explicitHasPreview: tool.hasPreview === true,
+    previewDetails: tool.preview ? {
+      contentType: tool.preview.contentType,
+      briefContentLength: tool.preview?.briefContent?.length,
+      fullContentLength: tool.preview?.fullContent?.length,
+      hasActualContent: tool.preview.hasActualContent === true
+    } : null
+  });
+
+  // Use multiple methods to detect valid preview
+  const hasPreview = (
+    // Check for explicit flags
+    tool.hasPreview === true ||
+    // Or check for actual preview content
+    (!!tool.preview && (
+      !!tool.preview.briefContent || 
+      !!tool.preview.fullContent || 
+      tool.preview.hasActualContent === true
+    ))
+  );
+  
   // Can expand/collapse if there's a preview and tool is complete, running, or awaiting permission
   const canExpandCollapse = hasPreview && (
     toolState === ToolState.COMPLETED || 

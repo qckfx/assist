@@ -25,8 +25,7 @@ import { SessionManager } from '../SessionManagement';
 import apiClient from '@/services/apiClient';
 // Import timeline types
 import { TimelineItemType } from '../../../types/timeline';
-// Import ToolVisualizations component
-import ToolVisualizations from '@/components/ToolVisualization/ToolVisualizations';
+// No longer using ToolVisualizations component
 
 export interface TerminalProps {
   className?: string;

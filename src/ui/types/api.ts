@@ -352,8 +352,12 @@ export interface WebSocketEventMap {
       executionTime?: number;
       result?: unknown;
       error?: { message: string; stack?: string; };
+      // The preview is part of the toolExecution object
+      preview?: ToolPreviewData;
+      // Additional fields to help client detection
+      hasPreview?: boolean;
+      previewContentType?: string;
     };
-    preview?: ToolPreviewData;
   };
   
   // Session management events

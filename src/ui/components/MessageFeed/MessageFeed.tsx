@@ -117,6 +117,25 @@ export function MessageFeed({
           </div>
         );
       } else if (item.type === TimelineItemType.TOOL_EXECUTION) {
+        // Log the timeline item to see what we're getting from the server
+        console.log(`[DEBUG] MessageFeed timeline item for tool ${item.id}:`, {
+          hasTopLevelPreview: !!item.preview,
+          hasToolExecutionPreview: !!item.toolExecution.preview,
+          hasPreviewFlag: item.toolExecution.hasPreview === true,
+          previewDetails: item.preview ? {
+            contentType: item.preview.contentType,
+            hasBriefContent: !!item.preview.briefContent,
+            briefContentLength: item.preview.briefContent?.length || 0,
+          } : null,
+          toolExecutionPreviewDetails: item.toolExecution.preview ? {
+            contentType: item.toolExecution.preview.contentType,
+            hasBriefContent: !!item.toolExecution.preview.briefContent,
+            briefContentLength: item.toolExecution.preview.briefContent?.length || 0,
+          } : null,
+          itemProps: Object.keys(item),
+          toolExecutionProps: Object.keys(item.toolExecution)
+        });
+        
         // Convert the stored tool execution to the format expected by ToolVisualization
         const toolExecution = {
           id: item.id,
@@ -130,13 +149,21 @@ export function MessageFeed({
           result: item.toolExecution.result,
           error: item.toolExecution.error,
           permissionId: item.toolExecution.permissionId,
+          // Use preview from the timeline item (if available) or from toolExecution
           preview: item.preview ? {
             contentType: item.preview.contentType,
             briefContent: item.preview.briefContent,
             fullContent: item.preview.fullContent,
             metadata: item.preview.metadata
-          } : undefined,
-          // Add the missing viewMode property
+          } : (item.toolExecution.preview ? {
+            contentType: item.toolExecution.preview.contentType,
+            briefContent: item.toolExecution.preview.briefContent,
+            fullContent: item.toolExecution.preview.fullContent,
+            metadata: item.toolExecution.preview.metadata
+          } : undefined),
+          // Add the explicit hasPreview flag
+          hasPreview: item.toolExecution.hasPreview === true || !!item.preview,
+          // Add the missing viewMode property 
           viewMode: defaultViewMode
         };
 

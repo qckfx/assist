@@ -269,6 +269,22 @@ export class TimelineService extends EventEmitter {
       // Check if we have a valid preview with required content
       const hasValidPreview = !!(preview && preview.briefContent);
       
+      // Enhanced validation and debug logging
+      if (preview) {
+        serverLogger.info(`Preview data availability for ${toolExecution.id}:`, {
+          hasPreview: !!preview,
+          hasValidPreview,
+          contentType: preview.contentType,
+          briefContentExists: !!preview.briefContent,
+          briefContentLength: preview.briefContent?.length || 0,
+          fullContentExists: !!preview.fullContent,
+          fullContentLength: preview.fullContent?.length || 0,
+          briefContentSample: preview.briefContent ? 
+            preview.briefContent.substring(0, 100) + (preview.briefContent.length > 100 ? '...' : '') : 'MISSING',
+          metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+        });
+      }
+      
       if (hasValidPreview) {
         serverLogger.info(`Emitting TOOL_EXECUTION_UPDATED with preview for ${toolExecution.id}:`, {
           toolId: toolExecution.id,
@@ -281,6 +297,17 @@ export class TimelineService extends EventEmitter {
           previewMetadataKeys: preview?.metadata ? Object.keys(preview.metadata) : []
         });
       }
+      
+      // IMPORTANT: Use a copy of the clientPreview object to avoid reference issues
+      // This ensures a complete copy of the preview data is sent
+      const previewToSend = hasValidPreview ? {
+        contentType: preview.contentType,
+        briefContent: preview.briefContent,
+        fullContent: preview.fullContent,
+        metadata: preview.metadata ? {...preview.metadata} : undefined,
+        // Add extra fields to ensure client gets all the data
+        hasActualContent: true
+      } : undefined;
       
       // Send the execution update with preview if available
       this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
@@ -295,8 +322,11 @@ export class TimelineService extends EventEmitter {
           endTime: toolExecution.endTime,
           executionTime: toolExecution.executionTime,
           error: toolExecution.error,
-          // Only include the preview if it's valid
-          preview: hasValidPreview ? clientPreview : undefined
+          // Include the preview directly in the toolExecution object
+          preview: previewToSend,
+          // Add these flags to help client-side detection
+          hasPreview: hasValidPreview,
+          previewContentType: hasValidPreview ? preview.contentType : undefined
         }
       });
     }
@@ -1010,6 +1040,22 @@ export class TimelineService extends EventEmitter {
       // Check if we have a valid preview with required content
       const hasValidPreview = !!(preview && preview.briefContent);
       
+      // Enhanced validation and debug logging
+      if (preview) {
+        serverLogger.info(`Preview data for timeline item update ${executionId}:`, {
+          hasPreview: !!preview,
+          hasValidPreview,
+          contentType: preview.contentType,
+          briefContentExists: !!preview.briefContent,
+          briefContentLength: preview.briefContent?.length || 0,
+          fullContentExists: !!preview.fullContent,
+          fullContentLength: preview.fullContent?.length || 0,
+          briefContentSample: preview.briefContent ? 
+            preview.briefContent.substring(0, 100) + (preview.briefContent.length > 100 ? '...' : '') : 'MISSING',
+          metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+        });
+      }
+      
       if (hasValidPreview) {
         serverLogger.info(`Updating timeline item with preview for ${executionId}:`, {
           toolId: item.toolExecution.toolId,
@@ -1022,15 +1068,18 @@ export class TimelineService extends EventEmitter {
           previewMetadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
         });
         
-        // Convert preview to the correct format for client consumption
-        const clientPreview = {
+        // IMPORTANT: Use a copy of the preview object to avoid reference issues
+        // This ensures a complete copy of the preview data is sent
+        const previewToSend = {
           contentType: preview.contentType,
           briefContent: preview.briefContent,
           fullContent: preview.fullContent,
-          metadata: preview.metadata
+          metadata: preview.metadata ? {...preview.metadata} : undefined,
+          // Add extra fields to ensure client gets all the data
+          hasActualContent: true
         };
         
-        // Send the execution update with preview to all clients
+        // Send the execution update with preview directly in the toolExecution object
         this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
           sessionId,
           toolExecution: {
@@ -1038,7 +1087,10 @@ export class TimelineService extends EventEmitter {
             toolId: item.toolExecution.toolId,
             toolName: item.toolExecution.toolName,
             status: item.toolExecution.status,
-            preview: clientPreview
+            preview: previewToSend,
+            // Add these flags to help client-side detection
+            hasPreview: true,
+            previewContentType: preview.contentType
           }
         });
       } else {
