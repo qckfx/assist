@@ -10,8 +10,11 @@ export * from './useApi';
 // WebSocket hooks
 export * from './useWebSocket';
 export * from './useAgentEvents';
-export * from './useToolStream';
 export * from './useConnectionStatus';
+
+// Timeline and Tool hooks
+export * from './useTimeline';
+export * from './useToolVisualization';
 
 // Terminal integration hooks
 export * from './useTerminalWebSocket';
@@ -29,7 +32,6 @@ export { default as useMediaQuery } from './useMediaQuery';
 export { default as useApi } from './useApi';
 export { default as useWebSocket } from './useWebSocket';
 export { default as useAgentEvents } from './useAgentEvents';
-export { default as useToolStream } from './useToolStream';
 export { default as useConnectionStatus } from './useConnectionStatus';
 export { default as useTerminalWebSocket } from './useTerminalWebSocket';
 export { default as useStreamingMessages } from './useStreamingMessages';
@@ -39,3 +41,5 @@ export { default as useFastEditMode } from './useFastEditMode';
 export { default as useFastEditModeKeyboardShortcut } from './useFastEditModeKeyboardShortcut';
 export { default as useAbortShortcuts } from './useAbortShortcuts';
 export { default as useSessionManager } from './useSessionManager';
+export { useToolVisualization } from './useToolVisualization';
+export { useTimeline } from './useTimeline';

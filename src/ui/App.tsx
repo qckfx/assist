@@ -5,6 +5,7 @@ import { WebSocketTerminalProvider } from '@/context/WebSocketTerminalContext';
 import { TerminalProvider } from '@/context/TerminalContext';
 import WebSocketTerminal from '@/components/WebSocketTerminal';
 import { ToolPreferencesProvider } from '@/context/ToolPreferencesContext';
+import { TimelineProvider } from '@/context/TimelineContext';
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
 
@@ -175,13 +176,15 @@ function SessionWrapper() {
   const { sessionId } = useParams<{ sessionId: string }>();
   
   return (
-    <WebSocketTerminalProvider initialSessionId={sessionId}>
-      <ToolPreferencesProvider>
-        <Layout>
-          <SessionComponent />
-        </Layout>
-      </ToolPreferencesProvider>
-    </WebSocketTerminalProvider>
+    <TimelineProvider sessionId={sessionId}>
+      <WebSocketTerminalProvider initialSessionId={sessionId}>
+        <ToolPreferencesProvider>
+          <Layout>
+            <SessionComponent />
+          </Layout>
+        </ToolPreferencesProvider>
+      </WebSocketTerminalProvider>
+    </TimelineProvider>
   );
 }
 
@@ -193,13 +196,15 @@ function App() {
           <TerminalProvider>
             <Routes>
               <Route path="/" element={
-                <WebSocketTerminalProvider>
-                  <ToolPreferencesProvider>
-                    <Layout>
-                      <NewSessionComponent />
-                    </Layout>
-                  </ToolPreferencesProvider>
-                </WebSocketTerminalProvider>
+                <TimelineProvider sessionId={null}>
+                  <WebSocketTerminalProvider>
+                    <ToolPreferencesProvider>
+                      <Layout>
+                        <NewSessionComponent />
+                      </Layout>
+                    </ToolPreferencesProvider>
+                  </WebSocketTerminalProvider>
+                </TimelineProvider>
               } />
               <Route path="/sessions/:sessionId" element={<SessionWrapper />} />
               <Route path="*" element={<Navigate to="/" replace />} />

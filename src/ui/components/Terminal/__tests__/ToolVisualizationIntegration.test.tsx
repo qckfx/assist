@@ -2,11 +2,11 @@ import React from 'react';
 import { render } from '@testing-library/react';
 import { Terminal } from '../Terminal';
 import { vi } from 'vitest';
-import { useToolStream } from '@/hooks/useToolStream';
+import { useToolVisualization } from '@/hooks/useToolVisualization';
 
 // Mock the hooks
-vi.mock('@/hooks/useToolStream', () => ({
-  useToolStream: vi.fn()
+vi.mock('@/hooks/useToolVisualization', () => ({
+  useToolVisualization: vi.fn()
 }));
 
 // Mock the contexts
@@ -98,12 +98,16 @@ describe('Terminal Tool Visualization Integration', () => {
     vi.clearAllMocks();
     
     // Default mock implementation
-    (useToolStream as jest.Mock).mockReturnValue({
-      getActiveTools: () => [],
-      getRecentTools: () => [],
+    (useToolVisualization as jest.Mock).mockReturnValue({
+      tools: [],
+      activeTools: [],
+      recentTools: [],
       hasActiveTools: false,
       activeToolCount: 0,
-      toolHistory: []
+      getToolById: () => undefined,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      defaultViewMode: 'brief'
     });
   });
   
@@ -117,14 +121,19 @@ describe('Terminal Tool Visualization Integration', () => {
       args: { pattern: '**/*.ts' },
       paramSummary: 'pattern: **/*.ts',
       startTime: Date.now(),
+      viewMode: 'brief'
     }];
     
-    (useToolStream as jest.Mock).mockReturnValue({
-      getActiveTools: () => mockActiveTools,
-      getRecentTools: () => [],
+    (useToolVisualization as jest.Mock).mockReturnValue({
+      tools: mockActiveTools,
+      activeTools: mockActiveTools,
+      recentTools: [],
       hasActiveTools: true,
       activeToolCount: 1,
-      toolHistory: mockActiveTools
+      getToolById: (id: string) => mockActiveTools.find(t => t.id === id),
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      defaultViewMode: 'brief'
     });
     
     renderTerminal({
@@ -133,7 +142,7 @@ describe('Terminal Tool Visualization Integration', () => {
     });
     
     // Check that the hook is called
-    expect(useToolStream).toHaveBeenCalled();
+    expect(useToolVisualization).toHaveBeenCalled();
   });
   
   it('shows recent tools when no active tools', () => {
@@ -149,14 +158,19 @@ describe('Terminal Tool Visualization Integration', () => {
       startTime: Date.now() - 1000,
       endTime: Date.now(),
       executionTime: 1000,
+      viewMode: 'brief'
     }];
     
-    (useToolStream as jest.Mock).mockReturnValue({
-      getActiveTools: () => [],
-      getRecentTools: () => mockRecentTools,
+    (useToolVisualization as jest.Mock).mockReturnValue({
+      tools: mockRecentTools,
+      activeTools: [],
+      recentTools: mockRecentTools,
       hasActiveTools: false,
       activeToolCount: 0,
-      toolHistory: mockRecentTools
+      getToolById: (id: string) => mockRecentTools.find(t => t.id === id),
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      defaultViewMode: 'brief'
     });
     
     renderTerminal({
@@ -165,7 +179,7 @@ describe('Terminal Tool Visualization Integration', () => {
     });
     
     // Check that the hook was called
-    expect(useToolStream).toHaveBeenCalled();
+    expect(useToolVisualization).toHaveBeenCalled();
   });
   
   it('hides tool visualizations when disabled', () => {
@@ -178,14 +192,19 @@ describe('Terminal Tool Visualization Integration', () => {
       args: { pattern: '**/*.ts' },
       paramSummary: 'pattern: **/*.ts',
       startTime: Date.now(),
+      viewMode: 'brief'
     }];
     
-    (useToolStream as jest.Mock).mockReturnValue({
-      getActiveTools: () => mockActiveTools,
-      getRecentTools: () => [],
+    (useToolVisualization as jest.Mock).mockReturnValue({
+      tools: mockActiveTools,
+      activeTools: mockActiveTools,
+      recentTools: [],
       hasActiveTools: true,
       activeToolCount: 1,
-      toolHistory: mockActiveTools
+      getToolById: (id: string) => mockActiveTools.find(t => t.id === id),
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      defaultViewMode: 'brief'
     });
     
     renderTerminal({
@@ -194,7 +213,7 @@ describe('Terminal Tool Visualization Integration', () => {
     });
     
     // The hook should still be called
-    expect(useToolStream).toHaveBeenCalled();
+    expect(useToolVisualization).toHaveBeenCalled();
   });
 
   it('joins and leaves WebSocket session when mounting/unmounting', () => {

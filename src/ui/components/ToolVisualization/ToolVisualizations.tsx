@@ -1,62 +1,84 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ToolVisualization } from './ToolVisualization';
-import { ToolExecution } from '../../hooks/useToolStream';
+import { ToolVisualizationItem, useToolVisualization } from '../../hooks/useToolVisualization';
 import { cn } from '../../lib/utils';
+import { useTheme } from '@/components/ThemeProvider';
+import { PreviewMode } from '../../../types/preview';
 
 export interface ToolVisualizationsProps {
-  tools: ToolExecution[];
   className?: string;
   maxVisible?: number;
   compact?: boolean;
-  sessionId?: string;
+  showActiveOnly?: boolean;
+  isDarkTheme?: boolean;
+  onViewModeChange?: (toolId: string, mode: PreviewMode) => void;
 }
 
 export function ToolVisualizations({
-  tools,
   className,
   maxVisible = 3,
   compact = false,
-  // Unused props
-  sessionId: _sessionId,
+  showActiveOnly = false,
+  isDarkTheme: isDarkThemeProp,
+  onViewModeChange,
 }: ToolVisualizationsProps) {
-  // This state is not currently used but kept for future expansion
-  const [_expandedTools, _setExpandedTools] = useState<Record<string, boolean>>({});
+  // Use the new useToolVisualization hook to get tool data
+  const { 
+    activeTools, 
+    recentTools, 
+    defaultViewMode,
+    setToolViewMode
+  } = useToolVisualization();
   
-  // Show only the first maxVisible tools if there are more
-  const visibleTools = tools.slice(0, maxVisible);
-  const hiddenCount = Math.max(0, tools.length - maxVisible);
+  // Get theme from context if not provided as prop
+  const { theme } = useTheme();
+  const isDarkTheme = isDarkThemeProp !== undefined ? isDarkThemeProp : theme === 'dark';
   
-  // This function is not currently used but kept for future expansion
-  const _toggleExpand = (toolId: string) => {
-    _setExpandedTools(prev => ({
-      ...prev,
-      [toolId]: !prev[toolId],
-    }));
+  // Determine which tools to display based on showActiveOnly prop
+  const displayTools: ToolVisualizationItem[] = showActiveOnly 
+    ? activeTools
+    : [...activeTools, ...recentTools].slice(0, maxVisible + activeTools.length);
+  
+  // Calculate how many tools are hidden
+  const hiddenCount = Math.max(0, (showActiveOnly ? 0 : recentTools.length) - 
+    (showActiveOnly ? 0 : maxVisible));
+  
+  // Handle view mode changes
+  const handleViewModeChange = (toolId: string, mode: PreviewMode) => {
+    // Update local state
+    setToolViewMode(toolId, mode);
+    
+    // Propagate to parent if callback is provided
+    if (onViewModeChange) {
+      onViewModeChange(toolId, mode);
+    }
   };
   
   return (
     <div 
       className={cn('tool-visualizations', className)}
       data-testid="tool-visualizations"
-      aria-label={`Tool executions: ${tools.length} tools`}
+      aria-label={`Tool executions: ${displayTools.length} tools${hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ''}`}
     >
-      {visibleTools.map(tool => (
+      {displayTools.map(tool => (
         <ToolVisualization
           key={tool.id}
           tool={tool}
           compact={compact}
-          isDarkTheme={false}
+          isDarkTheme={isDarkTheme}
+          defaultViewMode={defaultViewMode}
+          onViewModeChange={handleViewModeChange}
         />
       ))}
       
       {hiddenCount > 0 && (
-        <div className="text-xs text-center text-gray-500 mt-1">
-          +{hiddenCount} more tool executions
+        <div className={`text-xs text-center ${isDarkTheme ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
+          +{hiddenCount} more tool execution{hiddenCount !== 1 ? 's' : ''}
         </div>
       )}
       
-      {tools.length === 0 && (
-        <div className="text-sm text-gray-500 dark:text-gray-400 italic">
+      {displayTools.length === 0 && (
+        <div className={`text-sm ${isDarkTheme ? 'text-gray-400' : 'text-gray-500'} italic`}>
           No active tools
         </div>
       )}

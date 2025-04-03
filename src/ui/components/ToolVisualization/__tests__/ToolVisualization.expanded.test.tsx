@@ -2,12 +2,12 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import ToolVisualization from '../ToolVisualization';
-import { ToolExecution } from '../../../hooks/useToolStream';
+import { ToolVisualizationItem } from '../../../hooks/useToolVisualization';
 import { PreviewContentType, PreviewMode } from '../../../../types/preview';
 
 describe('ToolVisualization with Preview', () => {
   // Create a mock tool with preview data
-  const createMockTool = (overrides = {}): ToolExecution => ({
+  const createMockTool = (overrides = {}): ToolVisualizationItem => ({
     id: 'test-tool-1',
     tool: 'TestTool',
     toolName: 'Test Tool',

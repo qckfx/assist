@@ -10,7 +10,7 @@ import { useTerminalWebSocket } from '@/hooks/useTerminalWebSocket';
 import { useStreamingMessages } from '@/hooks/useStreamingMessages';
 import { useTerminalCommands } from '@/hooks/useTerminalCommands';
 import { usePermissionManager } from '@/hooks/usePermissionManager';
-import { useToolStream } from '@/hooks/useToolStream';
+import { useToolVisualization } from '@/hooks/useToolVisualization';
 import { ConnectionStatus, WebSocketEvent } from '@/types/api';
 import apiClient from '@/services/apiClient';
 import { getWebSocketService } from '@/services/WebSocketService';
@@ -192,8 +192,8 @@ export function WebSocketTerminalProvider({
     }
   }, [addErrorMessage, setProcessing, isConnected, connectToSession]);
   
-  // Get the tool stream for abort processing
-  const toolStream = useToolStream();
+  // Get the tool visualization hook for abort processing
+  const toolVisualization = useToolVisualization();
 
   // Abort processing with error handling
   const abortProcessing = useCallback(async () => {
@@ -209,7 +209,7 @@ export function WebSocketTerminalProvider({
       setProcessing(false);
       
       // Get active tools before aborting to find which ones to mark
-      const activeTools = toolStream?.getActiveTools() || [];
+      const activeTools = toolVisualization?.activeTools || [];
       const activeToolIds = new Set(activeTools.map(tool => tool.id));
       
       // Create a timestamp for the abort event 
@@ -265,7 +265,7 @@ export function WebSocketTerminalProvider({
     } catch (error) {
       addErrorMessage(`Failed to abort: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [addSystemMessage, addErrorMessage, setProcessing, toolStream]);
+  }, [addSystemMessage, addErrorMessage, setProcessing, toolVisualization]);
   
   // Automatically create a session on mount if none provided, with retries
   useEffect(() => {

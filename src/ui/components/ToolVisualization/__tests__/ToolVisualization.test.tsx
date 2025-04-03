@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { ToolVisualization } from '../ToolVisualization';
+import { PreviewMode } from '../../../../types/preview';
 
 describe('ToolVisualization', () => {
   const mockRunningTool = {
@@ -11,6 +12,7 @@ describe('ToolVisualization', () => {
     args: { pattern: '**/*.ts' },
     paramSummary: 'pattern: **/*.ts',
     startTime: Date.now(),
+    viewMode: PreviewMode.BRIEF
   };
   
   const mockAwaitingPermissionTool = {
@@ -23,6 +25,7 @@ describe('ToolVisualization', () => {
     args: { command: 'ls -la' },
     paramSummary: 'command: ls -la',
     startTime: Date.now(),
+    viewMode: PreviewMode.BRIEF
   };
   
   const mockCompletedTool = {
@@ -36,6 +39,7 @@ describe('ToolVisualization', () => {
     startTime: Date.now() - 1000,
     endTime: Date.now(),
     executionTime: 1000,
+    viewMode: PreviewMode.BRIEF
   };
   
   const mockErrorTool = {
@@ -49,6 +53,7 @@ describe('ToolVisualization', () => {
     startTime: Date.now() - 500,
     endTime: Date.now(),
     executionTime: 500,
+    viewMode: PreviewMode.BRIEF
   };
   
   it('renders running tool correctly', () => {

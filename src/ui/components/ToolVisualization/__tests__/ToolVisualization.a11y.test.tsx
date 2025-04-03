@@ -1,6 +1,7 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { ToolVisualization } from '../ToolVisualization';
+import { PreviewMode } from '../../../../types/preview';
 
 // Note: In a real implementation, we would use jest-axe for a11y testing
 // But for this placeholder, we'll just check for the necessary ARIA attributes
@@ -16,6 +17,7 @@ describe('ToolVisualization Accessibility', () => {
     startTime: Date.now() - 1000,
     endTime: Date.now(),
     executionTime: 1000,
+    viewMode: PreviewMode.BRIEF,
   };
   
   const mockRunningTool = {
@@ -26,6 +28,7 @@ describe('ToolVisualization Accessibility', () => {
     args: { pattern: '**/*.ts' },
     paramSummary: 'pattern: **/*.ts',
     startTime: Date.now(),
+    viewMode: PreviewMode.BRIEF,
   };
   
   const mockErrorTool = {
@@ -39,6 +42,7 @@ describe('ToolVisualization Accessibility', () => {
     startTime: Date.now() - 500,
     endTime: Date.now(),
     executionTime: 500,
+    viewMode: PreviewMode.BRIEF,
   };
   
   it('should have proper role attribute', () => {

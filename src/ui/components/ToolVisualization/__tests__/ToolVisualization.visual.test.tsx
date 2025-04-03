@@ -1,6 +1,7 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { ToolVisualization } from '../ToolVisualization';
+import { PreviewMode } from '../../../../types/preview';
 
 // Note: This is a placeholder for actual visual regression testing
 // A real implementation would use tools like Percy, Chromatic, or Storybook
@@ -13,6 +14,7 @@ describe('ToolVisualization Visual Tests', () => {
     args: { pattern: '**/*.ts' },
     paramSummary: 'pattern: **/*.ts',
     startTime: Date.now(),
+    viewMode: PreviewMode.BRIEF
   };
   
   const mockCompletedTool = {
@@ -26,6 +28,7 @@ describe('ToolVisualization Visual Tests', () => {
     startTime: Date.now() - 1000,
     endTime: Date.now(),
     executionTime: 1000,
+    viewMode: PreviewMode.BRIEF
   };
   
   const mockErrorTool = {
@@ -39,6 +42,7 @@ describe('ToolVisualization Visual Tests', () => {
     startTime: Date.now() - 500,
     endTime: Date.now(),
     executionTime: 500,
+    viewMode: PreviewMode.BRIEF
   };
   
   it('renders with correct visual styles for running tool', () => {

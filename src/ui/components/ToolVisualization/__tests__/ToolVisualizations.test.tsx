@@ -1,9 +1,33 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ToolVisualizations } from '../ToolVisualizations';
+import { PreviewMode } from '../../../../types/preview';
+
+// Mock the useToolVisualization hook
+vi.mock('../../../hooks/useToolVisualization', () => ({
+  useToolVisualization: vi.fn(() => ({
+    tools: [],
+    activeTools: [],
+    recentTools: [],
+    hasActiveTools: false,
+    activeToolCount: 0,
+    defaultViewMode: PreviewMode.BRIEF,
+    setToolViewMode: vi.fn(),
+    setDefaultViewMode: vi.fn(),
+    getToolById: vi.fn()
+  }))
+}));
+
+// Import the hook after mocking
+import { useToolVisualization } from '../../../hooks/useToolVisualization';
 
 describe('ToolVisualizations', () => {
+  // Reset mocks between tests
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+  
   const mockTools = [
     {
       id: 'tool-1',
@@ -53,7 +77,25 @@ describe('ToolVisualizations', () => {
   ];
   
   it('renders multiple tools correctly', () => {
-    render(<ToolVisualizations tools={mockTools.slice(0, 3)} />);
+    // Update mock to return multiple tools
+    const mockDisplayTools = mockTools.slice(0, 3).map(tool => ({
+      ...tool,
+      viewMode: PreviewMode.BRIEF
+    }));
+    
+    (useToolVisualization as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      tools: mockDisplayTools,
+      activeTools: mockDisplayTools.filter(t => t.status === 'running'),
+      recentTools: mockDisplayTools.filter(t => t.status !== 'running'),
+      hasActiveTools: mockDisplayTools.some(t => t.status === 'running'),
+      activeToolCount: mockDisplayTools.filter(t => t.status === 'running').length,
+      defaultViewMode: PreviewMode.BRIEF,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      getToolById: (id: string) => mockDisplayTools.find(t => t.id === id)
+    });
+    
+    render(<ToolVisualizations />);
     
     expect(screen.getByText('GlobTool')).toBeInTheDocument();
     expect(screen.getByText('BashTool')).toBeInTheDocument();
@@ -61,9 +103,27 @@ describe('ToolVisualizations', () => {
   });
   
   it('respects maxVisible limit', () => {
-    render(<ToolVisualizations tools={mockTools} maxVisible={2} />);
+    // Update mock to return all tools
+    const mockDisplayTools = mockTools.map(tool => ({
+      ...tool,
+      viewMode: PreviewMode.BRIEF
+    }));
     
-    // First two tools should be visible
+    (useToolVisualization as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      tools: mockDisplayTools,
+      activeTools: [mockDisplayTools[0]],
+      recentTools: mockDisplayTools.slice(1),
+      hasActiveTools: true,
+      activeToolCount: 1,
+      defaultViewMode: PreviewMode.BRIEF,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      getToolById: (id: string) => mockDisplayTools.find(t => t.id === id)
+    });
+    
+    render(<ToolVisualizations maxVisible={2} />);
+    
+    // First active tool and first recent tool should be visible
     expect(screen.getByText('GlobTool')).toBeInTheDocument();
     expect(screen.getByText('BashTool')).toBeInTheDocument();
     
@@ -75,13 +135,44 @@ describe('ToolVisualizations', () => {
   });
   
   it('shows message when no tools are available', () => {
-    render(<ToolVisualizations tools={[]} />);
+    // Mock empty tools array
+    (useToolVisualization as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      tools: [],
+      activeTools: [],
+      recentTools: [],
+      hasActiveTools: false,
+      activeToolCount: 0,
+      defaultViewMode: PreviewMode.BRIEF,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      getToolById: () => undefined
+    });
+    
+    render(<ToolVisualizations />);
     
     expect(screen.getByText('No active tools')).toBeInTheDocument();
   });
   
   it('renders compact version correctly', () => {
-    render(<ToolVisualizations tools={mockTools.slice(0, 2)} compact={true} />);
+    // Mock 2 tools
+    const mockDisplayTools = mockTools.slice(0, 2).map(tool => ({
+      ...tool,
+      viewMode: PreviewMode.BRIEF
+    }));
+    
+    (useToolVisualization as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      tools: mockDisplayTools,
+      activeTools: mockDisplayTools.filter(t => t.status === 'running'),
+      recentTools: mockDisplayTools.filter(t => t.status !== 'running'),
+      hasActiveTools: mockDisplayTools.some(t => t.status === 'running'),
+      activeToolCount: mockDisplayTools.filter(t => t.status === 'running').length,
+      defaultViewMode: PreviewMode.BRIEF,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      getToolById: (id: string) => mockDisplayTools.find(t => t.id === id)
+    });
+    
+    render(<ToolVisualizations compact={true} />);
     
     // Tool names should be visible
     expect(screen.getByText('GlobTool')).toBeInTheDocument();
@@ -93,7 +184,25 @@ describe('ToolVisualizations', () => {
   });
   
   it('renders tool parameters properly', () => {
-    render(<ToolVisualizations tools={mockTools.slice(0, 1)} />);
+    // Mock one tool
+    const mockDisplayTools = mockTools.slice(0, 1).map(tool => ({
+      ...tool,
+      viewMode: PreviewMode.BRIEF
+    }));
+    
+    (useToolVisualization as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      tools: mockDisplayTools,
+      activeTools: mockDisplayTools,
+      recentTools: [],
+      hasActiveTools: true,
+      activeToolCount: 1,
+      defaultViewMode: PreviewMode.BRIEF,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      getToolById: (id: string) => mockDisplayTools.find(t => t.id === id)
+    });
+    
+    render(<ToolVisualizations />);
     
     // Parameters should be shown in summary form
     const paramText = screen.getByText('pattern: **/*.ts');
@@ -102,8 +211,27 @@ describe('ToolVisualizations', () => {
 
   it('applies className prop correctly', () => {
     const testClass = 'test-class-name';
+    
+    // Mock one tool
+    const mockDisplayTools = mockTools.slice(0, 1).map(tool => ({
+      ...tool,
+      viewMode: PreviewMode.BRIEF
+    }));
+    
+    (useToolVisualization as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      tools: mockDisplayTools,
+      activeTools: mockDisplayTools,
+      recentTools: [],
+      hasActiveTools: true,
+      activeToolCount: 1,
+      defaultViewMode: PreviewMode.BRIEF,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      getToolById: (id: string) => mockDisplayTools.find(t => t.id === id)
+    });
+    
     const { container } = render(
-      <ToolVisualizations tools={mockTools.slice(0, 1)} className={testClass} />
+      <ToolVisualizations className={testClass} />
     );
     
     const toolVisualizationsEl = container.querySelector('.tool-visualizations');
@@ -121,6 +249,7 @@ describe('ToolVisualizations', () => {
         args: { key: 'value' },
         paramSummary: 'newest tool',
         startTime: Date.now(),
+        viewMode: PreviewMode.BRIEF
       },
       {
         id: 'middle',
@@ -132,6 +261,7 @@ describe('ToolVisualizations', () => {
         startTime: Date.now() - 5000,
         endTime: Date.now() - 4000,
         executionTime: 1000,
+        viewMode: PreviewMode.BRIEF
       },
       {
         id: 'oldest',
@@ -143,10 +273,23 @@ describe('ToolVisualizations', () => {
         startTime: Date.now() - 10000,
         endTime: Date.now() - 9000,
         executionTime: 1000,
+        viewMode: PreviewMode.BRIEF
       },
     ];
     
-    render(<ToolVisualizations tools={orderedTools} />);
+    (useToolVisualization as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      tools: orderedTools,
+      activeTools: [orderedTools[0]],
+      recentTools: [orderedTools[1], orderedTools[2]],
+      hasActiveTools: true,
+      activeToolCount: 1,
+      defaultViewMode: PreviewMode.BRIEF,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      getToolById: (id: string) => orderedTools.find(t => t.id === id)
+    });
+    
+    render(<ToolVisualizations />);
     
     // Get all tool elements
     const toolElements = screen.getAllByTestId('tool-visualization');
@@ -158,7 +301,25 @@ describe('ToolVisualizations', () => {
   });
 
   it('provides correct accessibility attributes', () => {
-    render(<ToolVisualizations tools={mockTools.slice(0, 2)} />);
+    // Mock 2 tools
+    const mockDisplayTools = mockTools.slice(0, 2).map(tool => ({
+      ...tool,
+      viewMode: PreviewMode.BRIEF
+    }));
+    
+    (useToolVisualization as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      tools: mockDisplayTools,
+      activeTools: mockDisplayTools.filter(t => t.status === 'running'),
+      recentTools: mockDisplayTools.filter(t => t.status !== 'running'),
+      hasActiveTools: mockDisplayTools.some(t => t.status === 'running'),
+      activeToolCount: mockDisplayTools.filter(t => t.status === 'running').length,
+      defaultViewMode: PreviewMode.BRIEF,
+      setToolViewMode: vi.fn(),
+      setDefaultViewMode: vi.fn(),
+      getToolById: (id: string) => mockDisplayTools.find(t => t.id === id)
+    });
+    
+    render(<ToolVisualizations />);
     
     // Check for proper ARIA attributes
     const container = screen.getByTestId('tool-visualizations');

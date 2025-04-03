@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { cn } from '../../lib/utils';
-import { ToolExecution } from '../../hooks/useToolStream';
+import { ToolVisualizationItem } from '../../hooks/useToolVisualization';
 import { ToolState } from '../../types/terminal';
 import { PreviewMode, PreviewContentType } from '../../../types/preview';
 import { ChevronDown, Minimize2 } from 'lucide-react';
@@ -13,7 +13,7 @@ const truncateString = (str: string, maxLength: number): string => {
 };
 
 // Helper function to get a meaningful description of what the tool is doing
-const getToolDescription = (tool: ToolExecution): string => {
+const getToolDescription = (tool: ToolVisualizationItem): string => {
   // List of generic descriptions to override
   const genericDescriptions = [
     'Tool execution result', 
@@ -125,7 +125,7 @@ const getToolDescription = (tool: ToolExecution): string => {
 
 
 export interface ToolVisualizationProps {
-  tool: ToolExecution;
+  tool: ToolVisualizationItem;
   className?: string;
   compact?: boolean;
   showExecutionTime?: boolean;

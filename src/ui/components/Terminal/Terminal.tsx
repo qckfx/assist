@@ -14,12 +14,10 @@ import { generateAriaId, prefersReducedMotion } from '@/utils/accessibility';
 import { useIsSmallScreen } from '@/hooks/useMediaQuery';
 import { TypingIndicator } from '@/components/TypingIndicator';
 import { EnvironmentConnectionIndicator } from '@/components/EnvironmentConnectionIndicator';
-import { useToolStream } from '@/hooks/useToolStream';
+import { useToolVisualization } from '@/hooks/useToolVisualization';
 import { useFastEditModeKeyboardShortcut } from '@/hooks/useFastEditModeKeyboardShortcut';
 import { FastEditModeIndicator } from '@/components/FastEditModeIndicator';
 import { useToolPreferencesContext } from '@/context/ToolPreferencesContext';
-// We'll use this component in the future
-import _ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
 import { PreviewMode } from '../../../types/preview';
 // Import the SessionManager
 import { SessionManager } from '../SessionManagement';
@@ -27,6 +25,8 @@ import { SessionManager } from '../SessionManagement';
 import apiClient from '@/services/apiClient';
 // Import timeline types
 import { TimelineItemType } from '../../../types/timeline';
+// Import ToolVisualizations component
+import ToolVisualizations from '@/components/ToolVisualization/ToolVisualizations';
 
 export interface TerminalProps {
   className?: string;
@@ -86,14 +86,14 @@ export function Terminal({
     input: generateAriaId('terminal-input'),
   });
   
-  // Initialize the tool stream hook to get active tool information
+  // Initialize the tool visualization hook to get tool visualization state
   const { 
-    getActiveTools, 
-    getRecentTools, 
+    activeTools, 
+    recentTools, 
     hasActiveTools, 
-    toolHistory, 
+    tools, 
     activeToolCount
-  } = useToolStream();
+  } = useToolVisualization();
   
   // Use the preferences context for view mode handling
   const {
@@ -129,7 +129,7 @@ export function Terminal({
   // Track tool execution status for UI updates
   useEffect(() => {
     // Monitor tool activity to update UI accordingly
-  }, [toolHistory, activeToolCount, hasActiveTools]);
+  }, [tools, activeToolCount, hasActiveTools]);
   
   // Determine color scheme class and vars directly
   // If terminal is set to system, use the app theme, otherwise use terminal's setting
@@ -535,42 +535,15 @@ export function Terminal({
       >
         {/* Main scrollable content area */}
         <div className="flex-grow overflow-y-auto">
-          {/* Recalculate tools on each render to ensure updates */}
-          {(() => {
-            // Capture current tools on each render - now showing all tools
-            const activeTools = getActiveTools();
-            const completedTools = getRecentTools(); // No limit
-            
-            // Get current tools for rendering
-            const allTools = [...activeTools, ...completedTools];
-            
-            console.log('Tools to display in MessageFeed:', {
-              activeToolCount: activeTools.length, 
-              completedToolCount: completedTools.length,
-              totalTools: allTools.length,
-              toolIds: allTools.map(t => t.id).slice(0, 5) // Show first 5 tool IDs
-            });
-            
-            const toolMap = Object.fromEntries(
-              allTools.map(tool => [tool.id, tool])
-            );
-            
-            return (
-              <MessageFeed 
-                sessionId={sessionId || null} 
-                messages={messages} 
-                className="terminal-message-animation"
-                ariaLabelledBy={ids.output}
-                toolExecutions={showToolVisualizations ? toolMap : {}}
-                showToolsInline={showToolVisualizations}
-                isDarkTheme={shouldUseDarkTerminal}
-                onToolViewModeChange={handleViewModeChange}
-                defaultToolViewMode={preferences.defaultViewMode}
-                onNewSession={handleNewSession}
-                showNewSessionMessage={showNewSessionHint && messages.length > 1}
-              />
-            );
-          })()}
+          {/* MessageFeed now gets data from TimelineContext and useToolVisualization directly */}
+          <MessageFeed 
+            sessionId={sessionId || null} 
+            className="terminal-message-animation"
+            ariaLabelledBy={ids.output}
+            isDarkTheme={shouldUseDarkTerminal}
+            onNewSession={handleNewSession}
+            showNewSessionMessage={showNewSessionHint && messages.length > 1}
+          />
         </div>
         
         {/* Fixed indicators area */}

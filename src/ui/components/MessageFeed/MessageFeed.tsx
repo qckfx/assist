@@ -1,60 +1,42 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import Message from '@/components/Message';
-import { TerminalMessage } from '@/types/terminal';
-import { ToolExecution } from '@/hooks/useToolStream';
 import ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
-import { PreviewMode } from '../../../types/preview';
-import { TimelineItem, TimelineItemType } from '../../../types/timeline';
-import { useTimeline } from '@/hooks/useTimeline';
-import { ContentPart, TextContentPart } from '../../../types/message';
+import { TimelineItemType } from '../../../types/timeline';
+import { useTimelineContext } from '../../context/TimelineContext';
+import { useToolVisualization } from '../../hooks/useToolVisualization';
 
 export interface MessageFeedProps {
   sessionId: string | null;
-  messages: TerminalMessage[]; // For backwards compatibility 
-  toolExecutions?: Record<string, ToolExecution>; // For backwards compatibility
   className?: string;
   autoScroll?: boolean;
   enableAnsiColors?: boolean;
   ariaLabelledBy?: string;
-  showToolsInline?: boolean;
   isDarkTheme?: boolean;
-  onToolViewModeChange?: (toolId: string, mode: PreviewMode) => void;
-  defaultToolViewMode?: PreviewMode;
   onNewSession?: () => void;
   showNewSessionMessage?: boolean;
 }
 
 export function MessageFeed({
   sessionId,
-  messages,
-  toolExecutions = {},
   className,
   autoScroll = true,
   enableAnsiColors = true,
   ariaLabelledBy,
-  showToolsInline = true,
   isDarkTheme = false,
-  onToolViewModeChange,
-  defaultToolViewMode,
   onNewSession,
   showNewSessionMessage = false
 }: MessageFeedProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Get the unified timeline
-  const {
-    timeline,
-    isLoading,
-    error
-  } = useTimeline(sessionId, {
-    limit: 100,
-    includeRelated: true
-  });
+  // Use the timeline context to access timeline data
+  const { timeline, isLoading, error } = useTimelineContext();
   
-  // Auto-scroll effect for new messages and new tool executions
+  // Use the tool visualization hook for view mode management
+  const { setToolViewMode, defaultViewMode } = useToolVisualization();
+  
+  // Auto-scroll effect
   useEffect(() => {
-    // Scroll on changes to message count or tool execution count or timeline length
     if (autoScroll && messagesEndRef.current) {
       // Check if scrollIntoView is available (for JSDOM in tests)
       if (typeof messagesEndRef.current.scrollIntoView === 'function') {
@@ -62,22 +44,7 @@ export function MessageFeed({
         messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
       }
     }
-  }, [
-    messages.length, 
-    Object.keys(toolExecutions).length, 
-    timeline?.length,
-    autoScroll
-  ]);
-
-  // Keep toolItems for backward compatibility with other components
-  const { messageItems, toolItems } = useMemo(() => {
-    return {
-      messageItems: messages,
-      toolItems: []
-    };
-  }, [messages]);
-
-  // This is now removed as we only use the unified timeline
+  }, [timeline?.length, autoScroll]);
 
   // Render timeline items
   const renderTimelineItems = () => {
@@ -118,17 +85,14 @@ export function MessageFeed({
     }
 
     // Render each timeline item
-    return timeline.map((item: TimelineItem) => {
+    return timeline.map(item => {
       if (item.type === TimelineItemType.MESSAGE) {
-        // Log the entire item structure for debugging
-        console.log('Timeline item structure:', JSON.stringify(item, null, 2));
-        
-        // Convert the stored message to the terminal message format
+        // Convert the stored message to the format expected by Message component
         const message = {
           id: item.message.id,
           type: item.message.role as 'user' | 'assistant' | 'system' | 'error',
           content: item.message.content,
-          timestamp: Date.parse(item.timestamp) // Use timestamp from the timeline item, not from the message
+          timestamp: new Date(item.timestamp).getTime()
         };
 
         return (
@@ -155,7 +119,7 @@ export function MessageFeed({
       } else if (item.type === TimelineItemType.TOOL_EXECUTION) {
         // Convert the stored tool execution to the format expected by ToolVisualization
         const toolExecution = {
-          id: item.toolExecution.id,
+          id: item.id,
           tool: item.toolExecution.toolId,
           toolName: item.toolExecution.toolName,
           status: item.toolExecution.status,
@@ -171,13 +135,15 @@ export function MessageFeed({
             briefContent: item.preview.briefContent,
             fullContent: item.preview.fullContent,
             metadata: item.preview.metadata
-          } : undefined
+          } : undefined,
+          // Add the missing viewMode property
+          viewMode: defaultViewMode
         };
 
         return (
           <div
             key={`tool-${item.id}`}
-            className="w-4/5 self-start mt-2 mb-2 ml-2" // Left-aligned, not centered
+            className="w-4/5 self-start mt-2 mb-2 ml-2"
             data-testid={`tool-${toolExecution.id}`}
             role="listitem"
             aria-label={`Tool execution: ${toolExecution.toolName || toolExecution.id}`}
@@ -185,18 +151,14 @@ export function MessageFeed({
             <ToolVisualization
               tool={toolExecution}
               showExecutionTime={true}
-              compact={true} // Always use compact view
-              className="mx-0" // Remove horizontal margin
-              isDarkTheme={isDarkTheme} // Pass terminal theme
-              defaultViewMode={defaultToolViewMode}
-              onViewModeChange={onToolViewModeChange}
+              compact={true}
+              className="mx-0"
+              isDarkTheme={isDarkTheme}
+              defaultViewMode={defaultViewMode}
+              onViewModeChange={setToolViewMode}
             />
           </div>
         );
-      } else if (item.type === TimelineItemType.PERMISSION_REQUEST) {
-        // For now, we don't render permission requests directly
-        // They are shown as part of tool execution visualizations
-        return null;
       }
 
       return null;
