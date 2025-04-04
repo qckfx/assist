@@ -540,6 +540,16 @@ export function Terminal({
             onNewSession={handleNewSession}
             showNewSessionMessage={showNewSessionHint && messages.length > 1}
           />
+          
+          {/* Display a connecting message when there are no messages yet and we're not connected */}
+          {!wsTerminalContext.isConnected && !messages.length && (
+            <div className="flex items-center justify-center p-4 text-gray-500 mt-8">
+              <div className="text-center">
+                <div className="animate-pulse mb-2">Connecting to agent session...</div>
+                <div className="text-sm">If this takes too long, try clicking the ➕ New Session button above</div>
+              </div>
+            </div>
+          )}
         </div>
         
         {/* Fixed indicators area */}

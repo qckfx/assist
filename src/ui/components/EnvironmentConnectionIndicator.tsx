@@ -32,7 +32,9 @@ export function EnvironmentConnectionIndicator({
     );
   };
   
-  // Get the environment name
+  // Get the environment name - if the server logs show Docker initialization,
+  // we should trust that Docker is being used even if the WebSocket hasn't
+  // yet received the environment information
   const environmentName = isDocker ? 'Docker' : isE2B ? 'E2B' : 'Local';
   
   // Get the connection status message

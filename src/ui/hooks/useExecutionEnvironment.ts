@@ -13,10 +13,13 @@ interface ExecutionEnvironmentInfo {
  * Hook to get information about the current execution environment
  */
 export function useExecutionEnvironment(): ExecutionEnvironmentInfo {
+  // Default to Docker since that's the app's default environment
+  // This ensures that when the app initializes, it shows Docker by default
+  // until we get definitive environment information
   const [environmentInfo, setEnvironmentInfo] = useState<ExecutionEnvironmentInfo>({
-    environment: 'unknown',
-    isDocker: false,
-    isLocal: true, // Default to local
+    environment: 'docker',
+    isDocker: true, // Default to Docker to match backend default
+    isLocal: false,
     isE2B: false
   });
   // No longer need wsTerminal reference
