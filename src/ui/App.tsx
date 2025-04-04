@@ -7,7 +7,14 @@ import WebSocketTerminal from '@/components/WebSocketTerminal';
 import { ToolPreferencesProvider } from '@/context/ToolPreferencesContext';
 import { TimelineProvider } from '@/context/TimelineContext';
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
+import { 
+  BrowserRouter,
+  Routes, 
+  Route, 
+  Navigate, 
+  useParams, 
+  useNavigate 
+} from 'react-router-dom';
 
 // Session component that loads a specific session from URL parameter
 function SessionComponent() {

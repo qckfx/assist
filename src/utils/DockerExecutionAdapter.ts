@@ -75,62 +75,47 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
     stderr: string;
     exitCode: number;
   }> {
-    console.log('⚠️ DOCKER EXECUTE: Starting execution of command:', command);
     try {
       // Convert working directory to container path if provided
       let containerWorkingDir: string | undefined;
       
       if (workingDir) {
-        console.log('⚠️ DOCKER EXECUTE: Getting container info for working dir conversion');
         const containerInfo = await this.containerManager.getContainerInfo();
         if (!containerInfo) {
-          console.log('⚠️ DOCKER EXECUTE: No container info available');
           throw new Error('Container is not available');
         }
         
         containerWorkingDir = this.toContainerPath(workingDir, containerInfo);
-        console.log('⚠️ DOCKER EXECUTE: Converted working dir to:', containerWorkingDir);
       }
       
       this.logger?.debug(`Executing command in container: ${command}`, LogCategory.TOOLS);
-      console.log('⚠️ DOCKER EXECUTE: Calling container manager to execute command');
       
       // Try to execute the command
       try {
-        console.log('⚠️ DOCKER EXECUTE: Awaiting containerManager.executeCommand');
         const result = await this.containerManager.executeCommand(command, containerWorkingDir);
-        console.log('⚠️ DOCKER EXECUTE: Completed execution with exitCode:', result.exitCode);
         return result;
       } catch (error) {
-        console.log('⚠️ DOCKER EXECUTE: Inner catch - Error executing command:', (error as Error).message);
         // Check if container needs to be restarted
         if ((error as Error).message.includes('container not running') || 
             (error as Error).message.includes('No such container')) {
           
-          console.log('⚠️ DOCKER EXECUTE: Container not running, attempting to restart');
           this.logger?.warn('Container not running, attempting to restart', LogCategory.TOOLS);
           
           // Try to restart container
-          console.log('⚠️ DOCKER EXECUTE: Calling ensureContainer');
           const containerInfo = await this.containerManager.ensureContainer();
           if (!containerInfo) {
-            console.log('⚠️ DOCKER EXECUTE: Failed to restart container');
             throw new Error('Failed to restart container');
           }
           
           // Retry command after restart
-          console.log('⚠️ DOCKER EXECUTE: Retrying command after container restart');
           const retryResult = await this.containerManager.executeCommand(command, containerWorkingDir);
-          console.log('⚠️ DOCKER EXECUTE: Retry completed with exitCode:', retryResult.exitCode);
           return retryResult;
         }
         
         // If it's not a container availability issue, rethrow
-        console.log('⚠️ DOCKER EXECUTE: Rethrowing error:', (error as Error).message);
         throw error;
       }
     } catch (error) {
-      console.log('⚠️ DOCKER EXECUTE: Outer catch - Error executing command:', (error as Error).message);
       this.logger?.error(`Error executing command in container: ${(error as Error).message}`, error, LogCategory.TOOLS);
       return {
         stdout: '',
@@ -435,33 +420,24 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
    * List directory contents
    */
   async ls(dirPath: string, showHidden: boolean = false, details: boolean = false): Promise<LSToolSuccessResult | LSToolErrorResult> {
-    console.log('⚠️ DOCKER LS OPERATION STARTING for path:', dirPath);
     try {
       // Get container info
-      console.log('⚠️ DOCKER LS - Getting container info');
       const containerInfo = await this.containerManager.getContainerInfo();
       if (!containerInfo) {
-        console.log('⚠️ DOCKER LS - No container info available');
         return {
           success: false as const,
           path: dirPath,
           error: 'Container is not available'
         };
       }
-      console.log('⚠️ DOCKER LS - Container info received:', containerInfo.id.substring(0, 12));
       
       // Convert to container path
-      console.log('⚠️ DOCKER LS - Converting to container path:', dirPath);
       const containerPath = this.toContainerPath(dirPath, containerInfo);
-      console.log('⚠️ DOCKER LS - Container path resolved to:', containerPath);
       
       // Check if directory exists
-      console.log('⚠️ DOCKER LS - Checking if directory exists');
       const { exitCode } = await this.executeCommand(`[ -d "${containerPath}" ]`);
-      console.log('⚠️ DOCKER LS - Directory existence check result:', exitCode === 0 ? 'Directory exists' : 'Directory not found');
       
       if (exitCode !== 0) {
-        console.log('⚠️ DOCKER LS - Directory not found, returning error');
         return {
           success: false as const,
           path: dirPath,
@@ -558,7 +534,6 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         }
       }
       
-      console.log('⚠️ DOCKER LS - Processing completed successfully with', results.length, 'entries');
       return {
         success: true as const,
         path: dirPath,
@@ -566,14 +541,12 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         count: results.length
       };
     } catch (error) {
-      console.log('⚠️ DOCKER LS - Error occurred:', (error as Error).message);
+      this.logger?.error(`Error listing directory: ${(error as Error).message}`, error, LogCategory.TOOLS);
       return {
         success: false as const,
         path: dirPath,
         error: `Error listing directory: ${(error as Error).message}`
       };
-    } finally {
-      console.log('⚠️ DOCKER LS - Operation complete');
     }
   }
 

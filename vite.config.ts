@@ -6,19 +6,23 @@ import { createHtmlPlugin } from 'vite-plugin-html';
 // Add http-proxy for better socket handling
 import * as http from 'http';
 import * as net from 'net';
+import * as fs from 'fs';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
   const isProduction = mode === 'production';
-  
+
   return {
     // Explicitly set the root directory and entry point
     root: './',
     // Disable the public directory to prevent it from overriding the root index.html
     publicDir: false,
+    // Ensure proper environment for production builds
+    define: {
+      'process.env.NODE_ENV': isProduction ? '"production"' : '"development"',
+    },
     plugins: [
       react(),
-      splitVendorChunkPlugin(),
       createHtmlPlugin({
         minify: isProduction,
         inject: {
@@ -35,21 +39,6 @@ export default defineConfig(({ command, mode }) => {
       cssCodeSplit: true,
       reportCompressedSize: true,
       chunkSizeWarningLimit: 1024,
-      rollupOptions: {
-        output: {
-          manualChunks: (id) => {
-            if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
-              return 'react-vendor';
-            }
-            if (id.includes('src/ui/components/ui/')) {
-              return 'ui-vendor';
-            }
-            if (id.includes('node_modules/lucide-react')) {
-              return 'icons-vendor';
-            }
-          }
-        },
-      },
     },
     resolve: {
       alias: {
