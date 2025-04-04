@@ -11,9 +11,11 @@ import { useStreamingMessages } from '@/hooks/useStreamingMessages';
 import { useTerminalCommands } from '@/hooks/useTerminalCommands';
 import { usePermissionManager } from '@/hooks/usePermissionManager';
 import { useToolVisualization } from '@/hooks/useToolVisualization';
+import { useExecutionEnvironment } from '@/hooks/useExecutionEnvironment';
 import { ConnectionStatus, WebSocketEvent } from '@/types/api';
 import apiClient from '@/services/apiClient';
 import { getWebSocketService } from '@/services/WebSocketService';
+import { getSocketConnectionManager } from '@/utils/websocket';
 
 interface WebSocketTerminalContextProps {
   // Connection state
@@ -167,10 +169,11 @@ export function WebSocketTerminalProvider({
         setSessionId(newSessionId);
         sessionIdRef.current = newSessionId;
         
-        // Connect to the session via WebSocket if possible
-        if (isConnected && typeof connectToSession === 'function') {
-          connectToSession(newSessionId);
-        }
+        // Always use the connection manager directly to ensure the session is joined
+        // This is more reliable than using the hook-based connectToSession
+        const connectionManager = getSocketConnectionManager();
+        connectionManager.joinSession(newSessionId);
+        console.log(`[WebSocketTerminalContext] Requested connection join for session: ${newSessionId}`);
         
         // Update URL to include session ID without page reload
         window.history.pushState({}, '', `/sessions/${newSessionId}`);
@@ -188,7 +191,7 @@ export function WebSocketTerminalProvider({
     } finally {
       setProcessing(false);
     }
-  }, [addErrorMessage, setProcessing, isConnected, connectToSession]);
+  }, [addErrorMessage, setProcessing]);
   
   // Get the tool visualization hook for abort processing
   const toolVisualization = useToolVisualization();
@@ -274,7 +277,6 @@ export function WebSocketTerminalProvider({
     
     // Only create session if we don't have one and we haven't tried yet
     if (!initialSessionId && !sessionId) {
-      isInitializedRef.current = true;
       
       // Add retry logic with backoff
       let retryAttempt = 0;
@@ -294,6 +296,9 @@ export function WebSocketTerminalProvider({
             // Store the sessionId in sessionStorage for permission handling
             sessionStorage.setItem('currentSessionId', newSessionId);
             console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
+            
+            // Only mark as initialized after successful session creation
+            isInitializedRef.current = true;
           } else if (isMounted) {
             handleSessionCreationError(new Error("Failed to create session: No session ID returned"));
           }
