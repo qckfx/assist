@@ -7,6 +7,7 @@ import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTerminal } from '@/context/TerminalContext';
 import { usePermissionKeyboardHandler } from '@/hooks/usePermissionKeyboardHandler';
 import { useAbortShortcuts } from '@/hooks/useAbortShortcuts';
+import { TimelineProvider } from '@/context/TimelineContext';
 
 interface WebSocketTerminalProps {
   className?: string;
@@ -78,23 +79,33 @@ export function WebSocketTerminal({
     handleCommand(command);
   };
 
+  // Add logging for debugging timeline issues
+  useEffect(() => {
+    if (sessionId) {
+      console.log(`WebSocketTerminal has sessionId: ${sessionId} - passing to nested TimelineProvider`);
+    }
+  }, [sessionId]);
+
   return (
     <div className="relative w-full max-w-full flex flex-col" style={{ height: "calc(100% - 20px)" }} data-testid="websocket-terminal">
       {/* Connection indicator now integrated directly in the Terminal title bar */}
       
-      <Terminal
-        className={className}
-        messages={state.messages}
-        onCommand={handleCommandWithNotification}
-        inputDisabled={!isConnected && hasConnected}
-        fullScreen={fullScreen}
-        onClear={clearMessages}
-        sessionId={sessionId}
-        showConnectionIndicator={showConnectionStatus}
-        showTypingIndicator={showTypingIndicator}
-        connectionStatus={connectionStatus}
-        showNewSessionHint={showNewSessionHint}
-      />
+      {/* Wrap Terminal in TimelineProvider to ensure it gets the latest sessionId */}
+      <TimelineProvider sessionId={sessionId}>
+        <Terminal
+          className={className}
+          messages={state.messages}
+          onCommand={handleCommandWithNotification}
+          inputDisabled={!isConnected && hasConnected}
+          fullScreen={fullScreen}
+          onClear={clearMessages}
+          sessionId={sessionId}
+          showConnectionIndicator={showConnectionStatus}
+          showTypingIndicator={showTypingIndicator}
+          connectionStatus={connectionStatus}
+          showNewSessionHint={showNewSessionHint}
+        />
+      </TimelineProvider>
       
       {/* Typing indicator is now handled inside the Terminal component */}
       

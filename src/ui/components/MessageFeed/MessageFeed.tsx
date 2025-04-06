@@ -48,6 +48,19 @@ export function MessageFeed({
 
   // Render timeline items
   const renderTimelineItems = () => {
+    // Debug logs to troubleshoot rendering issues
+    console.log("Rendering timeline items:", {
+      sessionId,
+      isLoading,
+      hasError: !!error,
+      timelineLength: timeline?.length || 0,
+      timelineItems: timeline?.map(item => ({
+        id: item.id,
+        type: item.type,
+        messageType: item.type === TimelineItemType.MESSAGE ? item.message.role : null
+      }))
+    });
+    
     if (isLoading && (!timeline || timeline.length === 0)) {
       return (
         <div 
@@ -94,6 +107,13 @@ export function MessageFeed({
           content: item.message.content,
           timestamp: new Date(item.timestamp).getTime()
         };
+        
+        // Add debugging info for each message
+        console.log(`Rendering message ${item.id}:`, {
+          role: message.type,
+          content: message.content,
+          timestamp: new Date(message.timestamp).toISOString()
+        });
 
         return (
           <div

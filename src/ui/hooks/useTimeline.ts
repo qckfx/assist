@@ -38,10 +38,16 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
   
   // Fetch timeline from API
   const fetchTimeline = useCallback(async (pageToken?: string) => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      console.warn('fetchTimeline called without sessionId');
+      return;
+    }
     
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
+      
+      // Log fetchTimeline call for debugging
+      console.log(`Fetching timeline for session ${sessionId}`);
       
       const queryParams = new URLSearchParams();
       if (limit) queryParams.append('limit', limit.toString());
@@ -57,8 +63,23 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
         queryParams.toString()
       );
       
+      // Log the timeline response for debugging
+      console.log(`Timeline response for ${sessionId}:`, {
+        success: response.success,
+        itemCount: response.data?.items?.length || 0,
+        hasData: !!response.data
+      });
+      
       if (response.success && response.data) {
         const responseData = response.data;
+        
+        // Log the timeline items for debugging
+        console.log(`Timeline items for ${sessionId}:`, {
+          count: responseData.items.length,
+          types: responseData.items.map(item => item.type),
+          messageCount: responseData.items.filter(item => item.type === 'message').length,
+          toolCount: responseData.items.filter(item => item.type === 'tool_execution').length
+        });
         
         if (pageToken) {
           // Append items for pagination
@@ -82,6 +103,7 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
         
         timelineInitializedRef.current = true;
       } else {
+        console.error(`Failed to fetch timeline for ${sessionId}:`, response.error);
         throw new Error(
           typeof response.error === 'string' 
             ? response.error 
@@ -89,6 +111,7 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
         );
       }
     } catch (error) {
+      console.error(`Error fetching timeline for ${sessionId}:`, error);
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -107,8 +130,16 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
   // Initial load
   useEffect(() => {
     if (sessionId) {
+      // Log initialization of timeline
+      console.log(`Initializing timeline for session ${sessionId}`);
+      
+      // Force timeline initialization on session ID change or mount
+      timelineInitializedRef.current = false;
+      
       // Always fetch timeline on session ID change or mount
       fetchTimeline();
+      
+      // Update initialization flag after fetch is triggered
       timelineInitializedRef.current = true;
     }
     
@@ -122,20 +153,38 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
 
   // Listen for WebSocket updates
   useEffect(() => {
-    if (!sessionId || !isConnected) return;
+    if (!sessionId || !isConnected) {
+      console.log(`Not setting up WebSocket listeners because ${!sessionId ? 'no sessionId' : 'not connected'}`);
+      return;
+    }
+    
+    console.log(`Setting up WebSocket message listeners for session ${sessionId}`);
     
     // Function to handle timeline item received or updated
     const handleTimelineItem = (data: any, isUpdate: boolean) => {
-      if (data.sessionId !== sessionId) return;
+      if (data.sessionId !== sessionId) {
+        console.log(`Ignoring event for different session: ${data.sessionId} (current: ${sessionId})`);
+        return;
+      }
       
-      console.log(`Received ${isUpdate ? 'update for' : 'new'} timeline item:`, data);
+      console.log(`Received ${isUpdate ? 'update for' : 'new'} timeline item:`, {
+        sessionId: data.sessionId,
+        hasMessage: 'message' in data,
+        hasTool: 'toolExecution' in data,
+        messageType: data.message?.role
+      });
       
       // Create a timeline item from the data
       let timelineItem: TimelineItem | null = null;
       
       if ('message' in data) {
         // It's a message event
-        console.log('Processing message event:', data.message);
+        console.log('Processing message event:', {
+          id: data.message.id,
+          role: data.message.role,
+          content: data.message.content,
+          timestamp: data.message.timestamp
+        });
         
         // Ensure message has a stable ID
         const messageId = data.message.id || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -163,6 +212,7 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
             };
           } else {
             // New user message
+            console.log(`Creating new USER timeline item with ID ${messageId}`);
             timelineItem = {
               id: messageId,
               type: TimelineItemType.MESSAGE,
@@ -176,6 +226,7 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
           }
         } else {
           // Assistant message or other type
+          console.log(`Creating new ASSISTANT timeline item with ID ${messageId}`);
           timelineItem = {
             id: messageId,
             type: TimelineItemType.MESSAGE,
@@ -284,7 +335,9 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
           currentLocalItems: prev.length,
           existingIndex,
           isUpdate,
-          itemType: timelineItem!.type
+          itemType: timelineItem!.type,
+          itemId: timelineItem!.id,
+          messageRole: timelineItem!.type === TimelineItemType.MESSAGE ? timelineItem!.message.role : undefined
         });
         
         let newItems;
@@ -295,13 +348,22 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
           console.log('Updated existing item at index', existingIndex);
           return newItems;
         } else if (existingIndex >= 0) {
-          // Don't add duplicate messages, just keep existing
-          console.log('Item exists but not updating - keeping existing');
-          return prev;
+          // We found an existing item with same content
+          console.log('Found existing item with same content - updating anyway for safety');
+          // Always update to ensure we have the latest data
+          newItems = [...prev];
+          newItems[existingIndex] = timelineItem!;
+          return newItems;
         } else {
           // Add new item
           newItems = [...prev, timelineItem!];
           console.log('Added new item, new count:', newItems.length);
+          console.log('New item details:', {
+            id: timelineItem!.id,
+            type: timelineItem!.type,
+            timestamp: timelineItem!.timestamp,
+            role: timelineItem!.type === TimelineItemType.MESSAGE ? timelineItem!.message.role : undefined
+          });
           return newItems;
         }
       });
@@ -408,27 +470,11 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
       }
     });
     
-    // Add local items, but only if they don't duplicate server items
+    // Add local items
     localItems.forEach(item => {
-      // If it's a message that already exists on server (by ID), skip it
-      if (item.type === TimelineItemType.MESSAGE && serverMessageIds.has(item.id)) {
-        return;
-      }
-      
-      // For user messages, check content hash to avoid duplication
-      if (item.type === TimelineItemType.MESSAGE && item.message.role === 'user') {
-        const contentHash = JSON.stringify(item.message.content);
-        if (serverMessageIds.has(`content:${contentHash}`)) {
-          // This is a pending message that has been confirmed by the server
-          console.log('Skipping local user message that exists on server:', item.id);
-          return;
-        }
-      }
-      
-      // For other items, add to map only if not already added from server
-      if (!itemMap.has(item.id)) {
-        itemMap.set(item.id, item);
-      }
+      // For messages, prioritize local items over server items, since they might contain
+      // more recent content from WebSocket updates that haven't been saved to the server yet
+      itemMap.set(item.id, item);
     });
     
     // Log the items in the map
@@ -449,6 +495,16 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
         if (a.type !== TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
           return 1;
         }
+        
+        // If both are messages with same timestamp, put user before assistant
+        if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+          if (a.message.role === 'user' && b.message.role !== 'user') {
+            return -1;
+          }
+          if (a.message.role !== 'user' && b.message.role === 'user') {
+            return 1;
+          }
+        }
       }
       
       return dateA - dateB;
@@ -458,7 +514,8 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
       sortedTimeline.map(item => ({
         id: item.id,
         type: item.type,
-        timestamp: item.timestamp
+        timestamp: item.timestamp,
+        role: item.type === TimelineItemType.MESSAGE ? item.message.role : undefined
       }))
     );
     

@@ -130,12 +130,11 @@ export function WebSocketTerminalProvider({
     sessionIdRef.current = sessionId;
   }, [sessionId]);
   
-  // Create a new session with retry logic
+  // Create a new session with simplified logic
   const createSession = useCallback(async () => {
     try {
       // Update UI state
       setProcessing(true);
-      // Don't add a system message when creating a session - handled by the initialization process
       
       console.log('[WebSocketTerminalContext] Requesting new session from API...');
       
@@ -143,8 +142,6 @@ export function WebSocketTerminalProvider({
       const response = await apiClient.startSession();
       console.log('[WebSocketTerminalContext] Session creation response:', response);
       
-      // Handle response - apiClient returns standardized format with data property
-      // Check for sessionId in data (raw response) or in response.data (standardized wrapper)
       const sessionData = response.data || response;
       
       // Safely access sessionId with type checking
@@ -158,27 +155,21 @@ export function WebSocketTerminalProvider({
       if (newSessionId) {
         console.log(`[WebSocketTerminalContext] Session created successfully: ${newSessionId}`);
         
-        // Store the sessionId in sessionStorage for permission handling
-        sessionStorage.setItem('currentSessionId', newSessionId);
-        console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
-        
-        // Store in localStorage as a fallback
+        // Store only in localStorage - simplifying storage
         localStorage.setItem('sessionId', newSessionId);
+        console.log(`[WebSocketTerminalContext] Stored session ID in localStorage: ${newSessionId}`);
         
         // Update session state
         setSessionId(newSessionId);
         sessionIdRef.current = newSessionId;
         
-        // Always use the connection manager directly to ensure the session is joined
-        // This is more reliable than using the hook-based connectToSession
+        // Connect to the new session
         const connectionManager = getSocketConnectionManager();
         connectionManager.joinSession(newSessionId);
-        console.log(`[WebSocketTerminalContext] Requested connection join for session: ${newSessionId}`);
         
         // Update URL to include session ID without page reload
         window.history.pushState({}, '', `/sessions/${newSessionId}`);
         
-        // Don't show session ID to users - they don't need to see this
         return newSessionId;
       } else {
         console.error('[WebSocketTerminalContext] Failed to create session - invalid response:', response);
@@ -268,75 +259,77 @@ export function WebSocketTerminalProvider({
     }
   }, [addSystemMessage, addErrorMessage, setProcessing, toolVisualization]);
   
-  // Automatically create a session on mount if none provided, with retries
+  // Create a session on mount if none provided - improved approach to prevent race conditions
   useEffect(() => {
-    // Only run initialization once
+    // Store the initialization state in a ref to prevent duplicate initializations
     if (isInitializedRef.current) {
       return;
     }
     
-    // Only create session if we don't have one and we haven't tried yet
+    // Immediately set initialization flag to prevent multiple session creations
+    isInitializedRef.current = true;
+    
+    // Only create session if we don't have one
     if (!initialSessionId && !sessionId) {
-      
-      // Add retry logic with backoff
-      let retryAttempt = 0;
-      const maxRetries = 3;
       let isMounted = true; // Track component mount state
       
-      const attemptSessionCreation = async () => {
+      const createNewSession = async () => {
         if (!isMounted) return;
         
         try {
-          console.log(`[WebSocketTerminalContext] Attempting to create session (attempt ${retryAttempt + 1}/${maxRetries})`);
+          console.log('[WebSocketTerminalContext] Creating new session...');
+          
+          // Check localStorage for a recent valid session first
+          const storedSessionId = localStorage.getItem('sessionId');
+          if (storedSessionId) {
+            console.log(`[WebSocketTerminalContext] Found stored session ID: ${storedSessionId}`);
+            
+            // Validate the session before using it
+            try {
+              const validationResponse = await apiClient.validateSession([storedSessionId]);
+              if (validationResponse.success && validationResponse.data?.validSessionIds?.includes(storedSessionId)) {
+                console.log(`[WebSocketTerminalContext] Stored session ID ${storedSessionId} is valid, reusing`);
+                setSessionId(storedSessionId);
+                sessionIdRef.current = storedSessionId;
+                
+                // Connect to the existing session
+                const connectionManager = getSocketConnectionManager();
+                connectionManager.joinSession(storedSessionId);
+                return;
+              }
+            } catch (error) {
+              console.warn(`[WebSocketTerminalContext] Failed to validate stored session ID: ${storedSessionId}`, error);
+              // Continue with creating a new session
+            }
+          }
+          
+          // Create a new session if no valid stored session was found
           const newSessionId = await createSession();
           
           if (newSessionId && isMounted) {
             console.log(`[WebSocketTerminalContext] Successfully created session: ${newSessionId}`);
-            
-            // Store the sessionId in sessionStorage for permission handling
-            sessionStorage.setItem('currentSessionId', newSessionId);
-            console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
-            
-            // Only mark as initialized after successful session creation
-            isInitializedRef.current = true;
           } else if (isMounted) {
-            handleSessionCreationError(new Error("Failed to create session: No session ID returned"));
+            console.error('[WebSocketTerminalContext] No session ID returned');
+            addErrorMessage('Failed to create session. Please refresh the page to try again.');
           }
         } catch (error) {
           if (isMounted) {
-            handleSessionCreationError(error);
+            console.error('[WebSocketTerminalContext] Session creation failed:', error);
+            addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       };
       
-      const handleSessionCreationError = (error: Error | unknown) => {
-        console.error("[WebSocketTerminalContext] Session creation failed:", error);
-        
-        // Immediately show error message
-        addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
-        
-        // Retry with exponential backoff
-        if (retryAttempt < maxRetries && isMounted) {
-          retryAttempt++;
-          const backoffTime = 1000 * Math.pow(2, retryAttempt);
-          console.log(`[WebSocketTerminalContext] Retrying in ${backoffTime}ms...`);
-          
-          setTimeout(attemptSessionCreation, backoffTime);
-        } else if (isMounted) {
-          addErrorMessage(`Failed to create session after ${maxRetries} attempts. Please try again later.`);
-        }
-      };
-      
-      // Start the first attempt
-      attemptSessionCreation();
+      // Create a new session immediately
+      createNewSession();
       
       // Cleanup function
       return () => {
         isMounted = false;
       };
     } else {
-      // Mark as initialized if we already have a session
-      isInitializedRef.current = true;
+      // Log we're using provided sessionId
+      console.log(`[WebSocketTerminalContext] Using provided session ID: ${initialSessionId || sessionId}`);
     }
   }, [initialSessionId, sessionId, createSession, addErrorMessage]);
   
