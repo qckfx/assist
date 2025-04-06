@@ -1102,22 +1102,59 @@ export class TimelineService extends EventEmitter {
       timeline.push(item);
     }
     
-    // Sort timeline by timestamp
+    // IMPORTANT: Sort timeline primarily by sequence number - this is the most accurate way to ensure
+    // messages are displayed in the correct order, regardless of timestamps
     timeline.sort((a, b) => {
+      // First, check if both are messages with sequence numbers
+      const aIsMessageWithSequence = a.type === TimelineItemType.MESSAGE && a.message.sequence !== undefined;
+      const bIsMessageWithSequence = b.type === TimelineItemType.MESSAGE && b.message.sequence !== undefined;
+      
+      // Case 1: If both have sequence numbers, use those (most reliable ordering)
+      if (aIsMessageWithSequence && bIsMessageWithSequence) {
+        return a.message.sequence - b.message.sequence;
+      }
+      
+      // Case 2: If only one has a sequence number, prioritize it based on sequence ranges
+      // User message sequences start at 0, 2, 4... and AI responses are 1, 3, 5...
+      if (aIsMessageWithSequence && !bIsMessageWithSequence) {
+        return -1; // Items with sequence come first
+      }
+      if (!aIsMessageWithSequence && bIsMessageWithSequence) {
+        return 1; // Items with sequence come first
+      }
+      
+      // Case 3: Neither has a sequence number, use timestamp ordering
       const dateA = new Date(a.timestamp).getTime();
       const dateB = new Date(b.timestamp).getTime();
       
-      if (dateA === dateB) {
-        // If timestamps are the same, prioritize messages over tool executions
-        if (a.type === TimelineItemType.MESSAGE && b.type !== TimelineItemType.MESSAGE) {
+      if (dateA !== dateB) {
+        return dateA - dateB;
+      }
+      
+      // Case 4: Same timestamp, prioritize by type
+      if (a.type !== b.type) {
+        // Messages come before other types
+        if (a.type === TimelineItemType.MESSAGE) return -1;
+        if (b.type === TimelineItemType.MESSAGE) return 1;
+        
+        // Then tool executions
+        if (a.type === TimelineItemType.TOOL_EXECUTION) return -1;
+        if (b.type === TimelineItemType.TOOL_EXECUTION) return 1;
+      }
+      
+      // Case 5: Same timestamp and type, use conversation flow logic for messages
+      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+        // User messages should come before assistant responses when timestamps match
+        if (a.message.role === 'user' && b.message.role === 'assistant') {
           return -1;
         }
-        if (a.type !== TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+        if (a.message.role === 'assistant' && b.message.role === 'user') {
           return 1;
         }
       }
       
-      return dateA - dateB;
+      // Same timestamp, type, and priority; preserve original order
+      return 0;
     });
     
     // Update cache
@@ -1246,22 +1283,57 @@ export class TimelineService extends EventEmitter {
       // Add new item
       cache.items.push(item);
       
-      // Re-sort the timeline
+      // Re-sort the timeline using the same sorting logic as buildSessionTimeline
       cache.items.sort((a, b) => {
+        // First, check if both are messages with sequence numbers
+        const aIsMessageWithSequence = a.type === TimelineItemType.MESSAGE && a.message.sequence !== undefined;
+        const bIsMessageWithSequence = b.type === TimelineItemType.MESSAGE && b.message.sequence !== undefined;
+        
+        // Case 1: If both have sequence numbers, use those (most reliable ordering)
+        if (aIsMessageWithSequence && bIsMessageWithSequence) {
+          return a.message.sequence - b.message.sequence;
+        }
+        
+        // Case 2: If only one has a sequence number, prioritize it
+        if (aIsMessageWithSequence && !bIsMessageWithSequence) {
+          return -1; // Items with sequence come first
+        }
+        if (!aIsMessageWithSequence && bIsMessageWithSequence) {
+          return 1; // Items with sequence come first
+        }
+        
+        // Case 3: Neither has a sequence number, use timestamp ordering
         const dateA = new Date(a.timestamp).getTime();
         const dateB = new Date(b.timestamp).getTime();
         
-        if (dateA === dateB) {
-          // If timestamps are the same, prioritize messages over tool executions
-          if (a.type === TimelineItemType.MESSAGE && b.type !== TimelineItemType.MESSAGE) {
+        if (dateA !== dateB) {
+          return dateA - dateB;
+        }
+        
+        // Case 4: Same timestamp, prioritize by type
+        if (a.type !== b.type) {
+          // Messages come before other types
+          if (a.type === TimelineItemType.MESSAGE) return -1;
+          if (b.type === TimelineItemType.MESSAGE) return 1;
+          
+          // Then tool executions
+          if (a.type === TimelineItemType.TOOL_EXECUTION) return -1;
+          if (b.type === TimelineItemType.TOOL_EXECUTION) return 1;
+        }
+        
+        // Case 5: Same timestamp and type, use conversation flow logic for messages
+        if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+          // User messages should come before assistant responses when timestamps match
+          if (a.message.role === 'user' && b.message.role === 'assistant') {
             return -1;
           }
-          if (a.type !== TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+          if (a.message.role === 'assistant' && b.message.role === 'user') {
             return 1;
           }
         }
         
-        return dateA - dateB;
+        // Same timestamp, type, and priority; preserve original order
+        return 0;
       });
     }
     

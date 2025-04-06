@@ -524,32 +524,60 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
       ([id, item]) => ({ id, type: item.type, role: item.type === TimelineItemType.MESSAGE ? item.message.role : undefined })
     ));
     
-    // Convert back to array and sort by timestamp
+    // Sort timeline primarily by sequence number when available
     const sortedTimeline = Array.from(itemMap.values()).sort((a, b) => {
+      // First, check if both are messages with sequence numbers
+      const aIsMessageWithSequence = a.type === TimelineItemType.MESSAGE && 
+                                   a.message.sequence !== undefined;
+      const bIsMessageWithSequence = b.type === TimelineItemType.MESSAGE && 
+                                   b.message.sequence !== undefined;
+      
+      // Case 1: If both have sequence numbers, use those (most reliable ordering)
+      if (aIsMessageWithSequence && bIsMessageWithSequence) {
+        return a.message.sequence - b.message.sequence;
+      }
+      
+      // Case 2: If only one has a sequence number, that one comes first
+      // This ensures that sequenced messages (which have well-defined order) stay together
+      if (aIsMessageWithSequence && !bIsMessageWithSequence) {
+        return -1; // Sequenced messages come first 
+      }
+      if (!aIsMessageWithSequence && bIsMessageWithSequence) {
+        return 1; // Sequenced messages come first
+      }
+      
+      // Case 3: Neither has a sequence number, fall back to timestamp ordering
       const dateA = new Date(a.timestamp).getTime();
       const dateB = new Date(b.timestamp).getTime();
       
-      if (dateA === dateB) {
-        // If timestamps are the same, prioritize messages over tool executions
-        if (a.type === TimelineItemType.MESSAGE && b.type !== TimelineItemType.MESSAGE) {
+      if (dateA !== dateB) {
+        return dateA - dateB;
+      }
+      
+      // Case 4: Same timestamp, prioritize by type
+      if (a.type !== b.type) {
+        // Messages come before other item types
+        if (a.type === TimelineItemType.MESSAGE) return -1;
+        if (b.type === TimelineItemType.MESSAGE) return 1;
+        
+        // Then tool executions
+        if (a.type === TimelineItemType.TOOL_EXECUTION) return -1;
+        if (b.type === TimelineItemType.TOOL_EXECUTION) return 1;
+      }
+      
+      // Case 5: Same timestamp and type, for messages use conversation flow
+      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+        // User messages should come before assistant responses
+        if (a.message.role === 'user' && b.message.role === 'assistant') {
           return -1;
         }
-        if (a.type !== TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+        if (a.message.role === 'assistant' && b.message.role === 'user') {
           return 1;
-        }
-        
-        // If both are messages with same timestamp, put user before assistant
-        if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
-          if (a.message.role === 'user' && b.message.role !== 'user') {
-            return -1;
-          }
-          if (a.message.role !== 'user' && b.message.role === 'user') {
-            return 1;
-          }
         }
       }
       
-      return dateA - dateB;
+      // Case 6: Same timestamp, type, and priority; preserve original order
+      return 0;
     });
     
     console.log('Final sorted timeline:', 
