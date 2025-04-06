@@ -17,6 +17,7 @@ import {
   fastEditModeToggleSchema,
   fastEditModeQuerySchema,
   timelineQuerySchema,
+  sessionValidationSchema,
 } from '../schemas/api';
 import { apiDocumentation } from '../docs/api';
 
@@ -93,6 +94,12 @@ router.get('/sessions/persisted', apiController.listPersistedSessions);
  * @desc    Delete a persisted session
  */
 router.delete('/sessions/persisted/:sessionId', apiController.deletePersistedSession);
+
+/**
+ * @route   POST /api/sessions/validate
+ * @desc    Validate multiple session IDs efficiently
+ */
+router.post('/sessions/validate', validateBody(sessionValidationSchema), apiController.validateSessionIds);
 
 /**
  * @route   GET /api/sessions/:sessionId/timeline

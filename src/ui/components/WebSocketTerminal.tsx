@@ -79,10 +79,17 @@ export function WebSocketTerminal({
     handleCommand(command);
   };
 
-  // Add logging for debugging timeline issues
+  // Add logging for debugging timeline issues and handle session initialization
   useEffect(() => {
     if (sessionId) {
       console.log(`WebSocketTerminal has sessionId: ${sessionId} - passing to nested TimelineProvider`);
+      
+      // When we have a session ID on mount or change, ensure we're correctly connected to it
+      if (window.webSocketService?.isConnected) {
+        // Ensure we're connected to this session and inform components to refresh their data
+        window.webSocketService.emit('SESSION_LOADED', { sessionId });
+        console.log(`Emitted SESSION_LOADED event for ${sessionId} from WebSocketTerminal`);
+      }
     }
   }, [sessionId]);
 

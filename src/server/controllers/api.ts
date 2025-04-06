@@ -5,13 +5,16 @@ import { Request, Response, NextFunction } from 'express';
 import { sessionManager } from '../services/SessionManager';
 import { getAgentService } from '../services/AgentService';
 import { serverLogger } from '../logger';
+import { LogCategory } from '../../utils/logger';
 import {
   StartSessionRequest,
   QueryRequest,
   AbortRequest,
   HistoryRequest,
   StatusRequest,
+  SessionValidationRequest,
 } from '../schemas/api';
+import { getSessionStatePersistence } from '../services/SessionStatePersistence';
 // No errors imported as they're handled by middleware
 
 /**
@@ -57,7 +60,7 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
       // Start processing in the background
       agentService.processQuery(sessionId, query)
         .catch(error => {
-          serverLogger.error('Error processing query:', error);
+          serverLogger.error('Error processing query:', error, LogCategory.AGENT);
         });
         
       // Return accepted response
@@ -197,6 +200,37 @@ export async function listPersistedSessions(req: Request, res: Response, next: N
  * Delete a persisted session
  * @route DELETE /api/sessions/persisted/:sessionId
  */
+
+/**
+ * Validate multiple session IDs efficiently
+ * @route POST /api/sessions/validate
+ */
+export async function validateSessionIds(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { sessionIds } = req.body as SessionValidationRequest;
+    const validSessionIds: string[] = [];
+    
+    // Get session state persistence
+    const sessionStatePersistence = getSessionStatePersistence();
+    
+    // Log session validation with the SESSION category to make it easy to filter
+    serverLogger.debug(`Validating ${sessionIds.length} session IDs`, LogCategory.SESSION);
+    
+    // Fast validation using metadata files only
+    for (const sessionId of sessionIds) {
+      const metadataExists = await sessionStatePersistence.sessionMetadataExists(sessionId);
+      if (metadataExists) {
+        validSessionIds.push(sessionId);
+      }
+    }
+    
+    serverLogger.debug(`Found ${validSessionIds.length} valid session IDs`, LogCategory.SESSION);
+    res.status(200).json({ validSessionIds });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function deletePersistedSession(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { sessionId } = req.params;

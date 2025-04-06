@@ -3,6 +3,7 @@
  */
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
+import fs from 'fs';
 import { StoredMessage } from '../../types/session';
 import { 
   ToolExecutionState, 
@@ -783,6 +784,33 @@ export class TimelineService extends EventEmitter {
         try {
           // Use the non-event-emitting method to avoid recursive event emission
           persistedSessionData = await sessionStatePersistence.getSessionDataWithoutEvents(sessionId);
+          
+          // Even if we have persisted data, we should separately load the messages
+          // from subdirectory to handle case where main session file has empty messages array
+          try {
+            // Check if we have a messages file in the session directory
+            const messagesPath = sessionStatePersistence.getSessionDir(sessionId) + '/messages.json';
+            const messagesExists = await fs.promises.access(messagesPath)
+              .then(() => true)
+              .catch(() => false);
+              
+            if (messagesExists) {
+              const messagesData = await fs.promises.readFile(messagesPath, 'utf-8');
+              const messages = JSON.parse(messagesData);
+              
+              serverLogger.debug(`Directly loaded ${messages.length} messages from file for session ${sessionId}`);
+              
+              // If we have persisted data but no messages, add these messages
+              if (persistedSessionData && 
+                  (!persistedSessionData.messages || persistedSessionData.messages.length === 0)) {
+                persistedSessionData.messages = messages;
+                serverLogger.debug(`Updated persisted session data with ${messages.length} messages from separate file`);
+              }
+            }
+          } catch (err) {
+            serverLogger.debug(`Error loading messages file for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          
           // If we have persisted data, use it instead of in-memory session
           if (persistedSessionData) {
             serverLogger.debug(`Loaded persisted session data for ${sessionId} with ${persistedSessionData.messages?.length || 0} messages`);

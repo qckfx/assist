@@ -150,6 +150,13 @@ export const fastEditModeResponseSchema = z.object({
   fastEditMode: z.boolean(),
 });
 
+/**
+ * Schema for session validation request
+ */
+export const sessionValidationSchema = z.object({
+  sessionIds: z.array(z.string())
+});
+
 
 // Types based on schemas
 export type StartSessionRequest = z.infer<typeof startSessionSchema>;
@@ -167,6 +174,7 @@ export type PermissionResolutionResponse = z.infer<typeof permissionResolutionRe
 export type FastEditModeToggle = z.infer<typeof fastEditModeToggleSchema>;
 export type FastEditModeQuery = z.infer<typeof fastEditModeQuerySchema>;
 export type FastEditModeResponse = z.infer<typeof fastEditModeResponseSchema>;
+export type SessionValidationRequest = z.infer<typeof sessionValidationSchema>;
 
 /**
  * Schema for timeline query

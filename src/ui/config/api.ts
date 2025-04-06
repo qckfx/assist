@@ -23,6 +23,7 @@ export const API_ENDPOINTS = {
   SESSIONS_LIST: '/sessions/persisted',
   SESSIONS_SAVE: '/sessions/:sessionId/state/save',
   SESSIONS_DELETE: '/sessions/persisted/:sessionId',
+  SESSIONS_VALIDATE: '/sessions/validate',
   // Timeline endpoint
   TIMELINE: '/sessions/:sessionId/timeline',
 };

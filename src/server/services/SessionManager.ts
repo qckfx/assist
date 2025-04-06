@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { SessionState } from '../../types/model';
 import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
+import { LogCategory } from '../../utils/logger';
 
 /**
  * Session information
@@ -96,7 +97,7 @@ export class SessionManager {
     };
     
     this.sessions.set(session.id, session);
-    serverLogger.info(`Created new session ${session.id}`);
+    serverLogger.info(`Created new session ${session.id}`, LogCategory.SESSION);
     
     return session;
   }
@@ -141,7 +142,7 @@ export class SessionManager {
     }
     
     this.sessions.delete(sessionId);
-    serverLogger.info(`Deleted session ${sessionId}`);
+    serverLogger.info(`Deleted session ${sessionId}`, LogCategory.SESSION);
   }
 
   /**
@@ -180,7 +181,7 @@ export class SessionManager {
     });
     
     if (expiredSessions.length > 0) {
-      serverLogger.info(`Cleaning up ${expiredSessions.length} expired sessions`);
+      serverLogger.info(`Cleaning up ${expiredSessions.length} expired sessions`, LogCategory.SESSION);
       
       expiredSessions.forEach(id => {
         this.sessions.delete(id);

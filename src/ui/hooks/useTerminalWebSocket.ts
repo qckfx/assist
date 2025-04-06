@@ -43,32 +43,22 @@ export function useTerminalWebSocket(sessionId?: string) {
   const sessionState = connectionManager.getSessionState();
   const hasJoined = sessionState.hasJoined && sessionState.currentSessionId === sessionId;
   
-  // Request to join the session ONCE when the sessionId changes or 
-  // when we first get connected
+  // Simplified session connection logic - connect directly when sessionId is available
   useEffect(() => {
     // Skip if no session ID provided
     if (!sessionId) return;
     
-    // Only process if we have a new session ID or we haven't tried to join yet
-    const isNewSession = previousSessionIdRef.current !== sessionId;
-    const shouldJoinSession = isNewSession || !hasRequestedJoinRef.current;
+    console.log(`[useTerminalWebSocket] Connecting to session: ${sessionId}`);
     
-    if (shouldJoinSession) {
-      console.log(`[useTerminalWebSocket] Requesting session join: ${sessionId} (connected: ${isConnected})`);
-      
-      // Use the connection manager directly to request a session join
-      // It will handle the socket state properly
-      connectionManager.joinSession(sessionId);
-      
-      // Mark that we've requested to join this session
-      hasRequestedJoinRef.current = true;
-      previousSessionIdRef.current = sessionId;
-      
-      // Don't add a system message here - we'll add it when the session is actually joined
-    }
+    // Connect directly to the session
+    connectionManager.joinSession(sessionId);
     
-    // No cleanup function - session management is now handled externally
-  }, [sessionId, isConnected]);
+    // Update tracking
+    previousSessionIdRef.current = sessionId;
+    hasRequestedJoinRef.current = true;
+    
+    // No cleanup function - connection persists after unmount
+  }, [sessionId]);
   
   // Listen for session events from the connection manager
   useEffect(() => {

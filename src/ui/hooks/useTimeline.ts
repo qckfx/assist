@@ -139,14 +139,39 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
       // Always fetch timeline on session ID change or mount
       fetchTimeline();
       
-      // Update initialization flag after fetch is triggered
-      timelineInitializedRef.current = true;
+      // Mark timeline as initializing but not fully loaded yet
+      // This will be set to true once data is received
+      
+      // Emit a SESSION_LOADED event to ensure other components refresh their data
+      if (isConnected && typeof window !== 'undefined') {
+        const webSocketService = window.webSocketService;
+        if (webSocketService?.emit) {
+          console.log(`Emitting SESSION_LOADED event for ${sessionId}`);
+          webSocketService.emit(WebSocketEvent.SESSION_LOADED, { sessionId });
+        }
+      }
+      
+      // Add storage event listener to handle cross-component coordination
+      const handleStorage = (event: StorageEvent) => {
+        if (event.key === 'loadSession' && event.newValue === sessionId) {
+          console.log(`Storage event triggered timeline refresh for ${sessionId}`);
+          timelineInitializedRef.current = false;
+          fetchTimeline();
+        }
+      };
+      
+      window.addEventListener('storage', handleStorage);
+      
+      return () => {
+        timelineInitializedRef.current = false;
+        window.removeEventListener('storage', handleStorage);
+      };
     }
     
     return () => {
       timelineInitializedRef.current = false;
     };
-  }, [sessionId, fetchTimeline]);
+  }, [sessionId, fetchTimeline, isConnected]);
   
   // Add state for local items cache
   const [localItems, setLocalItems] = useState<TimelineItem[]>([]);
@@ -414,15 +439,18 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
     const unsubscribeSessionLoaded = subscribe(WebSocketEvent.SESSION_LOADED, (data: { sessionId: string }) => {
       if (data.sessionId === sessionId) {
         console.log('SESSION_LOADED - refreshing timeline data from server');
-        // Only clear pending local items, not confirmed ones
-        setLocalItems(prevItems => 
-          prevItems.filter(item => 
-            item.type !== TimelineItemType.MESSAGE || 
-            (item.message && item.message.confirmationStatus === 'confirmed')
-          )
-        );
+        
+        // When resuming a session, don't clear any local items as the server is the source of truth
+        // We'll refresh everything from the server directly
+        
+        // Mark timeline as uninitialized to force a complete refresh
         timelineInitializedRef.current = false;
-        fetchTimeline();
+        
+        // Fetch timeline with a slight delay to ensure WebSocket is connected
+        setTimeout(() => {
+          console.log(`Delayed fetchTimeline for ${sessionId} after SESSION_LOADED`);
+          fetchTimeline();
+        }, 100);
       }
     });
     
@@ -470,11 +498,25 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
       }
     });
     
-    // Add local items
+    // Add local items - but be more selective
     localItems.forEach(item => {
-      // For messages, prioritize local items over server items, since they might contain
-      // more recent content from WebSocket updates that haven't been saved to the server yet
-      itemMap.set(item.id, item);
+      // Check if we already have this item from the server
+      const existingItem = itemMap.get(item.id);
+      
+      if (!existingItem) {
+        // Item doesn't exist in server data - add it
+        itemMap.set(item.id, item);
+      } else {
+        // We have both server and local versions - for most items, server is source of truth,
+        // but for active tool executions, local might have more recent updates
+        if (item.type === TimelineItemType.TOOL_EXECUTION && 
+            existingItem.type === TimelineItemType.TOOL_EXECUTION &&
+            (item.toolExecution.status === 'running' || !item.toolExecution.endTime)) {
+          // For running tools, prioritize local updates
+          itemMap.set(item.id, item);
+        }
+        // Otherwise keep the server version (which is already in the map)
+      }
     });
     
     // Log the items in the map

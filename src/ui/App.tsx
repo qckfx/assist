@@ -25,6 +25,9 @@ function SessionComponent() {
   // State to track if this is a fresh load of an existing session
   const [showNewSessionHint, setShowNewSessionHint] = useState(true);
   
+  // Convert sessionId from possibly undefined to string | null for type safety
+  const safeSessionId = sessionId || null;
+  
   // Check if session exists and handle UI state
   useEffect(() => {
     if (sessionId) {
@@ -39,16 +42,39 @@ function SessionComponent() {
         setShowSessionPrompt(true);
       }
       
-      // Try fetching the session to verify it exists - this is just a validation check
-      const testUrl = `/api/sessions/${sessionId}/state/save`;
-      
-      fetch(testUrl, { method: 'POST' })
-        .then(response => response.json())
-        .catch(err => {
-          console.error('[SessionComponent] Error fetching session:', err);
-          // If session doesn't exist, redirect to root to create a new one
-          navigate('/');
-        });
+      // Verify the session ID is valid
+      import('@/services/apiClient').then(({ default: apiClient }) => {
+        console.log('[SessionComponent] Validating session ID:', sessionId);
+        
+        apiClient.validateSession([sessionId])
+          .then(response => {
+            const validSessionIds = response.data?.validSessionIds || [];
+            
+            if (validSessionIds.includes(sessionId)) {
+              console.log('[SessionComponent] Session ID is valid:', sessionId);
+              // Update session storage to ensure consistency
+              localStorage.setItem('sessionId', sessionId);
+              sessionStorage.setItem('currentSessionId', sessionId);
+              
+              // Trigger a session load event via local storage to ensure timeline refreshes
+              const event = new StorageEvent('storage', {
+                key: 'loadSession',
+                newValue: sessionId
+              });
+              window.dispatchEvent(event);
+              
+              setIsLoadingSession(false);
+            } else {
+              console.error('[SessionComponent] Invalid session ID:', sessionId);
+              // If session doesn't exist, redirect to root to create a new one
+              navigate('/');
+            }
+          })
+          .catch(err => {
+            console.error('[SessionComponent] Error validating session:', err);
+            navigate('/');
+          });
+      });
     }
   }, [sessionId, navigate]);
   
@@ -154,9 +180,27 @@ function NewSessionComponent() {
     const storedSessionId = localStorage.getItem('sessionId');
     
     if (storedSessionId) {
-      // If we have a stored sessionId but we're at the root URL,
-      // redirect to the session URL to maintain state on refresh
-      navigate(`/sessions/${storedSessionId}`, { replace: true });
+      // Validate this session ID using our new efficient validation endpoint
+      import('@/services/apiClient').then(({ default: apiClient }) => {
+        apiClient.validateSessions([storedSessionId])
+          .then(response => {
+            const validSessionIds = response.data?.validSessionIds || [];
+            
+            if (validSessionIds.includes(storedSessionId)) {
+              // Session is valid, navigate to it
+              navigate(`/sessions/${storedSessionId}`, { replace: true });
+            } else {
+              // Session is invalid, clear it to start fresh
+              console.log('Invalid session found in localStorage, clearing it');
+              localStorage.removeItem('sessionId');
+            }
+          })
+          .catch(error => {
+            console.error('Error validating session:', error);
+            // On validation error, remove the stored session
+            localStorage.removeItem('sessionId');
+          });
+      });
       return;
     }
     
@@ -182,8 +226,11 @@ function NewSessionComponent() {
 function SessionWrapper() {
   const { sessionId } = useParams<{ sessionId: string }>();
   
+  // Convert sessionId from possibly undefined to string | null for type safety
+  const safeSessionId = sessionId || null;
+  
   return (
-    <TimelineProvider sessionId={sessionId}>
+    <TimelineProvider sessionId={safeSessionId}>
       <WebSocketTerminalProvider initialSessionId={sessionId}>
         <ToolPreferencesProvider>
           <Layout>
