@@ -3,6 +3,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { AgentService, AgentServiceEvent, getAgentService } from './AgentService';
 import { SessionManager, sessionManager } from './SessionManager';
 import { serverLogger } from '../logger';
+import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from '../../utils/sessionUtils';
 import { 
   ToolPreviewData, 
   ToolPreviewState,
@@ -85,6 +86,7 @@ export class WebSocketService {
     this.setupSocketHandlers();
     this.setupAgentEventListeners();
     this.setupSessionEventForwarding();
+    this.setupEnvironmentEventListeners();
 
     serverLogger.info('WebSocketService initialized');
   }
@@ -730,6 +732,26 @@ export class WebSocketService {
     } catch (error) {
       serverLogger.error(`Error sending init event: ${(error as Error).message}`, error);
     }
+  }
+  
+  // Note: Direct emission of status events removed.
+  // Environment status is now emitted directly by the execution adapters via AgentEvents
+  // and received by the setupEnvironmentEventListeners method.
+  
+  /**
+   * Set up listeners for environment status events
+   */
+  private setupEnvironmentEventListeners(): void {
+    // Subscribe to environment status changed events
+    AgentEvents.on(AgentEventType.ENVIRONMENT_STATUS_CHANGED, (statusEvent: EnvironmentStatusEvent) => {
+      serverLogger.info(`Received environment status update: ${statusEvent.environmentType} -> ${statusEvent.status}, ready=${statusEvent.isReady}`);
+      
+      // We don't need to store the execution adapter type anymore, 
+      // as it's included in each status event
+      
+      // Broadcast to all connected clients
+      this.io.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, statusEvent);
+    });
   }
 
   /**

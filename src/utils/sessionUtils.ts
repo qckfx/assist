@@ -14,7 +14,18 @@ export const AgentEvents = new EventEmitter();
  * Event types for agent operations
  */
 export enum AgentEventType {
-  ABORT_SESSION = 'abort_session'
+  ABORT_SESSION = 'abort_session',
+  ENVIRONMENT_STATUS_CHANGED = 'environment_status_changed'
+}
+
+/**
+ * Environment status update event data
+ */
+export interface EnvironmentStatusEvent {
+  environmentType: 'local' | 'docker' | 'e2b';
+  status: 'initializing' | 'connecting' | 'connected' | 'disconnected' | 'error';
+  isReady: boolean;
+  error?: string;
 }
 
 /**

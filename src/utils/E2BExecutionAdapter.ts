@@ -6,6 +6,7 @@ import { FileEntry, LSToolErrorResult, LSToolSuccessResult } from '../tools/LSTo
 import path from 'path';
 import { GlobOptions } from 'fs';
 import { LogCategory } from './logger';
+import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from './sessionUtils';
 
 export class E2BExecutionAdapter implements ExecutionAdapter {
   private sandbox: Sandbox;
@@ -26,6 +27,28 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
   }) {
     this.sandbox = sandbox;
     this.logger = options?.logger;
+    
+    // Emit connected status since the sandbox is already connected at this point
+    this.emitEnvironmentStatus('connected', true);
+  }
+  
+  /**
+   * Emit environment status event
+   */
+  private emitEnvironmentStatus(
+    status: 'initializing' | 'connecting' | 'connected' | 'disconnected' | 'error',
+    isReady: boolean,
+    error?: string
+  ): void {
+    const statusEvent: EnvironmentStatusEvent = {
+      environmentType: 'e2b',
+      status,
+      isReady,
+      error
+    };
+    
+    this.logger?.info(`Emitting E2B environment status: ${status}, ready=${isReady}`, LogCategory.SYSTEM);
+    AgentEvents.emit(AgentEventType.ENVIRONMENT_STATUS_CHANGED, statusEvent);
   }
 
   /**
@@ -44,6 +67,19 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
     }
   }): Promise<E2BExecutionAdapter> {
     try {
+      // Emit initializing status before connecting
+      if (options?.logger) {
+        options.logger.info('E2B sandbox connecting...', LogCategory.SYSTEM);
+      }
+      
+      // Emit event from static context before instance is created
+      const initStatusEvent: EnvironmentStatusEvent = {
+        environmentType: 'e2b',
+        status: 'connecting',
+        isReady: false
+      };
+      AgentEvents.emit(AgentEventType.ENVIRONMENT_STATUS_CHANGED, initStatusEvent);
+      
       const sandbox = await Sandbox.connect(sandboxId);
       return new E2BExecutionAdapter(sandbox, options);
     } catch (error) {
@@ -52,6 +88,16 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
       } else {
         console.error('Failed to connect to E2B sandbox:', error);
       }
+      
+      // Emit error status from static context
+      const errorStatusEvent: EnvironmentStatusEvent = {
+        environmentType: 'e2b',
+        status: 'error',
+        isReady: false,
+        error: (error as Error).message
+      };
+      AgentEvents.emit(AgentEventType.ENVIRONMENT_STATUS_CHANGED, errorStatusEvent);
+      
       throw error;
     }
   }

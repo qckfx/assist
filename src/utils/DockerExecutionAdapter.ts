@@ -6,6 +6,7 @@ import { FileReadToolErrorResult, FileReadToolSuccessResult } from '../tools/Fil
 import { FileEntry, LSToolErrorResult, LSToolSuccessResult } from '../tools/LSTool';
 import { DockerContainerManager, ContainerInfo } from './DockerContainerManager';
 import { LogCategory } from './logger';
+import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from './sessionUtils';
 
 /**
  * Execution adapter that runs commands in a Docker container
@@ -51,20 +52,52 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
   public initializeContainer(): Promise<ContainerInfo | null> {
     this.logger?.info('Starting Docker container initialization', LogCategory.SYSTEM);
     
+    // Emit initializing status
+    this.emitEnvironmentStatus('initializing', false);
+    
     // Return the promise instead of using .then() so caller can await if needed
     return this.containerManager.ensureContainer()
       .then(container => {
         if (container) {
           this.logger?.info('Docker container initialized successfully', LogCategory.SYSTEM);
+          
+          // Emit connected and ready status
+          this.emitEnvironmentStatus('connected', true);
         } else {
           this.logger?.warn('Docker container initialization failed', LogCategory.SYSTEM);
+          
+          // Emit error status
+          this.emitEnvironmentStatus('error', false, 'Failed to initialize Docker container');
         }
         return container;
       })
       .catch(error => {
         this.logger?.error(`Error initializing Docker container: ${(error as Error).message}`, error, LogCategory.SYSTEM);
+        
+        // Emit error status
+        this.emitEnvironmentStatus('error', false, (error as Error).message);
+        
         throw error;
       });
+  }
+  
+  /**
+   * Emit environment status event
+   */
+  private emitEnvironmentStatus(
+    status: 'initializing' | 'connecting' | 'connected' | 'disconnected' | 'error',
+    isReady: boolean,
+    error?: string
+  ): void {
+    const statusEvent: EnvironmentStatusEvent = {
+      environmentType: 'docker',
+      status,
+      isReady,
+      error
+    };
+    
+    this.logger?.info(`Emitting Docker environment status: ${status}, ready=${isReady}`, LogCategory.SYSTEM);
+    AgentEvents.emit(AgentEventType.ENVIRONMENT_STATUS_CHANGED, statusEvent);
   }
 
   /**

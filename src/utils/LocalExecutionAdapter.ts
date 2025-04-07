@@ -8,6 +8,7 @@ import { exec } from 'child_process';
   import { FileEditToolSuccessResult, FileEditToolErrorResult } from '../tools/FileEditTool';
   import { FileEntry, LSToolSuccessResult, LSToolErrorResult } from '../tools/LSTool';
   import { LogCategory } from './logger';
+  import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from './sessionUtils';
   
   const execAsync = promisify(exec);
   const readFileAsync = promisify(fs.readFile);
@@ -31,6 +32,28 @@ import { exec } from 'child_process';
       }
     }) {
       this.logger = options?.logger;
+      
+      // Emit environment status as ready immediately for local adapter
+      this.emitEnvironmentStatus('connected', true);
+    }
+    
+    /**
+     * Emit environment status event
+     */
+    private emitEnvironmentStatus(
+      status: 'initializing' | 'connecting' | 'connected' | 'disconnected' | 'error',
+      isReady: boolean,
+      error?: string
+    ): void {
+      const statusEvent: EnvironmentStatusEvent = {
+        environmentType: 'local',
+        status,
+        isReady,
+        error
+      };
+      
+      this.logger?.info(`Emitting local environment status: ${status}, ready=${isReady}`, LogCategory.SYSTEM);
+      AgentEvents.emit(AgentEventType.ENVIRONMENT_STATUS_CHANGED, statusEvent);
     }
     async executeCommand(command: string, workingDir?: string) {
       try {
