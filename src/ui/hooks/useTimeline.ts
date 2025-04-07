@@ -1,25 +1,16 @@
 /**
  * Hook for fetching and handling unified timeline data
  */
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { WebSocketEvent, WebSocketEventMap } from '../types/api';
+import { useState, useEffect, useCallback } from 'react';
+import { WebSocketEvent } from '../types/api';
 import { 
   TimelineItem, 
   TimelineItemType, 
-  TimelineResponse,
-  ToolExecutionTimelineItem
+  TimelineResponse
 } from '../../types/timeline';
 import { useTerminalWebSocket } from './useTerminalWebSocket';
 import { useWebSocket } from './useWebSocket';
 import apiClient from '../services/apiClient';
-
-interface TimelineState {
-  items: TimelineItem[];
-  isLoading: boolean;
-  error: Error | null;
-  nextPageToken?: string;
-  totalCount: number;
-}
 
 interface TimelineOptions {
   limit?: number;
@@ -29,17 +20,16 @@ interface TimelineOptions {
 
 export const useTimeline = (sessionId: string | null, options: TimelineOptions = {}) => {
   const { limit = 50, types, includeRelated = true } = options;
-  const [state, setState] = useState<TimelineState>({
-    items: [],
-    isLoading: false,
-    error: null,
-    totalCount: 0
-  });
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>(undefined);
+  const [totalCount, setTotalCount] = useState(0);
   
   // Use useWebSocket to get the subscribe function for WebSocket events
   const { subscribe } = useWebSocket();
   const { isConnected } = useTerminalWebSocket();
-  const timelineInitializedRef = useRef(false);
   
   // Fetch timeline from API
   const fetchTimeline = useCallback(async (pageToken?: string) => {
@@ -49,10 +39,7 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
     }
     
     try {
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
-      
-      // Log fetchTimeline call for debugging
-      console.log(`Fetching timeline for session ${sessionId}`);
+      setIsLoading(true);
       
       const queryParams = new URLSearchParams();
       if (limit) queryParams.append('limit', limit.toString());
@@ -68,47 +55,21 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
         queryParams.toString()
       );
       
-      // Log the timeline response for debugging
-      console.log(`Timeline response for ${sessionId}:`, {
-        success: response.success,
-        itemCount: response.data?.items?.length || 0,
-        hasData: !!response.data
-      });
-      
       if (response.success && response.data) {
         const responseData = response.data;
         
-        // Log the timeline items for debugging
-        console.log(`Timeline items for ${sessionId}:`, {
-          count: responseData.items.length,
-          types: responseData.items.map(item => item.type),
-          messageCount: responseData.items.filter(item => item.type === 'message').length,
-          toolCount: responseData.items.filter(item => item.type === 'tool_execution').length
-        });
-        
         if (pageToken) {
           // Append items for pagination
-          setState(prev => ({
-            ...prev,
-            items: [...prev.items, ...responseData.items],
-            isLoading: false,
-            nextPageToken: responseData.nextPageToken,
-            totalCount: responseData.totalCount
-          }));
+          setTimeline(prev => [...prev, ...responseData.items]);
         } else {
           // Replace items for initial load
-          setState({
-            items: responseData.items,
-            isLoading: false,
-            error: null,
-            nextPageToken: responseData.nextPageToken,
-            totalCount: responseData.totalCount
-          });
+          setTimeline(responseData.items);
         }
         
-        timelineInitializedRef.current = true;
+        setNextPageToken(responseData.nextPageToken);
+        setHasMore(!!responseData.nextPageToken);
+        setTotalCount(responseData.totalCount);
       } else {
-        console.error(`Failed to fetch timeline for ${sessionId}:`, response.error);
         throw new Error(
           typeof response.error === 'string' 
             ? response.error 
@@ -117,356 +78,165 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
       }
     } catch (error) {
       console.error(`Error fetching timeline for ${sessionId}:`, error);
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error instanceof Error ? error : new Error('Failed to fetch timeline')
-      }));
+      setError(error instanceof Error ? error : new Error('Failed to fetch timeline'));
+    } finally {
+      setIsLoading(false);
     }
   }, [sessionId, limit, types, includeRelated]);
   
   // Load more items (pagination)
   const loadMore = useCallback(() => {
-    if (state.nextPageToken) {
-      fetchTimeline(state.nextPageToken);
+    if (nextPageToken) {
+      fetchTimeline(nextPageToken);
     }
-  }, [state.nextPageToken, fetchTimeline]);
+  }, [nextPageToken, fetchTimeline]);
   
   // Initial load
   useEffect(() => {
     if (sessionId) {
-      // Log initialization of timeline
-      console.log(`Initializing timeline for session ${sessionId}`);
-      
-      // Force timeline initialization on session ID change or mount
-      timelineInitializedRef.current = false;
-      
-      // Always fetch timeline on session ID change or mount
       fetchTimeline();
-      
-      // Mark timeline as initializing but not fully loaded yet
-      // This will be set to true once data is received
       
       // Emit a SESSION_LOADED event to ensure other components refresh their data
       if (isConnected && typeof window !== 'undefined') {
         const webSocketService = window.webSocketService;
         if (webSocketService?.emit) {
-          console.log(`Emitting SESSION_LOADED event for ${sessionId}`);
           webSocketService.emit(WebSocketEvent.SESSION_LOADED, { sessionId });
         }
       }
-      
-      // Add storage event listener to handle cross-component coordination
-      const handleStorage = (event: StorageEvent) => {
-        if (event.key === 'loadSession' && event.newValue === sessionId) {
-          console.log(`Storage event triggered timeline refresh for ${sessionId}`);
-          timelineInitializedRef.current = false;
-          fetchTimeline();
-        }
-      };
-      
-      window.addEventListener('storage', handleStorage);
-      
-      return () => {
-        timelineInitializedRef.current = false;
-        window.removeEventListener('storage', handleStorage);
-      };
     }
-    
-    return () => {
-      timelineInitializedRef.current = false;
-    };
   }, [sessionId, fetchTimeline, isConnected]);
   
-  // Add state for local items cache
-  const [localItems, setLocalItems] = useState<TimelineItem[]>([]);
-
-  // Listen for WebSocket updates
+  // Listen for WebSocket updates - INCREMENTAL UPDATES instead of refetching
   useEffect(() => {
     if (!sessionId || !isConnected) {
-      console.log(`Not setting up WebSocket listeners because ${!sessionId ? 'no sessionId' : 'not connected'}`);
       return;
     }
     
-    console.log(`Setting up WebSocket message listeners for session ${sessionId}`);
-    
-    // Function to handle timeline item received or updated
-    const handleTimelineItem = (data: any, isUpdate: boolean) => {
-      if (data.sessionId !== sessionId) {
-        console.log(`Ignoring event for different session: ${data.sessionId} (current: ${sessionId})`);
-        return;
-      }
-      
-      console.log(`Received ${isUpdate ? 'update for' : 'new'} timeline item:`, {
-        sessionId: data.sessionId,
-        hasMessage: 'message' in data,
-        hasTool: 'toolExecution' in data,
-        messageType: data.message?.role
-      });
-      
-      // Create a timeline item from the data
-      let timelineItem: TimelineItem | null = null;
-      
-      if ('message' in data) {
-        // It's a message event
-        console.log('Processing message event:', {
-          id: data.message.id,
-          role: data.message.role,
-          content: data.message.content,
-          timestamp: data.message.timestamp
-        });
+    // Handle received message events
+    const handleMessageReceived = (data: any) => {
+      if (data.sessionId === sessionId && data.message) {
+        console.log('[useTimeline] Received message:', data.message.role);
         
-        // Ensure message has a stable ID
-        const messageId = data.message.id || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
-        // For user messages, check if we already have this message by content
-        if (data.message.role === 'user') {
-          const contentHash = JSON.stringify(data.message.content);
-          const existingUserMessage = localItems.find(item => 
-            item.type === TimelineItemType.MESSAGE && 
-            item.message.role === 'user' &&
-            JSON.stringify(item.message.content) === contentHash
+        // Directly update the timeline with the new message
+        setTimeline(prev => {
+          // Check for duplicates by ID
+          const existingByIdIndex = prev.findIndex(item => 
+            item.type === TimelineItemType.MESSAGE && item.id === data.message.id
           );
           
-          if (existingUserMessage) {
-            console.log('Found existing user message with same content, updating with server ID');
-            // Update the existing message with the server-provided ID
-            timelineItem = {
-              ...existingUserMessage,
-              id: messageId,
-              message: {
-                ...existingUserMessage.message,
-                id: messageId,
-                confirmationStatus: 'confirmed' // Mark as confirmed by server
-              }
-            };
-          } else {
-            // New user message
-            console.log(`Creating new USER timeline item with ID ${messageId}`);
-            timelineItem = {
-              id: messageId,
-              type: TimelineItemType.MESSAGE,
-              sessionId: data.sessionId,
-              timestamp: data.message.timestamp || new Date().toISOString(),
-              message: {
-                ...data.message,
-                confirmationStatus: 'confirmed' // Mark as confirmed by server
-              }
-            };
-          }
-        } else {
-          // Assistant message or other type
-          console.log(`Creating new ASSISTANT timeline item with ID ${messageId}`);
-          timelineItem = {
-            id: messageId,
-            type: TimelineItemType.MESSAGE,
-            sessionId: data.sessionId,
-            timestamp: data.message.timestamp || new Date().toISOString(),
-            message: data.message
-          };
-        }
-      } else if ('toolExecution' in data) {
-        // It's a tool execution event or update
-        console.log('Processing tool execution event:', data.toolExecution);
-        
-        // Check if this is an update to an existing tool
-        const existingTool = localItems.find(
-          item => item.type === TimelineItemType.TOOL_EXECUTION && item.id === data.toolExecution.id
-        );
-        
-        if (existingTool && existingTool.type === TimelineItemType.TOOL_EXECUTION && isUpdate) {
-          // Create a merged toolExecution object with updated properties
-          const updatedToolExecution = {
-            ...existingTool.toolExecution,
-            ...data.toolExecution
-          };
+          // Also look for pending user messages with the same content (optimistic vs confirmed)
+          // This handles the case of optimistic updates where the client has already added a message
+          // with a different ID but the same content
+          const isPendingUserMessage = data.message.role === 'user' && 
+                                     data.message.confirmationStatus === 'confirmed';
           
-          // Create the updated timeline item
-          timelineItem = {
-            ...existingTool,
-            toolExecution: updatedToolExecution
-            // Let toolExecution object contain the preview, don't store at top level
-          };
+          let existingByContentIndex = -1;
           
-          // Log the timeline item after update
-          console.log('Timeline item after update:', {
-            id: timelineItem.id,
-            toolId: timelineItem.toolExecution.toolId,
-            previewInToolExecution: !!timelineItem.toolExecution.preview,
-            previewDetails: timelineItem.toolExecution.preview ? {
-              contentType: timelineItem.toolExecution.preview.contentType,
-              hasBriefContent: !!timelineItem.toolExecution.preview.briefContent,
-              briefContentLength: timelineItem.toolExecution.preview.briefContent?.length || 0,
-              hasActualContent: timelineItem.toolExecution.preview.hasActualContent === true
-            } : null
-          });
-        } else {
-          // New tool execution
-          timelineItem = {
-            id: data.toolExecution.id || `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            type: TimelineItemType.TOOL_EXECUTION,
-            sessionId: data.sessionId, 
-            timestamp: data.toolExecution.startTime || new Date().toISOString(),
-            toolExecution: data.toolExecution
-            // Let toolExecution object contain the preview, don't store at top level
-          };
-        }
-      } else if ('messageId' in data) {
-        // It's a message update
-        console.log('Processing message update:', data);
-        // Find existing message in local items
-        const existingMessage = localItems.find(
-          item => item.type === TimelineItemType.MESSAGE && item.id === data.messageId
-        );
-        
-        if (existingMessage && existingMessage.type === TimelineItemType.MESSAGE) {
-          timelineItem = {
-            ...existingMessage,
-            message: {
-              ...existingMessage.message,
-              content: data.content
+          if (isPendingUserMessage) {
+            existingByContentIndex = prev.findIndex(item => 
+              item.type === TimelineItemType.MESSAGE && 
+              item.message.role === 'user' &&
+              item.message.confirmationStatus === 'pending' &&
+              JSON.stringify(item.message.content) === JSON.stringify(data.message.content)
+            );
+            
+            if (existingByContentIndex >= 0) {
+              console.log('[useTimeline] Found duplicate user message with pending status - deduping');
             }
-          };
-        } else {
-          console.warn('Message update received but no matching message found:', data.messageId);
-        }
-      } else {
-        console.warn('Unrecognized timeline event format:', data);
-      }
-      
-      if (!timelineItem) return;
-      
-      console.log('Created timeline item:', timelineItem);
-      
-      setLocalItems(prev => {
-        // Generate a unique item ID if it doesn't exist
-        if (!timelineItem!.id) {
-          timelineItem!.id = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        }
-        
-        // Check if we already have this item by role and content for messages
-        let existingIndex = -1;
-        
-        if (timelineItem!.type === TimelineItemType.MESSAGE) {
-          // For messages, check if we have a message with the same role and similar content
-          // This helps avoid duplicates when the server doesn't provide stable IDs
-          const messageRole = timelineItem!.message.role;
-          existingIndex = prev.findIndex(item => {
-            if (item.type !== TimelineItemType.MESSAGE) return false;
-            if (item.message.role !== messageRole) return false;
-            return JSON.stringify(item.message.content) === JSON.stringify(timelineItem!.message.content);
-          });
-        } else {
-          // For other items use the ID
-          existingIndex = prev.findIndex(item => item.id === timelineItem!.id);
-        }
-        
-        console.log('Updating local items:', {
-          currentLocalItems: prev.length,
-          existingIndex,
-          isUpdate,
-          itemType: timelineItem!.type,
-          itemId: timelineItem!.id,
-          messageRole: timelineItem!.type === TimelineItemType.MESSAGE ? timelineItem!.message.role : undefined
+          }
+          
+          // Check if we found either type of duplicate
+          if (existingByIdIndex >= 0) {
+            // Update existing message by ID
+            const updatedTimeline = [...prev];
+            updatedTimeline[existingByIdIndex] = {
+              ...updatedTimeline[existingByIdIndex],
+              message: data.message,
+              timestamp: data.message.timestamp || new Date().toISOString()
+            };
+            return updatedTimeline;
+          } else if (existingByContentIndex >= 0) {
+            // Update existing message by content (replace pending with confirmed)
+            const updatedTimeline = [...prev];
+            updatedTimeline[existingByContentIndex] = {
+              ...updatedTimeline[existingByContentIndex],
+              id: data.message.id, // Update with server-assigned ID
+              message: data.message,
+              timestamp: data.message.timestamp || new Date().toISOString()
+            };
+            return updatedTimeline;
+          } else {
+            // Add new message
+            return [...prev, {
+              id: data.message.id,
+              type: TimelineItemType.MESSAGE,
+              timestamp: data.message.timestamp || new Date().toISOString(),
+              sessionId,
+              message: data.message,
+              toolExecutions: data.message.toolCalls?.map(call => call.executionId)
+            }];
+          }
         });
-        
-        let newItems;
-        if (existingIndex >= 0 && isUpdate) {
-          // Replace existing item for updates
-          newItems = [...prev];
-          newItems[existingIndex] = timelineItem!;
-          console.log('Updated existing item at index', existingIndex);
-          return newItems;
-        } else if (existingIndex >= 0) {
-          // We found an existing item with same content
-          console.log('Found existing item with same content - updating anyway for safety');
-          // Always update to ensure we have the latest data
-          newItems = [...prev];
-          newItems[existingIndex] = timelineItem!;
-          return newItems;
-        } else {
-          // Add new item
-          newItems = [...prev, timelineItem!];
-          console.log('Added new item, new count:', newItems.length);
-          console.log('New item details:', {
-            id: timelineItem!.id,
-            type: timelineItem!.type,
-            timestamp: timelineItem!.timestamp,
-            role: timelineItem!.type === TimelineItemType.MESSAGE ? timelineItem!.message.role : undefined
-          });
-          return newItems;
-        }
-      });
+      }
     };
     
-    // Subscribe to message events
-    const unsubscribeMessageReceived = subscribe(WebSocketEvent.MESSAGE_RECEIVED, 
-      data => handleTimelineItem(data, false));
-    
-    const unsubscribeMessageUpdated = subscribe(WebSocketEvent.MESSAGE_UPDATED, 
-      data => handleTimelineItem(data, true));
-    
-    // Subscribe to tool execution events
-    const unsubscribeToolReceived = subscribe(WebSocketEvent.TOOL_EXECUTION_RECEIVED,
-      data => {
-        // Log the raw data from WebSocket
-        console.log('TOOL_EXECUTION_RECEIVED raw data:', {
-          hasToolExecution: !!data.toolExecution,
-          hasPreview: !!data.toolExecution.preview,
-          hasPreviewFlag: data.toolExecution.hasPreview === true,
-          previewContentType: data.toolExecution.previewContentType,
-          fullData: JSON.parse(JSON.stringify(data)) // Deep copy for logging
+    // Handle tool execution events
+    const handleToolExecution = (data: any) => {
+      if (data.sessionId === sessionId && data.toolExecution) {
+        console.log('[useTimeline] Received tool execution:', data.toolExecution.id);
+        
+        setTimeline(prev => {
+          // Check if this tool execution already exists in the timeline
+          const existingIndex = prev.findIndex(item => 
+            item.type === TimelineItemType.TOOL_EXECUTION && item.id === data.toolExecution.id
+          );
+          
+          if (existingIndex >= 0) {
+            // Update existing tool execution
+            const updatedTimeline = [...prev];
+            updatedTimeline[existingIndex] = {
+              ...updatedTimeline[existingIndex],
+              toolExecution: data.toolExecution,
+              preview: data.toolExecution.preview,
+              timestamp: data.toolExecution.startTime || new Date().toISOString()
+            };
+            return updatedTimeline;
+          } else {
+            // Add new tool execution
+            return [...prev, {
+              id: data.toolExecution.id,
+              type: TimelineItemType.TOOL_EXECUTION,
+              timestamp: data.toolExecution.startTime || new Date().toISOString(),
+              sessionId,
+              toolExecution: data.toolExecution,
+              preview: data.toolExecution.preview,
+              parentMessageId: data.toolExecution.parentMessageId
+            }];
+          }
         });
-        handleTimelineItem(data, false);
-      });
-    
-    const unsubscribeToolUpdated = subscribe(WebSocketEvent.TOOL_EXECUTION_UPDATED,
-      data => {
-        // Log the raw data from WebSocket
-        console.log('TOOL_EXECUTION_UPDATED raw data:', {
-          hasToolExecution: !!data.toolExecution,
-          hasPreview: !!data.toolExecution.preview,
-          hasPreviewFlag: data.toolExecution.hasPreview === true,
-          previewContentType: data.toolExecution.previewContentType,
-          previewDetails: data.toolExecution.preview ? {
-            contentType: data.toolExecution.preview.contentType,
-            hasBriefContent: !!data.toolExecution.preview.briefContent,
-            briefContentLength: data.toolExecution.preview.briefContent?.length || 0,
-            hasFullContent: !!data.toolExecution.preview.fullContent,
-            hasActualContent: data.toolExecution.preview.hasActualContent === true
-          } : null,
-          fullData: JSON.parse(JSON.stringify(data)) // Deep copy for logging
-        });
-        handleTimelineItem(data, true);
-      });
-    
-    // Handle session load/reload by refreshing from server
-    const unsubscribeSessionLoaded = subscribe(WebSocketEvent.SESSION_LOADED, (data: { sessionId: string }) => {
-      if (data.sessionId === sessionId) {
-        console.log('SESSION_LOADED - refreshing timeline data from server');
-        
-        // When resuming a session, don't clear any local items as the server is the source of truth
-        // We'll refresh everything from the server directly
-        
-        // Mark timeline as uninitialized to force a complete refresh
-        timelineInitializedRef.current = false;
-        
-        // Fetch timeline with a slight delay to ensure WebSocket is connected
-        setTimeout(() => {
-          console.log(`Delayed fetchTimeline for ${sessionId} after SESSION_LOADED`);
-          fetchTimeline();
-        }, 100);
       }
-    });
+    };
     
-    // We're planning to remove session state reliance soon
+    // For session loaded events, we do need a full refresh since we're loading a new session
+    const handleSessionLoaded = (data: any) => {
+      if (data.sessionId === sessionId) {
+        console.log('[useTimeline] Session loaded, refreshing timeline');
+        fetchTimeline();
+      }
+    };
     
+    // Set up event subscriptions with specific handlers
+    const unsubscribers = [
+      subscribe(WebSocketEvent.MESSAGE_RECEIVED, handleMessageReceived),
+      subscribe(WebSocketEvent.MESSAGE_UPDATED, handleMessageReceived),
+      subscribe(WebSocketEvent.TOOL_EXECUTION_RECEIVED, handleToolExecution),
+      subscribe(WebSocketEvent.TOOL_EXECUTION_UPDATED, handleToolExecution),
+      subscribe(WebSocketEvent.SESSION_LOADED, handleSessionLoaded)
+    ];
+    
+    // Return cleanup function
     return () => {
-      unsubscribeMessageReceived();
-      unsubscribeMessageUpdated();
-      unsubscribeToolReceived();
-      unsubscribeToolUpdated();
-      unsubscribeSessionLoaded();
+      unsubscribers.forEach(unsubscribe => unsubscribe());
     };
   }, [sessionId, isConnected, subscribe, fetchTimeline]);
   
@@ -475,159 +245,12 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
     fetchTimeline();
   }, [fetchTimeline]);
   
-  // Combine server state with local state
-  const combinedTimeline = useMemo(() => {
-    console.log('Combining timeline state:', {
-      serverItems: state.items.length,
-      localItems: localItems.length
-    });
-    
-    // Create a map to deduplicate items by ID
-    const itemMap = new Map<string, TimelineItem>();
-    
-    // Track message IDs from server to avoid showing pending duplicates
-    const serverMessageIds = new Set<string>();
-    
-    // Add server items first (they are the source of truth)
-    state.items.forEach(item => {
-      itemMap.set(item.id, item);
-      if (item.type === TimelineItemType.MESSAGE) {
-        // Track that this message came from the server
-        serverMessageIds.add(item.id);
-        
-        // Also track content hash for user messages to detect duplicates
-        if (item.message.role === 'user') {
-          const contentHash = JSON.stringify(item.message.content);
-          serverMessageIds.add(`content:${contentHash}`);
-        }
-      }
-    });
-    
-    // Add local items - but be more selective
-    localItems.forEach(item => {
-      // Check if we already have this item from the server
-      const existingItem = itemMap.get(item.id);
-      
-      if (!existingItem) {
-        // Item doesn't exist in server data - add it
-        itemMap.set(item.id, item);
-      } else {
-        // We have both server and local versions - for most items, server is source of truth,
-        // but for active tool executions, local might have more recent updates
-        if (item.type === TimelineItemType.TOOL_EXECUTION && 
-            existingItem.type === TimelineItemType.TOOL_EXECUTION &&
-            (item.toolExecution.status === 'running' || !item.toolExecution.endTime)) {
-          // For running tools, prioritize local updates
-          itemMap.set(item.id, item);
-        }
-        // Otherwise keep the server version (which is already in the map)
-      }
-    });
-    
-    // Log the items in the map
-    console.log('Timeline items after merging:', Array.from(itemMap.entries()).map(
-      ([id, item]) => ({ id, type: item.type, role: item.type === TimelineItemType.MESSAGE ? item.message.role : undefined })
-    ));
-    
-    // Sort timeline primarily by sequence number when available
-    const sortedTimeline = Array.from(itemMap.values()).sort((a, b) => {
-      // First, check if both are messages with sequence numbers
-      const aIsMessageWithSequence = a.type === TimelineItemType.MESSAGE && 
-                                   a.message.sequence !== undefined;
-      const bIsMessageWithSequence = b.type === TimelineItemType.MESSAGE && 
-                                   b.message.sequence !== undefined;
-      
-      // Case 1: If both have sequence numbers, use those (most reliable ordering)
-      if (aIsMessageWithSequence && bIsMessageWithSequence) {
-        return a.message.sequence - b.message.sequence;
-      }
-      
-      // Case 2: If only one has a sequence number, that one comes first
-      // This ensures that sequenced messages (which have well-defined order) stay together
-      if (aIsMessageWithSequence && !bIsMessageWithSequence) {
-        return -1; // Sequenced messages come first 
-      }
-      if (!aIsMessageWithSequence && bIsMessageWithSequence) {
-        return 1; // Sequenced messages come first
-      }
-      
-      // Case 3: Check for parent/child relationship between tool execution and messages
-      if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.MESSAGE) {
-        // Check for direct parent/child relationship using parentMessageId
-        if ((a as ToolExecutionTimelineItem).parentMessageId === b.id) {
-          return 1; // Tool execution should come after its parent message
-        }
-        
-        // Check for relationship through toolCalls
-        if (b.message.toolCalls?.some(call => call.executionId === a.id)) {
-          return 1; // Tool execution should come after message that references it
-        }
-      }
-      
-      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.TOOL_EXECUTION) {
-        // Check for direct parent/child relationship using parentMessageId
-        if (a.id === (b as ToolExecutionTimelineItem).parentMessageId) {
-          return -1; // Parent message should come before its tool execution
-        }
-        
-        // Check for relationship through toolCalls
-        if (a.message.toolCalls?.some(call => call.executionId === b.id)) {
-          return -1; // Message that references tool should come before the tool execution
-        }
-      }
-      
-      // Case 4: Neither has a sequence number, fall back to timestamp ordering
-      const dateA = new Date(a.timestamp).getTime();
-      const dateB = new Date(b.timestamp).getTime();
-      
-      if (dateA !== dateB) {
-        return dateA - dateB;
-      }
-      
-      // Case 5: Same timestamp, prioritize by type
-      if (a.type !== b.type) {
-        // Messages come before other item types
-        if (a.type === TimelineItemType.MESSAGE) return -1;
-        if (b.type === TimelineItemType.MESSAGE) return 1;
-        
-        // Then tool executions
-        if (a.type === TimelineItemType.TOOL_EXECUTION) return -1;
-        if (b.type === TimelineItemType.TOOL_EXECUTION) return 1;
-      }
-      
-      // Case 5: Same timestamp and type, for messages use conversation flow
-      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
-        // User messages should come before assistant responses
-        if (a.message.role === 'user' && b.message.role === 'assistant') {
-          return -1;
-        }
-        if (a.message.role === 'assistant' && b.message.role === 'user') {
-          return 1;
-        }
-      }
-      
-      // Case 6: Same timestamp, type, and priority; preserve original order
-      return 0;
-    });
-    
-    console.log('Final sorted timeline:', 
-      sortedTimeline.map(item => ({
-        id: item.id,
-        type: item.type,
-        timestamp: item.timestamp,
-        role: item.type === TimelineItemType.MESSAGE ? item.message.role : undefined
-      }))
-    );
-    
-    return sortedTimeline;
-  }, [state.items, localItems]);
-  
   return {
-    timeline: combinedTimeline,
-    isLoading: state.isLoading,
-    error: state.error,
-    hasMore: !!state.nextPageToken,
-    totalCount: combinedTimeline.length,
+    timeline,
+    isLoading,
+    error,
+    hasMore,
+    totalCount,
     loadMore,
     reload
   };

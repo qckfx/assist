@@ -5,6 +5,7 @@ import { Container } from 'inversify';
 import { WebSocketService } from './services/WebSocketService';
 import { SessionManager } from './services/SessionManager';
 import { TimelineService } from './services/TimelineService';
+import { TimelineStatePersistence, createTimelineStatePersistence } from './services/TimelineStatePersistence';
 import { serverLogger } from './logger';
 
 // Create the container
@@ -34,22 +35,30 @@ function registerServices() {
       serverLogger.debug('SessionManager registered in container');
     }
     
+    // Register TimelineStatePersistence first
+    if (!container.isBound(TimelineStatePersistence)) {
+      const timelineStatePersistence = createTimelineStatePersistence();
+      container.bind(TimelineStatePersistence).toConstantValue(timelineStatePersistence);
+      serverLogger.debug('TimelineStatePersistence registered in container');
+    }
+    
     // Register TimelineService as a singleton
     if (!container.isBound(TimelineService)) {
       // Verify dependencies are available
-      if (!container.isBound(SessionManager) || !container.isBound(WebSocketService)) {
+      if (!container.isBound(SessionManager) || !container.isBound(WebSocketService) || !container.isBound(TimelineStatePersistence)) {
         throw new Error('TimelineService dependencies not registered in container');
       }
       
       // Get the dependencies
       const sessionManager = container.get(SessionManager);
       const webSocketService = container.get(WebSocketService);
+      const timelineStatePersistence = container.get(TimelineStatePersistence);
       
-      if (!sessionManager || !webSocketService) {
+      if (!sessionManager || !webSocketService || !timelineStatePersistence) {
         throw new Error('Failed to resolve TimelineService dependencies from container');
       }
       
-      const timelineService = new TimelineService(sessionManager, webSocketService);
+      const timelineService = new TimelineService(sessionManager, webSocketService, timelineStatePersistence);
       container.bind(TimelineService).toConstantValue(timelineService);
       serverLogger.debug('TimelineService registered in container');
     }
@@ -88,4 +97,4 @@ export function initializeContainer(services: {
 }
 
 // Export for direct import
-export { container, TimelineService };
+export { container, TimelineService, TimelineStatePersistence };

@@ -48,7 +48,7 @@ export function MessageFeed({
 
   // Render timeline items
   const renderTimelineItems = () => {
-    // Debug logs to troubleshoot rendering issues
+    // More detailed debug logs to troubleshoot rendering issues
     console.log("Rendering timeline items:", {
       sessionId,
       isLoading,
@@ -60,6 +60,32 @@ export function MessageFeed({
         messageType: item.type === TimelineItemType.MESSAGE ? item.message.role : null
       }))
     });
+    
+    // Log the FULL timeline data for deep inspection
+    console.group("FULL TIMELINE DATA");
+    if (timeline?.length) {
+      const userMessages = timeline.filter(item => 
+        item.type === TimelineItemType.MESSAGE && item.message.role === 'user'
+      );
+      const assistantMessages = timeline.filter(item => 
+        item.type === TimelineItemType.MESSAGE && item.message.role === 'assistant'
+      );
+      const toolExecutions = timeline.filter(item => 
+        item.type === TimelineItemType.TOOL_EXECUTION
+      );
+      
+      console.log(`Timeline contains: ${userMessages.length} user messages, ${assistantMessages.length} assistant messages, ${toolExecutions.length} tool executions`);
+      
+      if (userMessages.length === 0) {
+        console.warn("!!! WARNING: No user messages found in timeline !!!");
+      }
+      
+      // Complete timeline dump
+      console.log("Complete timeline:", JSON.stringify(timeline, null, 2));
+    } else {
+      console.log("Timeline is empty");
+    }
+    console.groupEnd();
     
     if (isLoading && (!timeline || timeline.length === 0)) {
       return (
@@ -109,6 +135,9 @@ export function MessageFeed({
     // Map of tool execution IDs to their parent message IDs
     const toolToParentMap = new Map<string, string>();
     
+    // Map of messages to their related tool executions
+    const messageToToolsMap = new Map<string, string[]>();
+    
     // First identify all tool executions
     timeline.forEach(item => {
       if (item.type === TimelineItemType.TOOL_EXECUTION) {
@@ -119,6 +148,11 @@ export function MessageFeed({
         // Store parent message ID if available
         if (item.parentMessageId) {
           toolToParentMap.set(item.id, item.parentMessageId);
+          
+          // Also add to the message's list of tools
+          const toolsList = messageToToolsMap.get(item.parentMessageId) || [];
+          toolsList.push(item.id);
+          messageToToolsMap.set(item.parentMessageId, toolsList);
         }
       }
     });
@@ -139,20 +173,197 @@ export function MessageFeed({
           }))
         });
         
+        // Initialize this message's tool list if needed
+        if (!messageToToolsMap.has(item.id)) {
+          messageToToolsMap.set(item.id, []);
+        }
+        
         // Establish parent-child relationships for all tool calls
         item.message.toolCalls.forEach(call => {
           if (allToolExecutionIds.has(call.executionId)) {
             // Store the parent-child relationship
             toolToParentMap.set(call.executionId, item.id);
+            
+            // Add to this message's list of tools
+            const toolsList = messageToToolsMap.get(item.id) || [];
+            toolsList.push(call.executionId);
+            messageToToolsMap.set(item.id, toolsList);
           }
         });
       }
     });
     
+    // Group timeline items by conversation turn to ensure proper ordering
+    // A conversation turn consists of: user message -> tool executions -> assistant response
+    
+    // First, identify all messages and their roles
+    const userMessages = timeline.filter(item => 
+      item.type === TimelineItemType.MESSAGE && item.message.role === 'user'
+    );
+    const assistantMessages = timeline.filter(item => 
+      item.type === TimelineItemType.MESSAGE && item.message.role === 'assistant'
+    );
+    
+    // Create a mapping of tool executions to their parent messages
+    userMessages.forEach(userMsg => {
+      if (userMsg.message.toolCalls?.length) {
+        userMsg.message.toolCalls.forEach(call => {
+          if (call.executionId) {
+            toolToParentMap.set(call.executionId, userMsg.id);
+          }
+        });
+      }
+    });
+    
+    assistantMessages.forEach(aiMsg => {
+      if (aiMsg.message.toolCalls?.length) {
+        aiMsg.message.toolCalls.forEach(call => {
+          if (call.executionId) {
+            toolToParentMap.set(call.executionId, aiMsg.id);
+          }
+        });
+      }
+    });
+    
+    // Force showing ALL user messages by marking them as having content
+    userMessages.forEach(userMsg => {
+      userMsg._forceShow = true;
+    });
+    
+    // We'll create a flat array of timeline items in order
+    const orderedTimelineItems: typeof timeline = [];
+    
+    // CRITICAL: Create ordered groups of items based on timestamps
+    // This ensures PROPER ordering of conversation turns
+    const timeGroups: Array<typeof timeline> = [];
+    
+    // Sort all timeline items by timestamp first
+    const timelineSortedByTime = [...timeline].sort((a, b) => {
+      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
+    
+    // Group items that are close in time (likely part of same conversation turn)
+    let currentGroup: typeof timeline = [];
+    let lastTimestamp = 0;
+    
+    timelineSortedByTime.forEach(item => {
+      const itemTime = new Date(item.timestamp).getTime();
+      
+      // If this item is far from the last one, start a new group
+      if (lastTimestamp > 0 && (itemTime - lastTimestamp) > 5000) { // 5 second gap
+        if (currentGroup.length > 0) {
+          timeGroups.push(currentGroup);
+          currentGroup = [];
+        }
+      }
+      
+      currentGroup.push(item);
+      lastTimestamp = itemTime;
+    });
+    
+    // Don't forget the last group
+    if (currentGroup.length > 0) {
+      timeGroups.push(currentGroup);
+    }
+    
+    // Within each time group, order as: user message -> tools -> assistant message
+    timeGroups.forEach(group => {
+      // First sort within the group
+      group.sort((a, b) => {
+        // User messages come first 
+        if (a.type === TimelineItemType.MESSAGE && a.message.role === 'user') {
+          return -1;
+        }
+        if (b.type === TimelineItemType.MESSAGE && b.message.role === 'user') {
+          return 1;
+        }
+        
+        // Tool executions come next, sorted by timestamps
+        if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.TOOL_EXECUTION) {
+          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        }
+        
+        // Assistant messages come last
+        if (a.type === TimelineItemType.MESSAGE && a.message.role === 'assistant') {
+          return 1;
+        }
+        if (b.type === TimelineItemType.MESSAGE && b.message.role === 'assistant') {
+          return -1;
+        }
+        
+        // Default to timestamp order
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      });
+      
+      // Add the sorted group to our final ordered timeline
+      orderedTimelineItems.push(...group);
+    });
+    
+    // Replace the original timeline with our ordered version
+    timeline.length = 0;
+    
+    // Apply deduplication for user messages before rendering
+    // This handles the case where we have both optimistic client message and confirmed server message
+    const dedupedItems: typeof orderedTimelineItems = [];
+    const userMessageContents = new Map<string, boolean>();
+    
+    // First pass: collect user message content signatures for deduplication
+    for (const item of orderedTimelineItems) {
+      if (item.type === TimelineItemType.MESSAGE && item.message.role === 'user') {
+        try {
+          // Create a content signature for this message (content + approximate time)
+          const contentSignature = JSON.stringify(item.message.content) + 
+                                  // Round to nearest 5 seconds to allow for slight time differences
+                                  Math.floor(new Date(item.timestamp).getTime() / 5000);
+          
+          // If we've already seen this content, mark it
+          if (userMessageContents.has(contentSignature)) {
+            console.log(`Found duplicate user message with content signature: ${contentSignature.substring(0, 40)}...`);
+            // Skip this iteration, we'll handle in second pass
+          } else {
+            // First time seeing this content
+            userMessageContents.set(contentSignature, true);
+          }
+        } catch (e) {
+          // If stringify fails, just add the item as-is
+          console.warn('Error creating content signature:', e);
+        }
+      }
+    }
+    
+    // Second pass: only add non-duplicate messages to the final timeline
+    for (const item of orderedTimelineItems) {
+      if (item.type === TimelineItemType.MESSAGE && item.message.role === 'user') {
+        try {
+          // Create content signature again
+          const contentSignature = JSON.stringify(item.message.content) + 
+                                  Math.floor(new Date(item.timestamp).getTime() / 5000);
+          
+          // Check if we've already added a message with this content
+          if (userMessageContents.has(contentSignature)) {
+            // Add this item and remove from map so subsequent duplicates are ignored
+            dedupedItems.push(item);
+            userMessageContents.delete(contentSignature);
+          }
+        } catch (e) {
+          // If stringify fails, just add the item as-is
+          dedupedItems.push(item);
+        }
+      } else {
+        // Non-user message, add without deduplication
+        dedupedItems.push(item);
+      }
+    }
+    
+    // Use the deduplicated items
+    timeline.push(...dedupedItems);
+    
     // Render each timeline item
     return timeline.map(item => {
       if (item.type === TimelineItemType.MESSAGE) {
-        // Check if this message only contains tool calls and those tools are rendered separately
+        // We should always render user messages, regardless of tool calls
+        // For AI messages, we can apply the logic to hide empty ones that only have tool calls
+        
         console.log(`=== MESSAGE RENDER DECISION FOR ${item.id} ===`);
         
         // First determine if the message has tool calls
@@ -169,15 +380,18 @@ export function MessageFeed({
           contentCount: hasContent ? item.message.content.length : 0
         });
         
+        if (item.message.role === 'user') {
+          console.log(`Message ${item.id} is USER message, always RENDERING`);
+        }
         // If the message has content, we should always render it regardless of tools
-        if (hasContent) {
+        else if (hasContent) {
           console.log(`Message ${item.id} has content, RENDERING`);
         }
         // If there are no tool calls, we should render it (unless it has no content)
         else if (!hasToolCalls) {
           console.log(`Message ${item.id} has no tool calls, RENDERING (empty message)`);
         }
-        // If we get here, message has tool calls but no content
+        // If we get here, message is AI message with tool calls but no content
         // Check if ALL tool calls have corresponding tool executions that will be rendered
         else {
           const allToolsRendered = item.message.toolCalls.every(call => {
@@ -195,18 +409,36 @@ export function MessageFeed({
         }
         
         // Convert the stored message to the format expected by Message component
+        // Safely handle the timestamp conversion
+        let timestamp: number;
+        try {
+          timestamp = new Date(item.timestamp).getTime();
+          // Check if the timestamp is valid
+          if (isNaN(timestamp)) {
+            console.warn(`Invalid timestamp in message ${item.id}: "${item.timestamp}"`);
+            timestamp = Date.now(); // Use current time as fallback
+          }
+        } catch (e) {
+          console.warn(`Error parsing timestamp in message ${item.id}: "${item.timestamp}"`, e);
+          timestamp = Date.now(); // Use current time as fallback
+        }
+        
         const message = {
           id: item.message.id,
           type: item.message.role as 'user' | 'assistant' | 'system' | 'error',
           content: item.message.content,
-          timestamp: new Date(item.timestamp).getTime()
+          timestamp: timestamp
         };
         
         // Add debugging info for each message
+        const timestampStr = typeof message.timestamp === 'number' ? 
+          new Date(message.timestamp).toISOString() : 
+          'Invalid timestamp';
+        
         console.log(`Rendering message ${item.id}:`, {
           role: message.type,
           content: message.content,
-          timestamp: new Date(message.timestamp).toISOString(),
+          timestamp: timestampStr,
           hasToolCalls: !!item.message.toolCalls?.length,
           toolCallCount: item.message.toolCalls?.length || 0
         });
@@ -303,9 +535,10 @@ export function MessageFeed({
         const parentMessageId = toolToParentMap.get(item.id);
         
         // Assign CSS class based on parent message relationship
-        const toolClasses = parentMessageId
-          ? "w-4/5 self-start mt-2 mb-2 ml-8" // Indent for tools with parent message
-          : "w-4/5 self-start mt-2 mb-2 ml-2"; // Default positioning
+        // This is critical for proper positioning of tools relative to messages
+        const toolClasses = parentMessageId 
+          ? "w-4/5 self-start mt-2 mb-4 ml-8" // Indent for tools with parent message
+          : "w-4/5 self-start mt-2 mb-4 ml-2"; // Default positioning
 
         return (
           <div
