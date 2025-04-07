@@ -13,18 +13,25 @@ export function EnvironmentConnectionIndicator({
   className = ''
 }: EnvironmentConnectionIndicatorProps) {
   const { status, error, connect } = useConnectionStatus();
-  const { isDocker, isE2B } = useExecutionEnvironment();
+  const { isDocker, isE2B, isEnvironmentReady, environmentStatus } = useExecutionEnvironment();
   
   // We no longer need this function since we use direct background color classes
   // Removed getStatusColorClass function
   
   // Simple colored circle for connection status
   const getConnectionIndicator = () => {
-    // Determine background color based on connection status
-    const bgColorClass = 
-      status === 'connected' ? 'bg-green-500' : 
-      status === 'connecting' ? 'bg-yellow-500 animate-pulse' : 
-      'bg-red-500';
+    // Determine background color based on connection status AND environment readiness
+    let bgColorClass = 'bg-red-500'; // Default to error state
+    
+    if (status === 'connected') {
+      if (isEnvironmentReady) {
+        bgColorClass = 'bg-green-500'; // Only green if both connected AND environment ready
+      } else {
+        bgColorClass = 'bg-yellow-500 animate-pulse'; // Connected but environment not ready
+      }
+    } else if (status === 'connecting') {
+      bgColorClass = 'bg-yellow-500 animate-pulse'; // Connecting
+    }
     
     // Render a simple circle with the appropriate color
     return (
@@ -37,19 +44,22 @@ export function EnvironmentConnectionIndicator({
   // yet received the environment information
   const environmentName = isDocker ? 'Docker' : isE2B ? 'E2B' : 'Local';
   
-  // Get the connection status message
+  // Get the connection status message, including environment readiness
   const getStatusMessage = () => {
-    switch (status) {
-      case 'connected':
-        return 'Connected';
-      case 'connecting':
-        return 'Connecting...';
-      case 'disconnected':
-        return 'Disconnected';
-      case 'error':
-        return `Error: ${error?.message || 'Connection failed'}`;
-      default:
-        return 'Unknown status';
+    if (status === 'connected') {
+      if (isEnvironmentReady) {
+        return 'Ready'; // Both connected AND environment ready
+      } else {
+        return `Initializing (${environmentStatus.toLowerCase()})`; // Connected but environment not ready
+      }
+    } else if (status === 'connecting') {
+      return 'Connecting...';
+    } else if (status === 'disconnected') {
+      return 'Disconnected';
+    } else if (status === 'error') {
+      return `Error: ${error?.message || 'Connection failed'}`;
+    } else {
+      return 'Unknown status';
     }
   };
   
@@ -67,9 +77,17 @@ export function EnvironmentConnectionIndicator({
       {/* Tooltip with detailed information */}
       <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 py-2 px-3 bg-black/80 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10 min-w-[200px]">
         <div className="font-bold mb-1">Execution Environment</div>
-        <div className="flex justify-between mb-2">
+        <div className="flex justify-between mb-1">
           <span>Type:</span>
           <span className="font-semibold">{environmentName}</span>
+        </div>
+        <div className="flex justify-between mb-2">
+          <span>Status:</span>
+          <span className={`font-semibold ${
+            isEnvironmentReady ? 'text-green-400' : 'text-yellow-400'
+          }`}>
+            {isEnvironmentReady ? 'Ready' : environmentStatus.toLowerCase()}
+          </span>
         </div>
         
         <div className="font-bold mb-1">Connection Status</div>
@@ -80,7 +98,7 @@ export function EnvironmentConnectionIndicator({
             status === 'connecting' ? 'text-yellow-400' : 
             'text-red-400'
           }`}>
-            {getStatusMessage()}
+            {status}
           </span>
         </div>
         

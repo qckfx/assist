@@ -2,6 +2,18 @@
 import { ToolPreviewData } from '../../types/preview';
 import { TimelineItem } from '../../types/timeline';
 import { StructuredContent } from '../../types/message';
+
+/**
+ * Environment status enum for connection and initialization status
+ */
+export enum EnvironmentChange {
+  INITIALIZING = 'initializing',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  DISCONNECTED = 'disconnected',
+  ERROR = 'error'
+}
+
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -107,9 +119,9 @@ export enum WebSocketEvent {
   FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
   FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
   
-  // Environment information event
+  // Environment information events
   INIT = 'init',
-  
+  ENVIRONMENT_STATUS_CHANGED = 'environment_status_changed',
   
   // Timeline events
   TIMELINE_UPDATE = 'timeline_update',
@@ -237,6 +249,13 @@ export interface WebSocketEventMap {
     sessionId: string; 
     executionEnvironment: 'local' | 'docker' | 'e2b'; 
     e2bSandboxId?: string; 
+  };
+  
+  [WebSocketEvent.ENVIRONMENT_STATUS_CHANGED]: {
+    environmentType: 'local' | 'docker' | 'e2b';
+    status: string;
+    isReady: boolean;
+    error?: string;
   };
   
   

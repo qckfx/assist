@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSocketConnectionManager } from '../utils/websocket';
-import { WebSocketEvent, DockerStatus } from '../types/api';
+import { WebSocketEvent, EnvironmentChange } from '../types/api';
 
 interface ExecutionEnvironmentInfo {
   environment: 'local' | 'docker' | 'e2b' | 'unknown';
@@ -8,13 +8,14 @@ interface ExecutionEnvironmentInfo {
   isLocal: boolean;
   isE2B: boolean;
   e2bSandboxId?: string;
-  dockerStatus: DockerStatus;
+  environmentStatus: EnvironmentChange;
   isEnvironmentReady: boolean;
   environmentError?: string;
 }
 
 /**
  * Hook to get information about the current execution environment
+ * Returns environment type (docker, local, e2b) and status information
  */
 export function useExecutionEnvironment(): ExecutionEnvironmentInfo {
   // Default to Docker since that's the app's default environment
@@ -25,7 +26,7 @@ export function useExecutionEnvironment(): ExecutionEnvironmentInfo {
     isDocker: true, // Default to Docker to match backend default
     isLocal: false,
     isE2B: false,
-    dockerStatus: DockerStatus.INITIALIZING,
+    environmentStatus: EnvironmentChange.INITIALIZING,
     isEnvironmentReady: false
   });
   
@@ -43,28 +44,28 @@ export function useExecutionEnvironment(): ExecutionEnvironmentInfo {
     }));
   }, []);
   
-  // Update Docker status
-  const handleDockerStatusUpdate = useCallback((status: DockerStatus, isReady: boolean, error?: string) => {
-    console.log(`useExecutionEnvironment: Docker status update: ${status}, ready: ${isReady}, type: ${typeof status}`);
+  // Update environment status
+  const handleEnvironmentStatusUpdate = useCallback((status: EnvironmentChange, isReady: boolean, error?: string) => {
+    console.log(`useExecutionEnvironment: Environment status update: ${status}, ready: ${isReady}, type: ${typeof status}`);
     
-    // Check for exact string value match for debugging
-    if (status === 'connected') {
-      console.log('  -> Status is exactly string "connected"');
-    }
-    if (status === DockerStatus.CONNECTED) {
-      console.log('  -> Status matches DockerStatus.CONNECTED enum');
+    // For CONNECTED status, always ensure isEnvironmentReady is true
+    const finalReady = status === EnvironmentChange.CONNECTED ? true : isReady;
+    
+    // Log the final ready state for debugging
+    if (status === EnvironmentChange.CONNECTED && !isReady) {
+      console.log('Environment is CONNECTED but isReady was false - forcing to true');
     }
     
     setEnvironmentInfo(current => ({
       ...current,
-      dockerStatus: status,
-      isEnvironmentReady: isReady,
+      environmentStatus: status,
+      isEnvironmentReady: finalReady,
       environmentError: error
     }));
   }, []);
   
-  // Handle environment status updates (more generic than Docker)
-  const handleEnvironmentStatusUpdate = useCallback((
+  // Handle environment status updates from WebSocket events
+  const handleEnvironmentStatusChanged = useCallback((
     environmentType: 'docker' | 'local' | 'e2b', 
     status: string, 
     isReady: boolean, 
@@ -72,63 +73,45 @@ export function useExecutionEnvironment(): ExecutionEnvironmentInfo {
   ) => {
     console.log(`useExecutionEnvironment: ${environmentType} status update: ${status}, ready: ${isReady}, type: ${typeof status}`);
     
-    // For Docker environment, map status to DockerStatus enum
-    if (environmentType === 'docker') {
-      let dockerStatus: DockerStatus;
-      
-      // Check raw string value for debugging
-      if (status === 'connected') {
-        console.log('  -> Environment status is exactly string "connected"');
-      }
-      
-      // Convert string status to enum
-      switch (status) {
-        case 'initializing':
-          dockerStatus = DockerStatus.INITIALIZING;
-          console.log('  -> Mapping to DockerStatus.INITIALIZING');
-          break;
-        case 'connecting':
-          dockerStatus = DockerStatus.CONNECTING;
-          console.log('  -> Mapping to DockerStatus.CONNECTING');
-          break;
-        case 'connected':
-          dockerStatus = DockerStatus.CONNECTED;
-          console.log('  -> Mapping to DockerStatus.CONNECTED');
-          break;
-        case 'disconnected':
-          dockerStatus = DockerStatus.DISCONNECTED;
-          console.log('  -> Mapping to DockerStatus.DISCONNECTED');
-          break;
-        case 'error':
-          dockerStatus = DockerStatus.ERROR;
-          console.log('  -> Mapping to DockerStatus.ERROR');
-          break;
-        default:
-          console.log(`  -> Unknown status "${status}", defaulting to DockerStatus.INITIALIZING`);
-          dockerStatus = DockerStatus.INITIALIZING;
-      }
-      
-      // If status is connected and isReady is true, explicitly set isEnvironmentReady to true
-      // This handles the special case where Docker is actually ready
-      const finalReady = (status === 'connected' && isReady === true) ? true : isReady;
-      
-      // Also log the isReady state which is critical
-      console.log(`  -> Setting isEnvironmentReady to ${finalReady} (original isReady=${isReady})`);
-      
-      setEnvironmentInfo(current => ({
-        ...current,
-        dockerStatus,
-        isEnvironmentReady: finalReady,
-        environmentError: error
-      }));
-    } else {
-      // For non-Docker environments, just update the ready status
-      setEnvironmentInfo(current => ({
-        ...current,
-        isEnvironmentReady: isReady,
-        environmentError: error
-      }));
+    // Map status string to EnvironmentChange enum
+    let environmentStatus: EnvironmentChange;
+    
+    // Convert string status to enum
+    switch (status) {
+      case 'initializing':
+        environmentStatus = EnvironmentChange.INITIALIZING;
+        break;
+      case 'connecting':
+        environmentStatus = EnvironmentChange.CONNECTING;
+        break;
+      case 'connected':
+        environmentStatus = EnvironmentChange.CONNECTED;
+        break;
+      case 'disconnected':
+        environmentStatus = EnvironmentChange.DISCONNECTED;
+        break;
+      case 'error':
+        environmentStatus = EnvironmentChange.ERROR;
+        break;
+      default:
+        console.log(`  -> Unknown status "${status}", defaulting to EnvironmentChange.INITIALIZING`);
+        environmentStatus = EnvironmentChange.INITIALIZING;
     }
+    
+    // For CONNECTED status, always ensure isEnvironmentReady is true
+    // This is crucial for Docker environments where the environment status is connected
+    // but the isReady flag might not be set correctly
+    const finalReady = environmentStatus === EnvironmentChange.CONNECTED ? true : isReady;
+    
+    // Log the isReady state which is critical
+    console.log(`  -> Setting isEnvironmentReady to ${finalReady} (original isReady=${isReady})`);
+    
+    setEnvironmentInfo(current => ({
+      ...current,
+      environmentStatus,
+      isEnvironmentReady: finalReady,
+      environmentError: error
+    }));
   }, []);
   
   useEffect(() => {
@@ -168,8 +151,8 @@ export function useExecutionEnvironment(): ExecutionEnvironmentInfo {
     if (socket) {
       // Subscribe to environment status events
       socket.on(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, (data) => {
-        // Simply pass all environment status updates to the environment handler
-        handleEnvironmentStatusUpdate(
+        // Pass environment status updates to the handler
+        handleEnvironmentStatusChanged(
           data.environmentType,
           data.status,
           data.isReady,
@@ -190,7 +173,7 @@ export function useExecutionEnvironment(): ExecutionEnvironmentInfo {
         socket.off(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED);
       }
     };
-  }, [handleEnvironmentUpdate, handleDockerStatusUpdate, handleEnvironmentStatusUpdate]);
+  }, [handleEnvironmentUpdate, handleEnvironmentStatusUpdate, handleEnvironmentStatusChanged]);
   
   return environmentInfo;
 }

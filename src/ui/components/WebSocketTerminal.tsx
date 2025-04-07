@@ -41,7 +41,7 @@ export function WebSocketTerminal({
   } = useWebSocketTerminal();
   
   // Get environment information
-  const { isDocker, isEnvironmentReady, dockerStatus } = useExecutionEnvironment();
+  const { isDocker, isEnvironmentReady, environmentStatus } = useExecutionEnvironment();
   
   // Get both state and the typing indicator state directly from TerminalContext
   const { state, clearMessages } = useTerminal();
@@ -110,14 +110,12 @@ export function WebSocketTerminal({
       return "Input disabled: WebSocket disconnected";
     }
     
-    if (isDocker) {
-      if (!isEnvironmentReady) {
-        return "Input disabled: Docker container initializing...";
-      }
+    if (!isEnvironmentReady) {
+      return "Input disabled: Environment not ready";
     }
     
     // Generic message for all other cases
-    return "Input disabled: Environment not ready";
+    return "Input disabled: Waiting for session";
   };
 
   // Add logging for debugging timeline issues and handle session initialization

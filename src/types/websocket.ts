@@ -30,6 +30,9 @@ export enum WebSocketEvent {
   FAST_EDIT_MODE_ENABLED = 'fast_edit_mode_enabled',
   FAST_EDIT_MODE_DISABLED = 'fast_edit_mode_disabled',
   
+  // Environment events
+  ENVIRONMENT_STATUS_CHANGED = 'environment_status_changed',
+  
   // Timeline events
   TIMELINE_UPDATE = 'timeline_update',
   TIMELINE_HISTORY = 'timeline_history',
@@ -55,6 +58,13 @@ export enum WebSocketEvent {
 export interface WebSocketEventMap {
   // Existing event mappings go here (they're defined in another file or are inferred)
   
+  // Environment events
+  [WebSocketEvent.ENVIRONMENT_STATUS_CHANGED]: {
+    environmentType: 'local' | 'docker' | 'e2b';
+    status: 'initializing' | 'connecting' | 'connected' | 'disconnected' | 'error';
+    isReady: boolean;
+    error?: string;
+  };
   
   // Timeline events
   [WebSocketEvent.TIMELINE_UPDATE]: {
