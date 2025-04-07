@@ -98,6 +98,11 @@ export interface ToolExecutionState {
   previewId?: string;
   
   /**
+   * ID of the associated tool_use block from the model's response
+   */
+  toolUseId: string;
+  
+  /**
    * Any additional metadata for the execution
    */
   metadata?: Record<string, unknown>;
@@ -204,6 +209,7 @@ export interface ToolExecutionManager {
     sessionId: string, 
     toolId: string, 
     toolName: string, 
+    executionId: string,
     args: Record<string, unknown>
   ): ToolExecutionState;
   

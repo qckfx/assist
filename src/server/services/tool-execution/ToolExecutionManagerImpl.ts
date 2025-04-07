@@ -7,6 +7,7 @@ import {
   ToolExecutionEvent,
   PermissionRequestState
 } from '../../../types/tool-execution';
+import { generateExecutionId } from '../../../utils/sessionUtils';
 import { SessionStatePersistence } from '../SessionStatePersistence';
 import { getSessionStatePersistence } from '../sessionPersistenceProvider';
 
@@ -51,16 +52,22 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
 
   /**
    * Create a new tool execution
+   * @param sessionId The session ID
+   * @param toolId The tool ID
+   * @param toolName The tool name
+   * @param executionId The execution ID (from message.toolCalls[].executionId)
+   * @param args The tool arguments
    */
   createExecution(
     sessionId: string, 
     toolId: string, 
     toolName: string, 
+    executionId: string,
     args: Record<string, unknown>
   ): ToolExecutionState {
-    const id = uuidv4();
+    // Use the provided executionId directly
     const execution: ToolExecutionState = {
-      id,
+      id: executionId,
       sessionId,
       toolId,
       toolName,
@@ -70,19 +77,19 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     };
 
     // Store the execution
-    this.executions.set(id, execution);
+    this.executions.set(executionId, execution);
 
     // Add to session executions
     if (!this.sessionExecutions.has(sessionId)) {
       this.sessionExecutions.set(sessionId, new Set());
     }
-    this.sessionExecutions.get(sessionId)!.add(id);
+    this.sessionExecutions.get(sessionId)!.add(executionId);
 
     // Emit event
     this.emitEvent(ToolExecutionEvent.CREATED, execution);
     
-    serverLogger.debug(`Created tool execution: ${id}`, {
-      executionId: id,
+    serverLogger.debug(`Created tool execution: ${executionId}`, {
+      executionId,
       toolId,
       toolName,
       sessionId

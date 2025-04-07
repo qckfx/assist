@@ -3,7 +3,12 @@
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { WebSocketEvent, WebSocketEventMap } from '../types/api';
-import { TimelineItem, TimelineItemType, TimelineResponse } from '../../types/timeline';
+import { 
+  TimelineItem, 
+  TimelineItemType, 
+  TimelineResponse,
+  ToolExecutionTimelineItem
+} from '../../types/timeline';
 import { useTerminalWebSocket } from './useTerminalWebSocket';
 import { useWebSocket } from './useWebSocket';
 import apiClient from '../services/apiClient';
@@ -547,16 +552,28 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
       }
       
       // Case 3: Check for parent/child relationship between tool execution and messages
-      if (a.type === TimelineItemType.TOOL_EXECUTION && 
-          b.type === TimelineItemType.MESSAGE && 
-          (a as any).parentMessageId === b.id) {
-        return 1; // Tool execution should come after its parent message
+      if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.MESSAGE) {
+        // Check for direct parent/child relationship using parentMessageId
+        if ((a as ToolExecutionTimelineItem).parentMessageId === b.id) {
+          return 1; // Tool execution should come after its parent message
+        }
+        
+        // Check for relationship through toolCalls
+        if (b.message.toolCalls?.some(call => call.executionId === a.id)) {
+          return 1; // Tool execution should come after message that references it
+        }
       }
       
-      if (a.type === TimelineItemType.MESSAGE && 
-          b.type === TimelineItemType.TOOL_EXECUTION && 
-          a.id === (b as any).parentMessageId) {
-        return -1; // Parent message should come before its tool execution
+      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.TOOL_EXECUTION) {
+        // Check for direct parent/child relationship using parentMessageId
+        if (a.id === (b as ToolExecutionTimelineItem).parentMessageId) {
+          return -1; // Parent message should come before its tool execution
+        }
+        
+        // Check for relationship through toolCalls
+        if (a.message.toolCalls?.some(call => call.executionId === b.id)) {
+          return -1; // Message that references tool should come before the tool execution
+        }
       }
       
       // Case 4: Neither has a sequence number, fall back to timestamp ordering

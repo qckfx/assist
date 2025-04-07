@@ -2,6 +2,7 @@
  * Utility functions for working with session state
  */
 import { EventEmitter } from 'events';
+import { v5 as uuidv5 } from 'uuid';
 import { SessionState } from "../types/model";
 
 /**
@@ -85,3 +86,18 @@ export function clearSessionAborted(sessionId: string): void {
  * 
  * This ensures we don't "brick" the agent even when operations are aborted mid-execution.
  */
+
+/**
+ * UUID Namespace for tool execution IDs
+ * Used to generate consistent UUIDs from Anthropic tool use IDs
+ */
+export const TOOL_EXECUTION_NAMESPACE = '1b671a64-40d5-491e-99b0-da01ff1f3341';
+
+/**
+ * Generate a stable execution ID from an Anthropic tool use ID
+ * @param toolUseId The Anthropic-generated tool use ID
+ * @returns A stable UUID v5 generated from the tool use ID
+ */
+export function generateExecutionId(toolUseId: string): string {
+  return uuidv5(toolUseId, TOOL_EXECUTION_NAMESPACE);
+}

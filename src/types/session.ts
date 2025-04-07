@@ -17,6 +17,11 @@ export interface ToolCallReference {
   executionId: string;
   
   /**
+   * Original tool use ID from the Anthropic API
+   */
+  toolUseId?: string;
+  
+  /**
    * Display name of the tool
    */
   toolName: string;

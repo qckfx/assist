@@ -171,6 +171,9 @@ export class TimelineService extends EventEmitter {
     // Log how many items we found
     serverLogger.debug(`Built timeline for session ${sessionId} with ${timeline.items.length} total items`);
     
+    // Log the timeline items details for debugging
+    serverLogger.debug(`[TIMELINE] Timeline items for session ${sessionId}:`, JSON.stringify(timeline.items, null, 2));
+    
     // Apply filtering by types if specified
     let filteredItems = timeline.items;
     if (types && types.length > 0) {
@@ -314,32 +317,14 @@ export class TimelineService extends EventEmitter {
       // Check if we have a valid preview with required content
       const hasValidPreview = !!(preview && preview.briefContent);
       
-      // Enhanced validation and debug logging
-      if (preview) {
+      // Only log if debug preview is enabled
+      if (preview && process.env.DEBUG_PREVIEW) {
         serverLogger.info(`Preview data availability for ${toolExecution.id}:`, {
           hasPreview: !!preview,
           hasValidPreview,
           contentType: preview.contentType,
           briefContentExists: !!preview.briefContent,
-          briefContentLength: preview.briefContent?.length || 0,
-          fullContentExists: !!preview.fullContent,
-          fullContentLength: preview.fullContent?.length || 0,
-          briefContentSample: preview.briefContent ? 
-            preview.briefContent.substring(0, 100) + (preview.briefContent.length > 100 ? '...' : '') : 'MISSING',
-          metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
-        });
-      }
-      
-      if (hasValidPreview) {
-        serverLogger.info(`Emitting TOOL_EXECUTION_UPDATED with preview for ${toolExecution.id}:`, {
-          toolId: toolExecution.id,
-          toolName: toolExecution.toolName,
-          status: toolExecution.status,
-          hasPreview: true,
-          previewContentType: preview?.contentType,
-          previewBriefContentLength: preview?.briefContent?.length,
-          previewFullContentLength: preview?.fullContent?.length,
-          previewMetadataKeys: preview?.metadata ? Object.keys(preview.metadata) : []
+          briefContentLength: preview.briefContent?.length || 0
         });
       }
       
@@ -454,24 +439,24 @@ export class TimelineService extends EventEmitter {
    */
   private emitToSession(sessionId: string, event: string, data: Record<string, unknown>): void {
     try {
-      serverLogger.debug(`[emitToSession] Attempting to emit ${event} to session ${sessionId} with stack trace: ${new Error().stack}`);
+      // Log important timeline objects
+      if (event === WebSocketEvent.TOOL_EXECUTION_UPDATED || 
+          event === WebSocketEvent.TOOL_EXECUTION_RECEIVED) {
+        serverLogger.debug(`[TIMELINE] Timeline object for ${event}:`, JSON.stringify(data, null, 2));
+      }
       
       // Type-safe access to WebSocketService properties
       // Access the socket.io instance directly
       const socketIoServer = this.getSocketIOServer();
       
       if (socketIoServer) {
-        serverLogger.debug(`[emitToSession] Using Socket.IO to emit ${event} to session ${sessionId}`);
         socketIoServer.to(sessionId).emit(event, data);
-        serverLogger.debug(`[emitToSession] Emitted ${event} to session ${sessionId} via Socket.IO`);
       } else {
         // Fallback method if direct io access is not available
         const agentService = this.getAgentService();
         if (agentService) {
           // If AgentService is accessible, emit the event through it
-          serverLogger.debug(`[emitToSession] Using AgentService to emit timeline:${event} for session ${sessionId}`);
           agentService.emit(`timeline:${event}`, { sessionId, ...data });
-          serverLogger.debug(`[emitToSession] Emitted timeline:${event} through AgentService for session ${sessionId}`);
         } else {
           serverLogger.warn(`[emitToSession] Could not emit ${event} to session ${sessionId}: No socket.io or AgentService instance found`);
         }
@@ -584,74 +569,6 @@ export class TimelineService extends EventEmitter {
         originalCleanup();
       }
     };
-    
-    // Listen for tool execution events
-    agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, (data: LegacyToolExecutionEventData) => {
-      if (!data || !data.sessionId || !data.tool || !data.tool.executionId) {
-        serverLogger.error('TimelineService: Missing required data in TOOL_EXECUTION_STARTED event');
-        return;
-      }
-      
-      const executionId = data.tool.executionId;
-      
-      this.findParentMessageId(data.sessionId, executionId)
-        .then(parentMessageId => {
-          // Create an execution object from the tool data that matches ToolExecutionState
-          const execution: ToolExecutionState = {
-            id: executionId,
-            sessionId: data.sessionId,
-            toolId: data.tool.id,
-            toolName: data.tool.name,
-            args: data.args || {},
-            status: ToolExecutionStatus.RUNNING,
-            startTime: data.timestamp || new Date().toISOString()
-          };
-          
-          this.addToolExecutionToTimeline(data.sessionId, execution, undefined, parentMessageId);
-        });
-    });
-    
-    agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: LegacyToolExecutionEventData) => {
-      if (!data || !data.sessionId || !data.tool || !data.tool.executionId) {
-        serverLogger.error('TimelineService: Missing required data in TOOL_EXECUTION_COMPLETED event');
-        return;
-      }
-      
-      const executionId = data.tool.executionId;
-      
-      this.findParentMessageId(data.sessionId, executionId)
-        .then(parentMessageId => {
-          // Create an execution object from the tool data
-          const execution: ToolExecutionState = {
-            id: executionId,
-            sessionId: data.sessionId,
-            toolId: data.tool.id,
-            toolName: data.tool.name,
-            args: data.args || {},
-            result: data.result,
-            status: ToolExecutionStatus.COMPLETED,
-            startTime: data.startTime || data.timestamp || new Date().toISOString(),
-            endTime: data.timestamp || new Date().toISOString(),
-            executionTime: data.executionTime || 0
-          };
-          
-          // Create proper preview object if it exists
-          let toolPreview: ToolPreviewState | undefined = undefined;
-          if (data.preview) {
-            toolPreview = {
-              id: crypto.randomUUID(),
-              sessionId: data.sessionId,
-              executionId: executionId,
-              contentType: data.preview.contentType as PreviewContentType,
-              briefContent: data.preview.briefContent,
-              fullContent: data.preview.fullContent,
-              metadata: data.preview.metadata
-            };
-          }
-          
-          this.addToolExecutionToTimeline(data.sessionId, execution, toolPreview, parentMessageId);
-        });
-    });
     
     // Listen for permission request events - use a debounce mechanism to prevent cascading permission events
     const permissionDebounce = new Map<string, number>();
@@ -864,7 +781,7 @@ export class TimelineService extends EventEmitter {
       }
       
       // 2. Get tool executions directly from the AgentService
-      let toolExecutions: ToolExecutionState[] = [];
+      const toolExecutions: ToolExecutionState[] = [];
       // AgentService has getToolExecution (singular) but not getToolExecutions (plural)
       // So we'll adapt to work with what's available
       if (typeof agentService.getToolExecution === 'function') {
@@ -1125,16 +1042,28 @@ export class TimelineService extends EventEmitter {
       
       // Case 3: Check for parent/child relationship between tool execution and message
       // This ensures tool executions appear after their parent message
-      if (a.type === TimelineItemType.TOOL_EXECUTION && 
-          b.type === TimelineItemType.MESSAGE && 
-          (a as ToolExecutionTimelineItem).parentMessageId === b.id) {
-        return 1; // Tool execution should come after its parent message
+      if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.MESSAGE) {
+        // Check for direct parent/child relationship using parentMessageId
+        if ((a as ToolExecutionTimelineItem).parentMessageId === b.id) {
+          return 1; // Tool execution should come after its parent message
+        }
+        
+        // Check for relationship through message's toolCalls array
+        if (b.message.toolCalls?.some(call => call.executionId === a.id)) {
+          return 1; // Tool execution should come after message that references it
+        }
       }
       
-      if (a.type === TimelineItemType.MESSAGE && 
-          b.type === TimelineItemType.TOOL_EXECUTION && 
-          a.id === (b as ToolExecutionTimelineItem).parentMessageId) {
-        return -1; // Parent message should come before its tool execution
+      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.TOOL_EXECUTION) {
+        // Check for direct parent/child relationship using parentMessageId
+        if (a.id === (b as ToolExecutionTimelineItem).parentMessageId) {
+          return -1; // Parent message should come before its tool execution
+        }
+        
+        // Check for relationship through message's toolCalls array
+        if (a.message.toolCalls?.some(call => call.executionId === b.id)) {
+          return -1; // Message that references tool should come before the tool execution
+        }
       }
       
       // Case 4: Neither has a sequence number, use timestamp ordering
@@ -1214,64 +1143,43 @@ export class TimelineService extends EventEmitter {
       // Check if we have a valid preview with required content
       const hasValidPreview = !!(preview && preview.briefContent);
       
-      // Enhanced validation and debug logging
-      if (preview) {
+      // Only log if debug preview is enabled
+      if (preview && process.env.DEBUG_PREVIEW) {
         serverLogger.info(`Preview data for timeline item update ${executionId}:`, {
           hasPreview: !!preview,
           hasValidPreview,
           contentType: preview.contentType,
-          briefContentExists: !!preview.briefContent,
-          briefContentLength: preview.briefContent?.length || 0,
-          fullContentExists: !!preview.fullContent,
-          fullContentLength: preview.fullContent?.length || 0,
-          briefContentSample: preview.briefContent ? 
-            preview.briefContent.substring(0, 100) + (preview.briefContent.length > 100 ? '...' : '') : 'MISSING',
-          metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+          briefContentLength: preview.briefContent?.length || 0
         });
       }
       
-      if (hasValidPreview) {
-        serverLogger.info(`Updating timeline item with preview for ${executionId}:`, {
+      // IMPORTANT: Use a copy of the preview object to avoid reference issues
+      // This ensures a complete copy of the preview data is sent
+      const previewToSend = {
+        contentType: preview.contentType,
+        briefContent: preview.briefContent,
+        fullContent: preview.fullContent,
+        metadata: preview.metadata ? {...preview.metadata} : undefined,
+        // Add extra fields to ensure client gets all the data
+        hasActualContent: true
+      };
+      
+      // Send the execution update with preview directly in the toolExecution object
+      this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+        sessionId,
+        toolExecution: {
+          id: item.toolExecution.id,
           toolId: item.toolExecution.toolId,
           toolName: item.toolExecution.toolName,
           status: item.toolExecution.status,
+          preview: previewToSend,
+          // Add these flags to help client-side detection
           hasPreview: true,
-          previewContentType: preview.contentType,
-          previewBriefContentLength: preview.briefContent?.length,
-          previewFullContentLength: preview.fullContent?.length,
-          previewMetadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
-        });
-        
-        // IMPORTANT: Use a copy of the preview object to avoid reference issues
-        // This ensures a complete copy of the preview data is sent
-        const previewToSend = {
-          contentType: preview.contentType,
-          briefContent: preview.briefContent,
-          fullContent: preview.fullContent,
-          metadata: preview.metadata ? {...preview.metadata} : undefined,
-          // Add extra fields to ensure client gets all the data
-          hasActualContent: true
-        };
-        
-        // Send the execution update with preview directly in the toolExecution object
-        this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-          sessionId,
-          toolExecution: {
-            id: item.toolExecution.id,
-            toolId: item.toolExecution.toolId,
-            toolName: item.toolExecution.toolName,
-            status: item.toolExecution.status,
-            preview: previewToSend,
-            // Add these flags to help client-side detection
-            hasPreview: true,
-            previewContentType: preview.contentType
-          }
-        });
-      } else {
-        serverLogger.warn(`Cannot update timeline item with invalid preview for ${executionId}`);
-      }
+          previewContentType: preview.contentType
+        }
+      });
     } else {
-      serverLogger.warn(`Timeline item not found for execution ${executionId} in session ${sessionId}`);
+      serverLogger.warn(`Cannot update timeline item with invalid preview for ${executionId}`);
     }
   }
 
@@ -1318,16 +1226,28 @@ export class TimelineService extends EventEmitter {
         
         // Case 3: Check for parent/child relationship between tool execution and message
         // This ensures tool executions appear after their parent message
-        if (a.type === TimelineItemType.TOOL_EXECUTION && 
-            b.type === TimelineItemType.MESSAGE && 
-            (a as ToolExecutionTimelineItem).parentMessageId === b.id) {
-          return 1; // Tool execution should come after its parent message
+        if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.MESSAGE) {
+          // Check for direct parent/child relationship using parentMessageId
+          if ((a as ToolExecutionTimelineItem).parentMessageId === b.id) {
+            return 1; // Tool execution should come after its parent message
+          }
+          
+          // Check for relationship through message's toolCalls array
+          if (b.message.toolCalls?.some(call => call.executionId === a.id)) {
+            return 1; // Tool execution should come after message that references it
+          }
         }
         
-        if (a.type === TimelineItemType.MESSAGE && 
-            b.type === TimelineItemType.TOOL_EXECUTION && 
-            a.id === (b as ToolExecutionTimelineItem).parentMessageId) {
-          return -1; // Parent message should come before its tool execution
+        if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.TOOL_EXECUTION) {
+          // Check for direct parent/child relationship using parentMessageId
+          if (a.id === (b as ToolExecutionTimelineItem).parentMessageId) {
+            return -1; // Parent message should come before its tool execution
+          }
+          
+          // Check for relationship through message's toolCalls array
+          if (a.message.toolCalls?.some(call => call.executionId === b.id)) {
+            return -1; // Message that references tool should come before the tool execution
+          }
         }
         
         // Case 4: Neither has a sequence number, use timestamp ordering

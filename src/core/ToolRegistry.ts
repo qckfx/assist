@@ -15,7 +15,7 @@ export const createToolRegistry = (): ToolRegistry => {
   // Index to look up tools by category
   const toolsByCategory = new Map<ToolCategory, Set<string>>();
   
-  const startCallbacks: Array<(toolId: string, args: Record<string, unknown>, context: ToolContext) => void> = [];
+  const startCallbacks: Array<(toolId: string, toolUseId: string, args: Record<string, unknown>, context: ToolContext) => void> = [];
   const completeCallbacks: Array<(toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => void> = [];
   const errorCallbacks: Array<(toolId: string, args: Record<string, unknown>, error: Error) => void> = [];
   
@@ -85,7 +85,7 @@ export const createToolRegistry = (): ToolRegistry => {
      * @param callback - The callback function to register
      * @returns A function to unregister the callback
      */
-    onToolExecutionStart(callback: (toolId: string, args: Record<string, unknown>, context: ToolContext) => void): () => void {
+    onToolExecutionStart(callback: (toolId: string, toolUseId: string, args: Record<string, unknown>, context: ToolContext) => void): () => void {
       startCallbacks.push(callback);
       
       // Return unsubscribe function
@@ -165,14 +165,14 @@ export const createToolRegistry = (): ToolRegistry => {
      * @param context - The execution context
      * @returns The result of the tool execution
      */
-    async executeToolWithCallbacks(toolId: string, args: Record<string, unknown>, context: ToolContext): Promise<unknown> {
+    async executeToolWithCallbacks(toolId: string, toolUseId: string, args: Record<string, unknown>, context: ToolContext): Promise<unknown> {
       const tool = tools.get(toolId);
       if (!tool) {
         throw new Error(`Tool ${toolId} not found`);
       }
       
       // Notify start callbacks
-      startCallbacks.forEach(callback => callback(toolId, args, context));
+      startCallbacks.forEach(callback => callback(toolId, toolUseId, args, context));
       
       const startTime = Date.now();
       try {

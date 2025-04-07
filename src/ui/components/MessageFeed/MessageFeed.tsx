@@ -100,10 +100,52 @@ export function MessageFeed({
     // Keep track of tool executions we've rendered
     const renderedToolExecutions = new Set<string>();
     
-    // First pass to collect all tool executions
+    // First pass to collect all tool executions and establish parent-child relationships
+    console.log("=== TOOL EXECUTION COLLECTION AND RELATIONSHIP PHASE ===");
+    
+    // Create a set of all tool execution IDs in the timeline
+    const allToolExecutionIds = new Set<string>();
+    
+    // Map of tool execution IDs to their parent message IDs
+    const toolToParentMap = new Map<string, string>();
+    
+    // First identify all tool executions
     timeline.forEach(item => {
       if (item.type === TimelineItemType.TOOL_EXECUTION) {
         renderedToolExecutions.add(item.id);
+        allToolExecutionIds.add(item.id);
+        console.log(`Found tool execution in timeline: ${item.id}`);
+        
+        // Store parent message ID if available
+        if (item.parentMessageId) {
+          toolToParentMap.set(item.id, item.parentMessageId);
+        }
+      }
+    });
+
+    // Then look at messages to see if they reference tool executions
+    // and establish parent-child relationships
+    console.log("=== MESSAGE TOOL CALLS VERIFICATION ===");
+    timeline.forEach(item => {
+      if (item.type === TimelineItemType.MESSAGE && item.message.toolCalls?.length) {
+        console.log(`Message ${item.id} has tool calls:`, {
+          role: item.message.role,
+          toolCallCount: item.message.toolCalls.length,
+          toolCalls: item.message.toolCalls.map(call => ({
+            executionId: call.executionId,
+            toolName: call.toolName,
+            existsInTimeline: allToolExecutionIds.has(call.executionId),
+            addedToRenderedSet: renderedToolExecutions.has(call.executionId)
+          }))
+        });
+        
+        // Establish parent-child relationships for all tool calls
+        item.message.toolCalls.forEach(call => {
+          if (allToolExecutionIds.has(call.executionId)) {
+            // Store the parent-child relationship
+            toolToParentMap.set(call.executionId, item.id);
+          }
+        });
       }
     });
     
@@ -111,13 +153,45 @@ export function MessageFeed({
     return timeline.map(item => {
       if (item.type === TimelineItemType.MESSAGE) {
         // Check if this message only contains tool calls and those tools are rendered separately
-        const hasSeparateToolVisualizations = item.message.toolCalls?.length && 
-          item.message.toolCalls.every(call => renderedToolExecutions.has(call.executionId));
+        console.log(`=== MESSAGE RENDER DECISION FOR ${item.id} ===`);
         
-        // Skip rendering the message if it only contains tool calls that are rendered separately
-        if (hasSeparateToolVisualizations && item.message.toolCalls?.length) {
-          console.log(`Skipping empty tool call message ${item.id} with tools: ${item.message.toolCalls.map(t => t.executionId).join(', ')}`);
-          return null;
+        // First determine if the message has tool calls
+        const hasToolCalls = item.message.toolCalls && item.message.toolCalls.length > 0;
+        
+        // If there are no tool calls, or the message has actual content, we should always render it
+        const hasContent = Array.isArray(item.message.content) && item.message.content.length > 0;
+        
+        console.log(`Message ${item.id} rendering check:`, {
+          role: item.message.role,
+          hasToolCalls,
+          hasContent,
+          toolCallsCount: hasToolCalls ? item.message.toolCalls.length : 0,
+          contentCount: hasContent ? item.message.content.length : 0
+        });
+        
+        // If the message has content, we should always render it regardless of tools
+        if (hasContent) {
+          console.log(`Message ${item.id} has content, RENDERING`);
+        }
+        // If there are no tool calls, we should render it (unless it has no content)
+        else if (!hasToolCalls) {
+          console.log(`Message ${item.id} has no tool calls, RENDERING (empty message)`);
+        }
+        // If we get here, message has tool calls but no content
+        // Check if ALL tool calls have corresponding tool executions that will be rendered
+        else {
+          const allToolsRendered = item.message.toolCalls.every(call => {
+            const toolInRenderedSet = renderedToolExecutions.has(call.executionId);
+            console.log(`Tool call ${call.executionId} in message ${item.id}: in rendered set = ${toolInRenderedSet}`);
+            return toolInRenderedSet;
+          });
+          
+          if (allToolsRendered) {
+            console.log(`Message ${item.id} SKIPPED - all tools rendered separately`);
+            return null;
+          } else {
+            console.log(`Message ${item.id} RENDERED - some tools not found in timeline`);
+          }
         }
         
         // Convert the stored message to the format expected by Message component
@@ -178,6 +252,22 @@ export function MessageFeed({
           toolExecutionProps: Object.keys(item.toolExecution)
         });
         
+        // Log the tool execution being rendered
+        console.log(`=== RENDERING TOOL EXECUTION ${item.id} ===`);
+        
+        // Check if any message references this tool execution
+        const referencingMessages = timeline
+          .filter(t => t.type === TimelineItemType.MESSAGE)
+          .filter(t => t.message.toolCalls?.some(call => call.executionId === item.id));
+          
+        console.log(`Tool execution ${item.id} is referenced by ${referencingMessages.length} messages:`, 
+          referencingMessages.map(m => ({
+            messageId: m.id,
+            role: m.message.role,
+            toolCalls: m.message.toolCalls?.map(call => call.executionId).join(', ')
+          }))
+        );
+        
         // Convert the stored tool execution to the format expected by ToolVisualization
         const toolExecution = {
           id: item.id,
@@ -209,11 +299,20 @@ export function MessageFeed({
           viewMode: defaultViewMode
         };
 
+        // Check if this tool has a parent message for proper positioning
+        const parentMessageId = toolToParentMap.get(item.id);
+        
+        // Assign CSS class based on parent message relationship
+        const toolClasses = parentMessageId
+          ? "w-4/5 self-start mt-2 mb-2 ml-8" // Indent for tools with parent message
+          : "w-4/5 self-start mt-2 mb-2 ml-2"; // Default positioning
+
         return (
           <div
             key={`tool-${item.id}`}
-            className="w-4/5 self-start mt-2 mb-2 ml-2"
+            className={toolClasses}
             data-testid={`tool-${toolExecution.id}`}
+            data-parent-message={parentMessageId || "none"}
             role="listitem"
             aria-label={`Tool execution: ${toolExecution.toolName || toolExecution.id}`}
           >

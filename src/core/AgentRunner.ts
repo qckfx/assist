@@ -366,6 +366,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               try {
                 result = await toolRegistry.executeToolWithCallbacks(
                   toolCall.toolId, 
+                  toolCall.toolUseId,
                   toolCall.args as Record<string, unknown>, 
                   context
                 );
