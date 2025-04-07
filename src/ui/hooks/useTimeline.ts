@@ -546,7 +546,20 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
         return 1; // Sequenced messages come first
       }
       
-      // Case 3: Neither has a sequence number, fall back to timestamp ordering
+      // Case 3: Check for parent/child relationship between tool execution and messages
+      if (a.type === TimelineItemType.TOOL_EXECUTION && 
+          b.type === TimelineItemType.MESSAGE && 
+          (a as any).parentMessageId === b.id) {
+        return 1; // Tool execution should come after its parent message
+      }
+      
+      if (a.type === TimelineItemType.MESSAGE && 
+          b.type === TimelineItemType.TOOL_EXECUTION && 
+          a.id === (b as any).parentMessageId) {
+        return -1; // Parent message should come before its tool execution
+      }
+      
+      // Case 4: Neither has a sequence number, fall back to timestamp ordering
       const dateA = new Date(a.timestamp).getTime();
       const dateB = new Date(b.timestamp).getTime();
       
@@ -554,7 +567,7 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
         return dateA - dateB;
       }
       
-      // Case 4: Same timestamp, prioritize by type
+      // Case 5: Same timestamp, prioritize by type
       if (a.type !== b.type) {
         // Messages come before other item types
         if (a.type === TimelineItemType.MESSAGE) return -1;

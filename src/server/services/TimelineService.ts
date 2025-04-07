@@ -1123,7 +1123,21 @@ export class TimelineService extends EventEmitter {
         return 1; // Items with sequence come first
       }
       
-      // Case 3: Neither has a sequence number, use timestamp ordering
+      // Case 3: Check for parent/child relationship between tool execution and message
+      // This ensures tool executions appear after their parent message
+      if (a.type === TimelineItemType.TOOL_EXECUTION && 
+          b.type === TimelineItemType.MESSAGE && 
+          (a as ToolExecutionTimelineItem).parentMessageId === b.id) {
+        return 1; // Tool execution should come after its parent message
+      }
+      
+      if (a.type === TimelineItemType.MESSAGE && 
+          b.type === TimelineItemType.TOOL_EXECUTION && 
+          a.id === (b as ToolExecutionTimelineItem).parentMessageId) {
+        return -1; // Parent message should come before its tool execution
+      }
+      
+      // Case 4: Neither has a sequence number, use timestamp ordering
       const dateA = new Date(a.timestamp).getTime();
       const dateB = new Date(b.timestamp).getTime();
       
@@ -1131,7 +1145,7 @@ export class TimelineService extends EventEmitter {
         return dateA - dateB;
       }
       
-      // Case 4: Same timestamp, prioritize by type
+      // Case 5: Same timestamp, prioritize by type
       if (a.type !== b.type) {
         // Messages come before other types
         if (a.type === TimelineItemType.MESSAGE) return -1;
@@ -1142,7 +1156,7 @@ export class TimelineService extends EventEmitter {
         if (b.type === TimelineItemType.TOOL_EXECUTION) return 1;
       }
       
-      // Case 5: Same timestamp and type, use conversation flow logic for messages
+      // Case 6: Same timestamp and type, use conversation flow logic for messages
       if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
         // User messages should come before assistant responses when timestamps match
         if (a.message.role === 'user' && b.message.role === 'assistant') {
@@ -1302,7 +1316,21 @@ export class TimelineService extends EventEmitter {
           return 1; // Items with sequence come first
         }
         
-        // Case 3: Neither has a sequence number, use timestamp ordering
+        // Case 3: Check for parent/child relationship between tool execution and message
+        // This ensures tool executions appear after their parent message
+        if (a.type === TimelineItemType.TOOL_EXECUTION && 
+            b.type === TimelineItemType.MESSAGE && 
+            (a as ToolExecutionTimelineItem).parentMessageId === b.id) {
+          return 1; // Tool execution should come after its parent message
+        }
+        
+        if (a.type === TimelineItemType.MESSAGE && 
+            b.type === TimelineItemType.TOOL_EXECUTION && 
+            a.id === (b as ToolExecutionTimelineItem).parentMessageId) {
+          return -1; // Parent message should come before its tool execution
+        }
+        
+        // Case 4: Neither has a sequence number, use timestamp ordering
         const dateA = new Date(a.timestamp).getTime();
         const dateB = new Date(b.timestamp).getTime();
         
@@ -1310,7 +1338,7 @@ export class TimelineService extends EventEmitter {
           return dateA - dateB;
         }
         
-        // Case 4: Same timestamp, prioritize by type
+        // Case 5: Same timestamp, prioritize by type
         if (a.type !== b.type) {
           // Messages come before other types
           if (a.type === TimelineItemType.MESSAGE) return -1;
@@ -1321,7 +1349,7 @@ export class TimelineService extends EventEmitter {
           if (b.type === TimelineItemType.TOOL_EXECUTION) return 1;
         }
         
-        // Case 5: Same timestamp and type, use conversation flow logic for messages
+        // Case 6: Same timestamp and type, use conversation flow logic for messages
         if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
           // User messages should come before assistant responses when timestamps match
           if (a.message.role === 'user' && b.message.role === 'assistant') {

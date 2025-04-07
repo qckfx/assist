@@ -97,9 +97,29 @@ export function MessageFeed({
       );
     }
 
+    // Keep track of tool executions we've rendered
+    const renderedToolExecutions = new Set<string>();
+    
+    // First pass to collect all tool executions
+    timeline.forEach(item => {
+      if (item.type === TimelineItemType.TOOL_EXECUTION) {
+        renderedToolExecutions.add(item.id);
+      }
+    });
+    
     // Render each timeline item
     return timeline.map(item => {
       if (item.type === TimelineItemType.MESSAGE) {
+        // Check if this message only contains tool calls and those tools are rendered separately
+        const hasSeparateToolVisualizations = item.message.toolCalls?.length && 
+          item.message.toolCalls.every(call => renderedToolExecutions.has(call.executionId));
+        
+        // Skip rendering the message if it only contains tool calls that are rendered separately
+        if (hasSeparateToolVisualizations && item.message.toolCalls?.length) {
+          console.log(`Skipping empty tool call message ${item.id} with tools: ${item.message.toolCalls.map(t => t.executionId).join(', ')}`);
+          return null;
+        }
+        
         // Convert the stored message to the format expected by Message component
         const message = {
           id: item.message.id,
@@ -112,7 +132,9 @@ export function MessageFeed({
         console.log(`Rendering message ${item.id}:`, {
           role: message.type,
           content: message.content,
-          timestamp: new Date(message.timestamp).toISOString()
+          timestamp: new Date(message.timestamp).toISOString(),
+          hasToolCalls: !!item.message.toolCalls?.length,
+          toolCallCount: item.message.toolCalls?.length || 0
         });
 
         return (
