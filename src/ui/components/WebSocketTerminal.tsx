@@ -7,7 +7,9 @@ import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
 import { useTerminal } from '@/context/TerminalContext';
 import { usePermissionKeyboardHandler } from '@/hooks/usePermissionKeyboardHandler';
 import { useAbortShortcuts } from '@/hooks/useAbortShortcuts';
+import { useExecutionEnvironment } from '@/hooks/useExecutionEnvironment';
 import { TimelineProvider } from '@/context/TimelineContext';
+import { getSocketConnectionManager } from '@/utils/websocket';
 
 interface WebSocketTerminalProps {
   className?: string;
@@ -37,6 +39,9 @@ export function WebSocketTerminal({
     isConnected,
     sessionId
   } = useWebSocketTerminal();
+  
+  // Get environment information
+  const { isDocker, isEnvironmentReady, dockerStatus } = useExecutionEnvironment();
   
   // Get both state and the typing indicator state directly from TerminalContext
   const { state, clearMessages } = useTerminal();
@@ -78,32 +83,73 @@ export function WebSocketTerminal({
     // Call the original handleCommand function
     handleCommand(command);
   };
+  
+  // Determine if input should be disabled based on WebSocket connection and environment readiness
+  const isInputDisabled = () => {
+    // If not connected to WebSocket at all, disable input
+    if (!isConnected && hasConnected) {
+      return true;
+    }
+    
+    // For all environments (Docker, local, E2B), only check the environment ready flag
+    // Log the environment ready status for debugging
+    console.log(`WebSocketTerminal: Environment ready check - isEnvironmentReady=${isEnvironmentReady}, connected=${isConnected}, sessionId=${sessionId || 'none'}`);
+    
+    // Only enable input when:
+    // 1. We're connected to WebSocket
+    // 2. We have a valid session ID 
+    // 3. The environment is ready
+    const inputEnabled = isConnected && sessionId && isEnvironmentReady;
+    
+    return !inputEnabled;
+  };
+  
+  // Get a message to show when input is disabled
+  const getDisabledMessage = () => {
+    if (!isConnected) {
+      return "Input disabled: WebSocket disconnected";
+    }
+    
+    if (isDocker) {
+      if (!isEnvironmentReady) {
+        return "Input disabled: Docker container initializing...";
+      }
+    }
+    
+    // Generic message for all other cases
+    return "Input disabled: Environment not ready";
+  };
 
   // Add logging for debugging timeline issues and handle session initialization
   useEffect(() => {
     if (sessionId) {
       console.log(`WebSocketTerminal has sessionId: ${sessionId} - passing to nested TimelineProvider`);
       
-      // When we have a session ID on mount or change, ensure we're correctly connected to it
-      if (window.webSocketService?.isConnected) {
-        // Ensure we're connected to this session and inform components to refresh their data
-        window.webSocketService.emit('SESSION_LOADED', { sessionId });
-        console.log(`Emitted SESSION_LOADED event for ${sessionId} from WebSocketTerminal`);
+      // When we have a session ID on mount or change, inform components to refresh their data
+      try {
+        // Use WebSocketContext directly instead of global property which isn't typed properly
+        const connectionManager = getSocketConnectionManager();
+        const socket = connectionManager.getSocket();
+        if (socket && connectionManager.isConnected()) {
+          socket.emit('SESSION_LOADED', { sessionId });
+          console.log(`Emitted SESSION_LOADED event for ${sessionId} from WebSocketTerminal`);
+        }
+      } catch (error) {
+        console.error('Error emitting SESSION_LOADED event:', error);
       }
     }
   }, [sessionId]);
 
   return (
     <div className="relative w-full max-w-full flex flex-col" style={{ height: "calc(100% - 20px)" }} data-testid="websocket-terminal">
-      {/* Connection indicator now integrated directly in the Terminal title bar */}
-      
       {/* Wrap Terminal in TimelineProvider to ensure it gets the latest sessionId */}
-      <TimelineProvider sessionId={sessionId}>
+      <TimelineProvider sessionId={sessionId || null}>
         <Terminal
           className={className}
           messages={state.messages}
           onCommand={handleCommandWithNotification}
-          inputDisabled={!isConnected && hasConnected}
+          inputDisabled={isInputDisabled()}
+          inputDisabledMessage={getDisabledMessage()}
           fullScreen={fullScreen}
           onClear={clearMessages}
           sessionId={sessionId}
@@ -113,12 +159,6 @@ export function WebSocketTerminal({
           showNewSessionHint={showNewSessionHint}
         />
       </TimelineProvider>
-      
-      {/* Typing indicator is now handled inside the Terminal component */}
-      
-      {/* Permissions are now handled through the ToolVisualization component */}
-      
-      {/* Abort button is now integrated into the Terminal component */}
     </div>
   );
 }

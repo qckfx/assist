@@ -216,11 +216,25 @@ export async function validateSessionIds(req: Request, res: Response, next: Next
     // Log session validation with the SESSION category to make it easy to filter
     serverLogger.debug(`Validating ${sessionIds.length} session IDs`, LogCategory.SESSION);
     
-    // Fast validation using metadata files only
+    // First check in-memory sessions (these are always valid)
     for (const sessionId of sessionIds) {
+      // Try to get the session from memory first (fast)
+      try {
+        sessionManager.getSession(sessionId);
+        // If we get here, the session exists in memory
+        validSessionIds.push(sessionId);
+        serverLogger.debug(`Session ${sessionId} found in memory, marking as valid`, LogCategory.SESSION);
+        continue; // Skip persistence check for this session
+      } catch (error) {
+        // Session not in memory, will check persistence below
+        serverLogger.debug(`Session ${sessionId} not found in memory, checking persistence`, LogCategory.SESSION);
+      }
+      
+      // If not in memory, check persistence
       const metadataExists = await sessionStatePersistence.sessionMetadataExists(sessionId);
       if (metadataExists) {
         validSessionIds.push(sessionId);
+        serverLogger.debug(`Session ${sessionId} found in persistence, marking as valid`, LogCategory.SESSION);
       }
     }
     

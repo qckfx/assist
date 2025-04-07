@@ -33,16 +33,7 @@ function SessionComponent() {
     if (sessionId) {
       console.log('[SessionComponent] Loading session from URL parameter:', sessionId);
       
-      // Check if the user has previously dismissed session prompts today
-      const lastPromptTime = localStorage.getItem('sessionPromptDismissed');
-      const now = new Date().getTime();
-      
-      // Only show prompt if it hasn't been dismissed in the last 24 hours
-      if (!lastPromptTime || (now - parseInt(lastPromptTime)) > 24 * 60 * 60 * 1000) {
-        setShowSessionPrompt(true);
-      }
-      
-      // Verify the session ID is valid
+      // Verify the session ID is valid without showing the prompt
       import('@/services/apiClient').then(({ default: apiClient }) => {
         console.log('[SessionComponent] Validating session ID:', sessionId);
         
@@ -65,14 +56,16 @@ function SessionComponent() {
               
               setIsLoadingSession(false);
             } else {
-              console.error('[SessionComponent] Invalid session ID:', sessionId);
-              // If session doesn't exist, redirect to root to create a new one
-              navigate('/');
+              console.warn('[SessionComponent] Session metadata not found:', sessionId);
+              // Don't redirect - still try to use the session but warn
+              // The session might still be in memory on the server but not yet persisted
+              setIsLoadingSession(false);
             }
           })
           .catch(err => {
             console.error('[SessionComponent] Error validating session:', err);
-            navigate('/');
+            // Don't redirect - still try to use the session
+            setIsLoadingSession(false);
           });
       });
     }
@@ -138,34 +131,7 @@ function SessionComponent() {
           onUserInput={handleUserInput}
         />
         
-        {/* Session prompt overlay */}
-        {showSessionPrompt && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-lg p-6 max-w-md w-full">
-              <h2 className="text-xl font-semibold text-white mb-4">Continue Previous Session?</h2>
-              <p className="text-gray-300 mb-4">
-                You're continuing from a previous conversation. Would you like to:
-              </p>
-              <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3">
-                <button
-                  onClick={handleNewSession}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
-                >
-                  Start New Session
-                </button>
-                <button
-                  onClick={handleContinueSession}
-                  className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md"
-                >
-                  Continue Session
-                </button>
-              </div>
-              <div className="mt-4 text-xs text-gray-500 text-center">
-                Pro tip: Press {navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}+. to start a new session anytime
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Session prompt overlay removed */}
       </div>
     </>
   );
