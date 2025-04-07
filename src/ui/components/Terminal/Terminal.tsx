@@ -31,6 +31,7 @@ export interface TerminalProps {
   messages?: TerminalMessage[];
   onCommand?: (command: string) => void;
   inputDisabled?: boolean;
+  inputDisabledMessage?: string;
   fullScreen?: boolean;
   onClear?: () => void;
   theme?: {
@@ -52,6 +53,7 @@ export function Terminal({
   messages = [],
   onCommand = () => {},
   inputDisabled = false,
+  inputDisabledMessage,
   fullScreen = false,
   onClear = () => {},
   theme,
@@ -598,6 +600,7 @@ export function Terminal({
             ariaLabel="Terminal input"
             ariaLabelledBy={`${ids.input}-label`}
             id={ids.input}
+            placeholder={inputDisabled && inputDisabledMessage ? inputDisabledMessage : "Type a command..."}
           />
         </div>
         <div id={`${ids.input}-label`} className="sr-only">Type a command and press Enter to submit</div>
