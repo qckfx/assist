@@ -14,6 +14,7 @@ export interface FileReadToolArgs {
   maxSize?: number;
   lineOffset?: number;
   lineCount?: number;
+  includeLineNumbers?: boolean;
 }
 
 export interface FileReadToolSuccessResult {
@@ -29,6 +30,7 @@ export interface FileReadToolSuccessResult {
     endLine: number;
     hasMore: boolean;
   };
+  lineNumbers?: boolean; // Indicates if line numbers are included
 }
 
 export interface FileReadToolErrorResult {
@@ -48,7 +50,7 @@ export const createFileReadTool = (): Tool => {
   return createTool({
     id: 'file_read',
     name: 'FileReadTool',
-    description: '- Reads the contents of files in the filesystem\n- Handles text files with various encodings\n- Supports partial file reading with line offset and count\n- Limits file size for performance and safety\n- Use this tool to examine file contents\n- Use LSTool to explore directories before reading specific files\n\nUsage notes:\n- Provide the exact file path to read\n- Files are LIMITED TO 500KB MAX regardless of maxSize parameter\n- Line count is LIMITED TO 1000 LINES MAX regardless of requested lineCount\n- For large files, use lineOffset to read specific portions in multiple calls\n- Returns raw file content as text without line numbers\n- Returns metadata including file size and encoding\n- File content is returned according to the specified encoding',
+    description: '- Reads the contents of files in the filesystem\n- Handles text files with various encodings\n- Supports partial file reading with line offset and count\n- Limits file size for performance and safety\n- Can include line numbers in the output (like cat -n)\n- Use this tool to examine file contents\n- Use LSTool to explore directories before reading specific files\n\nUsage notes:\n- Provide the exact file path to read\n- Files are LIMITED TO 500KB MAX regardless of maxSize parameter\n- Line count is LIMITED TO 1000 LINES MAX regardless of requested lineCount\n- For large files, use lineOffset to read specific portions in multiple calls\n- Returns file content as text with line numbers like cat -n\n- Returns metadata including file size and encoding\n- File content is returned according to the specified encoding',
     requiresPermission: false, // Reading files is generally safe
     category: ToolCategory.READONLY,
     
@@ -117,7 +119,8 @@ export const createFileReadTool = (): Tool => {
       const executionAdapter = context.executionAdapter;
       
       try {
-        return await executionAdapter.readFile(filePath, maxSize, lineOffset, lineCount, encoding);
+        const result = await executionAdapter.readFile(filePath, maxSize, lineOffset, lineCount, encoding);
+        return result;
       } catch (error: unknown) {
         const err = error as Error;
         context.logger?.error(`Error reading file: ${err.message}`);
