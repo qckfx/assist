@@ -504,10 +504,19 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         };
       }
       
-      // Get directory entries
-      const { stdout, stderr, exitCode: lsExitCode } = await this.executeCommand(
-        `ls -1${showHidden ? 'a' : ''} "${containerPath}"`
-      );
+      // Get directory entries with a single command
+      let command: string;
+      
+      if (details) {
+        // Use a more efficient approach to get all details in one command
+        // This uses find with -printf to get all the information we need in one go
+        command = `find "${containerPath}" -maxdepth 1 -mindepth 1 ${showHidden ? '' : '-not -name ".*"'} -printf "%f|%y|%s|%T@|%A@\\n"`;
+      } else {
+        // Simple listing
+        command = `ls -1${showHidden ? 'a' : ''} "${containerPath}"`;
+      }
+      
+      const { stdout, stderr, exitCode: lsExitCode } = await this.executeCommand(command);
       
       if (lsExitCode !== 0) {
         return {
@@ -518,77 +527,66 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       }
       
       // Parse entries
-      const entries = stdout.trim().split('\n')
-        .filter(name => name && name !== '.' && name !== '..');
-      
-      // Build entry objects
       const results: FileEntry[] = [];
       
       if (details) {
-        // Get detailed information for each entry
-        for (const name of entries) {
-          const entryPath = path.join(containerPath, name);
-          const { stdout: typeOutput } = await this.executeCommand(`
-            if [ -d "${entryPath}" ]; then
-              echo "directory"
-            elif [ -f "${entryPath}" ]; then
-              echo "file"
-            elif [ -L "${entryPath}" ]; then
-              echo "symlink"
-            else
-              echo "other"
-            fi
-          `);
+        // Parse the detailed output from find
+        const lines = stdout.trim().split('\n');
+        
+        for (const line of lines) {
+          if (!line) continue;
           
-          const type = typeOutput.trim();
+          const [name, type, size, mtime, ctime] = line.split('|');
           
-          if (type === 'directory') {
-            results.push({
-              name,
-              type,
-              isDirectory: true,
-              isFile: false,
-              isSymbolicLink: false
-            });
-          } else if (type === 'file') {
-            results.push({
-              name,
-              type,
-              isDirectory: false,
-              isFile: true,
-              isSymbolicLink: false
-            });
-          } else if (type === 'symlink') {
-            results.push({
-              name,
-              type,
-              isDirectory: false,
-              isFile: false,
-              isSymbolicLink: true
-            });
-          } else {
-            results.push({
-              name,
-              type,
-              isDirectory: false,
-              isFile: false,
-              isSymbolicLink: false
-            });
-          }
-        }
-      } else {
-        // Simple listing, just get basic type info
-        for (const name of entries) {
-          const entryPath = path.join(containerPath, name);
-          const isDir = await this.executeCommand(`[ -d "${entryPath}" ]`);
-          const isFile = await this.executeCommand(`[ -f "${entryPath}" ]`);
-          const isLink = await this.executeCommand(`[ -L "${entryPath}" ]`);
+          if (!name) continue;
+          
+          // Convert type from find's format to our format
+          const entryType = type === 'd' ? 'directory' : 
+                           type === 'f' ? 'file' : 
+                           type === 'l' ? 'symlink' : 'other';
           
           results.push({
             name,
-            isDirectory: isDir.exitCode === 0,
-            isFile: isFile.exitCode === 0,
-            isSymbolicLink: isLink.exitCode === 0
+            type: entryType,
+            size: parseInt(size, 10),
+            modified: new Date(parseFloat(mtime) * 1000),
+            created: new Date(parseFloat(ctime) * 1000),
+            isDirectory: type === 'd',
+            isFile: type === 'f',
+            isSymbolicLink: type === 'l'
+          });
+        }
+      } else {
+        // Parse simple ls output
+        const entries = stdout.trim().split('\n')
+          .filter(name => name && name !== '.' && name !== '..');
+        
+        // Get basic type info for all entries in one command
+        const typeCommand = entries.map(name => {
+          const entryPath = path.join(containerPath, name);
+          return `[ -d "${entryPath}" ] && echo "${name}|dir" || [ -f "${entryPath}" ] && echo "${name}|file" || [ -L "${entryPath}" ] && echo "${name}|symlink" || echo "${name}|other"`;
+        }).join('; ');
+        
+        const { stdout: typeOutput } = await this.executeCommand(typeCommand);
+        
+        // Parse type information
+        const typeMap = new Map<string, string>();
+        typeOutput.trim().split('\n').forEach(line => {
+          const [name, type] = line.split('|');
+          if (name && type) {
+            typeMap.set(name, type);
+          }
+        });
+        
+        // Build results
+        for (const name of entries) {
+          const type = typeMap.get(name) || 'other';
+          results.push({
+            name,
+            type,
+            isDirectory: type === 'dir',
+            isFile: type === 'file',
+            isSymbolicLink: type === 'symlink'
           });
         }
       }

@@ -271,34 +271,69 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
       let results: FileEntry[];
       
       if (details) {
-        // Get detailed information for each entry
-        results = await Promise.all(
-          filteredEntries.map(async (entry) => {
-            const filePath = path.join(dirPath, entry.name);
-            const handle = await this.sandbox.commands.run(`stat -c "%F,%s,%Y,%Z" ${filePath}`, {
-              background: true
+        // Get detailed information for all entries in a single command
+        // This is much more efficient than making individual stat calls
+        const filePaths = filteredEntries.map(entry => path.join(dirPath, entry.name));
+        
+        // Create a temporary script to get stats for all files at once
+        const scriptContent = `
+          for path in ${filePaths.map(p => `"${p}"`).join(' ')}; do
+            if [ -e "$path" ]; then
+              stat -c "%n|%F|%s|%Y|%Z" "$path"
+            fi
+          done
+        `;
+        
+        const { stdout } = await this.sandbox.commands.run(scriptContent);
+        
+        // Parse the output
+        const statsMap = new Map<string, { type: string, size: number, mtime: number, ctime: number }>();
+        
+        stdout.trim().split('\n').forEach(line => {
+          const [name, type, size, mtime, ctime] = line.split('|');
+          if (name && type) {
+            statsMap.set(name, {
+              type,
+              size: parseInt(size, 10),
+              mtime: parseInt(mtime, 10),
+              ctime: parseInt(ctime, 10)
             });
-            const result = await handle.wait();
-            const stats = result.stdout.trim().split('\n');
-            const [type, size, mtime, ctime] = stats;
+          }
+        });
+        
+        // Build results
+        results = filteredEntries.map(entry => {
+          const stats = statsMap.get(entry.name);
+          
+          if (stats) {
             return {
-              name: entry.name, 
-              type: type,
-              size: parseInt(size),
-              modified: new Date(mtime),
-              created: new Date(ctime),
-              isDirectory: type === 'directory',
-              isFile: type === 'file',
-              isSymbolicLink: type === 'symbolic_link'
+              name: entry.name,
+              type: stats.type,
+              size: stats.size,
+              modified: new Date(stats.mtime * 1000),
+              created: new Date(stats.ctime * 1000),
+              isDirectory: stats.type === 'directory',
+              isFile: stats.type === 'regular file',
+              isSymbolicLink: stats.type === 'symbolic link'
             };
-          })
-        );
+          } else {
+            // Fallback to basic info if stats not available
+            return {
+              name: entry.name,
+              type: entry.type,
+              isDirectory: entry.type === 'dir',
+              isFile: entry.type === 'file',
+              isSymbolicLink: false
+            };
+          }
+        });
       } else {
+        // Simple listing
         results = filteredEntries.map(entry => ({
           name: entry.name,
           type: entry.type,
-          isDirectory: entry.type && entry.type === 'dir' || false,
-          isFile: entry.type && entry.type === 'file' || false,
+          isDirectory: entry.type === 'dir',
+          isFile: entry.type === 'file',
           isSymbolicLink: false // E2B doesn't give a way to check
         }));
       }
