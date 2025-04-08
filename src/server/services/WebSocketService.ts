@@ -234,7 +234,7 @@ export class WebSocketService {
         serverLogger.debug(`Join session request: ${sessionId} from client ${socket.id}`);
         
         try {
-          if (!this.sessionManager.getSession(sessionId)) {
+          if (!this.sessionManager.getAllSessions().some(s => s.id === sessionId)) {
             serverLogger.warn(`Session ${sessionId} not found for client ${socket.id}`);
             socket.emit(WebSocketEvent.ERROR, {
               message: `Session ${sessionId} not found`,
@@ -246,10 +246,19 @@ export class WebSocketService {
           socket.join(sessionId);
           serverLogger.info(`Client ${socket.id} joined session ${sessionId}`);
 
-          // Send current session state
-          const session = this.sessionManager.getSession(sessionId);
-          socket.emit(WebSocketEvent.SESSION_UPDATED, session);
-          serverLogger.debug(`Sent updated session to client ${socket.id}`);
+          try {
+            // Send current session state
+            const session = this.sessionManager.getSession(sessionId);
+            socket.emit(WebSocketEvent.SESSION_UPDATED, session);
+            serverLogger.debug(`Sent updated session to client ${socket.id}`);
+          } catch (error) {
+            // Session might not be available, send error
+            serverLogger.error(`Error getting session ${sessionId}:`, error);
+            socket.emit(WebSocketEvent.ERROR, {
+              message: `Error getting session: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            return;
+          }
           
           // Send init event with execution environment info
           this.sendInitEvent(socket);
@@ -710,16 +719,70 @@ export class WebSocketService {
         return;
       }
       
+      // Get the execution adapter type, defaulting to 'docker' if not specified
+      const executionEnvironment = session.state.executionAdapterType || 
+                               session.executionAdapterType || 
+                               'docker';
+      
       // Include execution adapter type and sandbox ID in init event
       socket.emit('init', {
         sessionId,
-        executionEnvironment: session.state.executionAdapterType || 'docker',
+        executionEnvironment: executionEnvironment,
         e2bSandboxId: session.state.e2bSandboxId
       });
+      
+      // For Docker sessions, initialize the container
+      if (executionEnvironment === 'docker') {
+        serverLogger.info(`Initializing Docker container for session ${sessionId}`, 'system');
+        
+        // First emit event that Docker is initializing so the UI shows the correct status
+        this.io.to(sessionId).emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
+          sessionId,
+          environmentType: 'docker',
+          status: 'initializing',
+          isReady: false
+        });
+        
+        // Always try to create/initialize the Docker container for the session
+        // This is safe because createExecutionAdapterForSession will reuse an existing container if it exists
+        this.agentService.createExecutionAdapterForSession(sessionId, { type: 'docker' })
+          .then(() => {
+            // On success, emit environment ready status to all clients in the session
+            serverLogger.info(`Docker container ready for session ${sessionId}`, 'system');
+            
+            this.io.to(sessionId).emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
+              sessionId,
+              environmentType: 'docker',
+              status: 'connected',
+              isReady: true
+            });
+          })
+          .catch((error: unknown) => {
+            // On error, emit error status to all clients in the session
+            serverLogger.error(`Failed to initialize Docker container for session ${sessionId}:`, error);
+            
+            this.io.to(sessionId).emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
+              sessionId,
+              environmentType: 'docker',
+              status: 'error',
+              error: error instanceof Error ? error.message : String(error),
+              isReady: false
+            });
+          });
+      } else {
+        // For non-Docker environments, emit ready immediately
+        socket.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
+          sessionId,
+          environmentType: executionEnvironment,
+          status: 'connected',
+          isReady: true
+        });
+      }
     } catch (error) {
       serverLogger.error(`Error sending init event: ${(error as Error).message}`, error);
     }
   }
+  
   
   // Note: Direct emission of status events removed.
   // Environment status is now emitted directly by the execution adapters via AgentEvents

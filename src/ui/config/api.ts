@@ -31,8 +31,8 @@ export const API_ENDPOINTS = {
 // API request timeout in milliseconds
 export const API_TIMEOUT = 30000;
 
-// WebSocket configuration - optimized settings
-export const SOCKET_RECONNECTION_ATTEMPTS = 5; // Reduced to avoid connection spam
-export const SOCKET_RECONNECTION_DELAY = 500; // Faster initial reconnect
-export const SOCKET_RECONNECTION_DELAY_MAX = 5000; // Reduced max delay
-export const SOCKET_TIMEOUT = 20000; // Reduced timeout to fail faster
+// WebSocket configuration - improved settings for Docker environments
+export const SOCKET_RECONNECTION_ATTEMPTS = 10; // Increased for Docker container start time
+export const SOCKET_RECONNECTION_DELAY = 500; // Fast initial reconnect
+export const SOCKET_RECONNECTION_DELAY_MAX = 3000; // Shorter max delay for more frequent attempts
+export const SOCKET_TIMEOUT = 30000; // Allow more time for Docker initialization

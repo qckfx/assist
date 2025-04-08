@@ -25,6 +25,7 @@ import { SessionManager } from '../SessionManagement';
 import apiClient from '@/services/apiClient';
 // Import timeline types
 import { TimelineItemType } from '../../../types/timeline';
+import { ConnectionStatus } from '@/types/api';
 
 export interface TerminalProps {
   className?: string;
@@ -595,12 +596,20 @@ export function Terminal({
           <InputField 
             ref={inputRef}
             onSubmit={handleCommand} 
-            disabled={inputDisabled || terminalContext.state.isProcessing} 
+            disabled={
+              // Only disable if processing, not merely from WebSocket disconnection
+              terminalContext.state.isProcessing || 
+              (inputDisabled && !inputDisabledMessage?.includes('websocket'))
+            } 
             className="terminal-input"
             ariaLabel="Terminal input"
             ariaLabelledBy={`${ids.input}-label`}
             id={ids.input}
-            placeholder={inputDisabled && inputDisabledMessage ? inputDisabledMessage : "Type a command..."}
+            placeholder={
+              (!wsTerminalContext.isConnected && wsTerminalContext.connectionStatus !== ConnectionStatus.CONNECTING) 
+                ? "Reconnecting to session... (type to reconnect)" 
+                : (inputDisabled && inputDisabledMessage ? inputDisabledMessage : "Type a command...")
+            }
           />
         </div>
         <div id={`${ids.input}-label`} className="sr-only">Type a command and press Enter to submit</div>
