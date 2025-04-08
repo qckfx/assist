@@ -60,6 +60,9 @@ fi
 # Check if container already exists and is running
 if docker ps -q --filter "name=$CONTAINER_NAME" | grep -q .; then
   echo "Container $CONTAINER_NAME is already running."
+  
+  # Configure git to trust workspace directory in case container was created before this fix
+  docker exec $CONTAINER_NAME git config --global --add safe.directory /workspace
   exit 0
 fi
 
@@ -67,6 +70,9 @@ fi
 if docker ps -aq --filter "name=$CONTAINER_NAME" | grep -q .; then
   echo "Starting existing container $CONTAINER_NAME..."
   docker start $CONTAINER_NAME
+  
+  # Configure git to trust workspace directory in case container was created before this fix
+  docker exec $CONTAINER_NAME git config --global --add safe.directory /workspace
   exit 0
 fi
 
