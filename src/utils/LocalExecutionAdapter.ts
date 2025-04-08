@@ -197,7 +197,16 @@ export class LocalExecutionAdapter implements ExecutionAdapter {
     }
     
     // Read the file
-    let content = (await readFileAsync(resolvedPath, encoding as BufferEncoding)).toString();
+    let content = '';
+    if (lineOffset > 0 || lineCount !== undefined) {
+      // Use head and tail with nl for pagination, starting line numbers from lineOffset+1
+      const { stdout } = await execAsync(`head -n ${lineOffset + (lineCount || 0)} "${resolvedPath}" | tail -n ${lineCount || '+0'} | nl -v ${lineOffset + 1}`);
+      content = stdout;
+    } else {
+      // Use nl for the whole file
+      const { stdout } = await execAsync(`nl "${resolvedPath}"`);
+      content = stdout;
+    }
     
     // Handle line pagination if requested
     if (lineOffset > 0 || lineCount !== undefined) {

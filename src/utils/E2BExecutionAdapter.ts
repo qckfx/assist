@@ -124,7 +124,17 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
           error: `File does not exist: ${filepath}`
         } as FileReadToolErrorResult;
       }
-      let fileContent = await this.sandbox.files.read(filepath);
+      let fileContent = '';
+      if (lineOffset > 0 || lineCount !== undefined) {
+        // Use head and tail with nl for pagination, starting line numbers from lineOffset+1
+        const { stdout } = await this.sandbox.commands.run(`head -n ${lineOffset + (lineCount || 0)} "${filepath}" | tail -n ${lineCount || '+0'} | nl -v ${lineOffset + 1}`);
+        fileContent = stdout;
+      } else {
+        // Use nl for the whole file
+        const { stdout } = await this.sandbox.commands.run(`nl "${filepath}"`);
+        fileContent = stdout;
+      }
+      
       // Handle line pagination if requested
       if (lineOffset > 0 || lineCount !== undefined) {
         const lines = fileContent.split('\n');

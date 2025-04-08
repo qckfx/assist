@@ -255,9 +255,9 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       }
       
       // Read file content
-      let command = `cat "${containerPath}"`;
+      let command = `nl "${containerPath}"`;
       if (lineOffset > 0 || lineCount !== undefined) {
-        command = `head -n ${lineOffset + (lineCount || 0)} "${containerPath}" | tail -n ${lineCount || '+0'}`;
+        command = `head -n ${lineOffset + (lineCount || 0)} "${containerPath}" | tail -n ${lineCount || '+0'} | nl -v ${lineOffset + 1}`;
       }
       
       const { stdout: content, stderr, exitCode } = await this.executeCommand(command);
