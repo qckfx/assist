@@ -341,8 +341,56 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       // Create directory if it doesn't exist
       await this.executeCommand(`mkdir -p "$(dirname "${containerPath}")"`);
       
-      // Write content to file using a heredoc to handle multi-line content
-      await this.executeCommand(`cat > "${containerPath}" << 'EOF_QCKFX'\n${content}\nEOF_QCKFX`);
+      // The issue appears to be with the heredoc approach truncating content
+      // Use a more robust two-step approach: write to temp file then copy it
+      
+      // Generate a temporary file name
+      const tempFileName = `temp_file_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const tempFilePath = `/tmp/${tempFileName}`;
+      
+      // Write content to temporary file (split into chunks if necessary to avoid command length issues)
+      const maxChunkSize = 1024 * 512; // 512KB chunks
+      
+      if (content.length > maxChunkSize) {
+        // For large files, write in chunks
+        await this.executeCommand(`touch "${tempFilePath}"`); // Create empty file
+        
+        // Write content in chunks
+        for (let i = 0; i < content.length; i += maxChunkSize) {
+          const chunk = content.substring(i, i + maxChunkSize);
+          // Append chunk to temp file
+          await this.executeCommand(`cat >> "${tempFilePath}" << 'CHUNK_EOF'\n${chunk}\nCHUNK_EOF`);
+        }
+      } else {
+        // For smaller files, write in one go
+        await this.executeCommand(`cat > "${tempFilePath}" << 'EOF_QCKFX'\n${content}\nEOF_QCKFX`);
+      }
+      
+      // Verify temp file was written correctly
+      const { stdout: verifySize } = await this.executeCommand(`stat -c %s "${tempFilePath}"`);
+      const tempFileSize = parseInt(verifySize.trim(), 10);
+      
+      if (isNaN(tempFileSize) || tempFileSize === 0) {
+        throw new Error(`Failed to write temporary file: file size verification failed (size: ${tempFileSize})`);
+      }
+      
+      // Move temp file to destination
+      await this.executeCommand(`cp "${tempFilePath}" "${containerPath}" && rm "${tempFilePath}"`);
+      
+      // Verify destination file was written correctly
+      const { stdout: finalSize } = await this.executeCommand(`stat -c %s "${containerPath}"`);
+      const finalFileSize = parseInt(finalSize.trim(), 10);
+      
+      if (isNaN(finalFileSize) || finalFileSize === 0) {
+        throw new Error(`Failed to write file: file size verification failed (size: ${finalFileSize})`);
+      }
+      
+      // Log success with file sizes for debugging
+      this.logger?.debug(`File write successful: ${filepath}`, 'tools', {
+        contentLength: content.length,
+        tempFileSize,
+        finalFileSize
+      });
     } catch (error) {
       throw new Error(`Failed to write file: ${(error as Error).message}`);
     }
@@ -350,6 +398,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
 
   /**
    * Edit a file by replacing content
+   * Uses a binary-safe approach to handle files with special characters
    */
   async editFile(filepath: string, searchCode: string, replaceCode: string, encoding?: string): Promise<FileEditToolSuccessResult | FileEditToolErrorResult> {
     if (!encoding) {
@@ -376,23 +425,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         };
       }
       
-      // Read the file content directly without line numbers
-      const containerPath = this.toContainerPath(filepath, containerInfo);
-      const { stdout: rawFileContent, stderr, exitCode } = await this.executeCommand(`cat "${containerPath}"`);
-      
-      if (exitCode !== 0) {
-        // Format path for display
-        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
-        
-        return {
-          success: false as const,
-          path: filepath,
-          displayPath,
-          error: stderr || `Failed to read file: ${displayPath}`
-        };
-      }
-      
-      // For the UI display, we want to read with line numbers
+      // For the UI display, we want to read with line numbers (for the UI only)
       const fileResult = await this.readFile(filepath);
       if (!fileResult.success) {
         return {
@@ -406,38 +439,178 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       // The numbered content is for display purposes only
       const displayContent = fileResult.content;
       
-      // Count occurrences of the search code in the raw content (without line numbers)
-      const occurrences = rawFileContent.split(searchCode).length - 1;
+      // Binary-safe approach using temporary files to avoid escaping issues
+      // Create a unique identifier for this operation to avoid conflicts
+      const opId = `edit_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+      const containerPath = this.toContainerPath(filepath, containerInfo);
+      const tempDir = `/tmp/${opId}`;
+      const searchFile = `${tempDir}/search`;
+      const replaceFile = `${tempDir}/replace`;
+      const originalFile = `${tempDir}/original`;
+      const newFile = `${tempDir}/new`;
       
-      if (occurrences === 0) {
-        // Format path for display
-        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+      try {
+        // Create temporary directory
+        await this.executeCommand(`mkdir -p "${tempDir}"`);
         
-        return {
-          success: false as const,
-          path: filepath,
-          displayPath,
-          error: `Search code not found in file: ${displayPath}`
-        };
+        // Normalize line endings consistently (only this normalization)
+        const normalizedSearchCode = searchCode.replace(/\r\n/g, '\n');
+        const normalizedReplaceCode = replaceCode.replace(/\r\n/g, '\n');
+        
+        // Write search and replace content to temporary files using base64 to preserve all characters
+        await this.executeCommand(`echo '${Buffer.from(normalizedSearchCode).toString('base64')}' | base64 -d > "${searchFile}"`);
+        await this.executeCommand(`echo '${Buffer.from(normalizedReplaceCode).toString('base64')}' | base64 -d > "${replaceFile}"`);
+        
+        // Make a copy of the original file for processing
+        await this.executeCommand(`cp "${containerPath}" "${originalFile}"`);
+        
+        // Fix line endings in original file if needed (normalize to Unix)
+        await this.executeCommand(`tr -d '\\r' < "${originalFile}" > "${originalFile}.unix" && mv "${originalFile}.unix" "${originalFile}"`);
+        
+        // Use the pre-installed binary-replace.sh script
+        // This avoids creating a script on the fly and is more reliable
+        this.logger?.debug(`Running binary-replace.sh to edit file: ${originalFile}`, LogCategory.TOOLS);
+        
+        // Verify the binary-replace.sh script exists
+        const { exitCode: scriptExists } = await this.executeCommand(`which binary-replace.sh`);
+        if (scriptExists !== 0) {
+          throw new Error("The binary-replace.sh script is not available in the container");
+        }
+        
+        // Execute the pre-installed binary replacement script with debug output
+        this.logger?.debug(`Executing: binary-replace.sh "${originalFile}" "${searchFile}" "${replaceFile}" "${newFile}"`, LogCategory.TOOLS);
+        
+        // Run with additional logging and error handling
+        let scriptOutput = '';
+        let scriptError = '';
+        let scriptExitCode = 1; // Default to error
+        
+        try {
+          // Check that all files exist before running the script
+          const { exitCode: origExists } = await this.executeCommand(`[ -f "${originalFile}" ]`);
+          const { exitCode: searchExists } = await this.executeCommand(`[ -f "${searchFile}" ]`);
+          const { exitCode: replaceExists } = await this.executeCommand(`[ -f "${replaceFile}" ]`);
+          
+          if (origExists !== 0 || searchExists !== 0 || replaceExists !== 0) {
+            console.log(`[DEBUG] File existence check failed: original=${origExists === 0}, search=${searchExists === 0}, replace=${replaceExists === 0}`);
+            throw new Error("One or more required files do not exist");
+          }
+          
+          // Explicitly check write permissions to container path 
+          const { exitCode: writeCheck, stderr: writeCheckErr } = await this.executeCommand(`touch "${containerPath}.writecheck" && rm "${containerPath}.writecheck"`);
+          
+          if (writeCheck !== 0) {
+            console.log(`[DEBUG] Write permission check failed for ${containerPath}: ${writeCheckErr}`);
+            throw new Error(`No write permission for file: ${containerPath}`);
+          }
+          
+          // Run the script with full error output
+          const result = await this.executeCommand(
+            `binary-replace.sh "${originalFile}" "${searchFile}" "${replaceFile}" "${newFile}" 2>&1`
+          );
+          
+          scriptOutput = result.stdout;
+          scriptError = result.stderr;
+          scriptExitCode = result.exitCode;
+          
+          // Extended logging
+          console.log(`[DEBUG] Binary replacement script exit code: ${scriptExitCode}`);
+          console.log(`[DEBUG] Binary replacement script output: ${scriptOutput}`);
+          
+          if (scriptError) {
+            console.log(`[DEBUG] Binary replacement script error: ${scriptError}`);
+          }
+          
+          // Verify the output file exists after script execution
+          const { exitCode: outputExists, stdout: outputExistsOut } = await this.executeCommand(`[ -f "${newFile}" ] && echo "Output file exists" || echo "Output file missing"`);
+          console.log(`[DEBUG] Output file check: ${outputExistsOut} (exit code: ${outputExists})`);
+        } catch (execError) {
+          console.error(`[ERROR] Failed to execute binary-replace.sh: ${(execError as Error).message}`);
+          // We'll set error message but continue to handle it in the next section
+          scriptError = (execError as Error).message;
+        }
+        
+        // Check script exit code
+        // Handle script exit codes based on our binary-replace.sh script
+        if (scriptExitCode === 2) {
+          // Pattern not found (now exit code 2 in our script)
+          await this.executeCommand(`rm -rf "${tempDir}"`);
+          
+          const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+          return {
+            success: false as const,
+            path: filepath,
+            displayPath,
+            error: `Search pattern not found in file: ${displayPath}`
+          };
+        }
+        
+        if (scriptExitCode === 3) {
+          // Multiple occurrences found (now exit code 3 in our script)
+          await this.executeCommand(`rm -rf "${tempDir}"`);
+          
+          const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+          return {
+            success: false as const,
+            path: filepath,
+            displayPath,
+            error: `Found multiple instances of the search pattern. Please provide a more specific search pattern that matches exactly once.`
+          };
+        }
+        
+        if (scriptExitCode !== 0) {
+          // Other error
+          await this.executeCommand(`rm -rf "${tempDir}"`);
+          
+          const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+          return {
+            success: false as const,
+            path: filepath,
+            displayPath,
+            error: `Error during binary replacement: ${scriptError || scriptOutput || "Unknown error"}`
+          };
+        }
+        
+        // Verify the file was created and has content
+        const { exitCode: newFileExists } = await this.executeCommand(`[ -f "${newFile}" ] && [ -s "${newFile}" ]`);
+        if (newFileExists !== 0) {
+          console.log(`[DEBUG] Binary replacement failed - new file not created or empty`);
+          
+          // Clean up temporary files
+          await this.executeCommand(`rm -rf "${tempDir}"`);
+          
+          return {
+            success: false as const,
+            path: filepath,
+            displayPath: this.formatPathForDisplay(filepath, containerInfo),
+            error: `Failed to create edited file - binary replacement produced no output`
+          };
+        }
+        
+        // Copy the new file back to the original location
+        await this.executeCommand(`cp "${newFile}" "${containerPath}"`);
+        
+        // Clean up temporary files
+        await this.executeCommand(`rm -rf "${tempDir}"`);
+      } catch (processingError) {
+        // Clean up temporary files on error
+        await this.executeCommand(`rm -rf "${tempDir}"`).catch(() => {
+          // Ignore cleanup errors
+        });
+        
+        throw processingError;
       }
       
-      if (occurrences > 1) {
-        // Format path for display
-        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
-        
-        return {
-          success: false as const,
-          path: filepath,
-          displayPath,
-          error: `Found ${occurrences} instances of the search code. Please provide a more specific search code that matches exactly once.`
-        };
+      // For display purposes, we need to re-read the file with line numbers
+      // to show the correct result with the line numbers intact
+      const newFileResult = await this.readFile(filepath);
+      
+      // Log results of re-reading the file
+      if (newFileResult.success) {
+        console.log(`[DEBUG] Re-read file after binary-safe edit - ${newFileResult.content.length} characters`);
+      } else {
+        console.log(`[DEBUG] Failed to re-read file after binary-safe edit: ${newFileResult.error}`);
       }
-      
-      // Replace the code in the raw content (only one match at this point)
-      const newContent = rawFileContent.replace(searchCode, replaceCode);
-      
-      // Write the new content
-      await this.writeFile(filepath, newContent);
       
       // Format path for display
       const displayPath = this.formatPathForDisplay(filepath, containerInfo);
@@ -446,8 +619,8 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         success: true as const,
         path: filepath,
         displayPath,
-        originalContent: displayContent, // Return numbered content for display
-        newContent: displayContent.replace(searchCode, replaceCode) // Apply the same replacement to numbered content for display
+        originalContent: displayContent, // Original numbered content for display
+        newContent: newFileResult.success ? newFileResult.content : "Content updated but unavailable for display" // Show the new content with line numbers
       };
     } catch (error) {
       return {

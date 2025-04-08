@@ -217,9 +217,13 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
       }
       const fileContent = await this.sandbox.files.read(filepath);
 
-      // Count occurrences of the search code
-      // Using string split approach instead of regex for exact matching
-      const occurrences = fileContent.split(searchCode).length - 1;
+      // Normalize line endings to ensure consistent handling
+      const normalizedContent = fileContent.replace(/\r\n/g, '\n');
+      const normalizedSearchCode = searchCode.replace(/\r\n/g, '\n');
+      const normalizedReplaceCode = replaceCode.replace(/\r\n/g, '\n');
+
+      // Count occurrences of the search code in the normalized content
+      const occurrences = normalizedContent.split(normalizedSearchCode).length - 1;
     
       if (occurrences === 0) {
         return {
@@ -237,8 +241,25 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
         } as FileEditToolErrorResult;
       }
     
-      // Replace the code (only one match at this point)
-      const newContent = fileContent.replace(searchCode, replaceCode);
+      // Use a more robust replacement approach
+      // First, find the exact position of the search code
+      const searchIndex = normalizedContent.indexOf(normalizedSearchCode);
+      
+      if (searchIndex === -1) {
+        // This should not happen since we already checked occurrences
+        return {
+          success: false as const,
+          path: filepath,
+          error: `Internal error: Search code not found despite occurrence check`
+        } as FileEditToolErrorResult;
+      }
+      
+      // Extract the parts before and after the search code
+      const prefixContent = normalizedContent.substring(0, searchIndex);
+      const suffixContent = normalizedContent.substring(searchIndex + normalizedSearchCode.length);
+      
+      // Construct the new content by joining the parts with the replacement in between
+      const newContent = prefixContent + normalizedReplaceCode + suffixContent;
     
       await this.sandbox.files.write(filepath, newContent);
       return {
