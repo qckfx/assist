@@ -3,6 +3,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { AgentService, AgentServiceEvent, getAgentService } from './AgentService';
 import { SessionManager, sessionManager, Session } from './SessionManager';
 import { serverLogger } from '../logger';
+import { LogCategory } from '../../types/logger';
 import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from '../../utils/sessionUtils';
 import { 
   ToolPreviewData, 
@@ -247,6 +248,7 @@ export class WebSocketService {
               return;
             }
             
+            
             // Convert SavedSessionData to Session
             const session: Session = {
               id: sessionData.id,
@@ -256,6 +258,13 @@ export class WebSocketService {
               isProcessing: false,
               executionAdapterType: sessionData.sessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' | undefined
             };
+            
+            // Log conversation history status
+            const historyLength = session.state.conversationHistory?.length || 0;
+            serverLogger.debug(
+              `Session ${sessionId} restored with ${historyLength} conversation history messages`,
+              LogCategory.SESSION
+            );
 
             // Add the session to the session manager
             this.sessionManager.addSession(session);

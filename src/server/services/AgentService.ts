@@ -38,6 +38,7 @@ import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
 import { serverLogger } from '../logger';
+import { LogCategory } from '../../types/logger';
 import { setSessionAborted, generateExecutionId } from '../../utils/sessionUtils';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { ExecutionAdapter } from '../../types/tool';
@@ -854,11 +855,17 @@ export class AgentService extends EventEmitter {
       await this.toolExecutionManager.saveSessionData(sessionId);
       await this.previewManager.saveSessionData(sessionId);
       
-      // Save message history
+      // Save UI message history
       await this.saveSessionMessages(sessionId);
       
       // Save repository information if available
       await this.saveRepositoryInfo(sessionId);
+      
+      // Get current session
+      const session = sessionManager.getSession(sessionId);
+      
+      // Save the complete session state with agent conversation history to persistence
+      await this.saveAgentSessionState(sessionId, session.state);
       
       // Save session metadata
       await this.saveSessionMetadata(sessionId);
@@ -872,6 +879,55 @@ export class AgentService extends EventEmitter {
       serverLogger.info(`Saved complete session state for session ${sessionId}`);
     } catch (error) {
       serverLogger.error(`Failed to save session state for session ${sessionId}:`, error);
+    }
+  }
+  
+  /**
+   * Save complete agent session state including conversation history
+   */
+  private async saveAgentSessionState(
+    sessionId: string, 
+    sessionState: { conversationHistory: Anthropic.Messages.MessageParam[] }
+  ): Promise<void> {
+    try {
+      // Get persistence service
+      const persistence = getSessionStatePersistence();
+      
+      // Get saved session data or create new if it doesn't exist
+      let sessionData = await persistence.getSessionDataWithoutEvents(sessionId);
+      if (!sessionData) {
+        // Create basic session data structure
+        const session = sessionManager.getSession(sessionId);
+        sessionData = {
+          id: sessionId,
+          name: `Session ${sessionId}`,
+          createdAt: session.createdAt.toISOString(),
+          updatedAt: new Date().toISOString(),
+          messages: [],
+          toolExecutions: [],
+          permissionRequests: [],
+          previews: [],
+          sessionState: { conversationHistory: [] }
+        };
+      }
+      
+      if (sessionData) {
+        // Update session state with conversation history included
+        sessionData.sessionState = sessionState;
+        sessionData.updatedAt = new Date().toISOString();
+        
+        // Save complete data
+        await persistence.saveSession(sessionData);
+        
+        // Log conversation history size
+        const historyLength = sessionState?.conversationHistory?.length || 0;
+        serverLogger.debug(
+          `Saved agent conversation history for session ${sessionId} (${historyLength} messages)`,
+          LogCategory.SESSION
+        );
+      }
+    } catch (error) {
+      serverLogger.error(`Failed to save agent session state for session ${sessionId}:`, error);
     }
   }
   
