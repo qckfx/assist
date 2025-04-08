@@ -25,6 +25,7 @@ import { createFileReadTool } from './tools/FileReadTool';
 import { createFileEditTool } from './tools/FileEditTool';
 import { createFileWriteTool } from './tools/FileWriteTool';
 import { createThinkTool } from './tools/ThinkTool';
+import { createBatchTool } from './tools/BatchTool';
 
 // Utils
 import { createLogger, LogLevel, LogCategory } from './utils/logger';
@@ -76,7 +77,8 @@ const createAgent = (config: AgentConfig): Agent => {
     createFileReadTool(),
     createFileEditTool(),
     createFileWriteTool(),
-    createThinkTool()
+    createThinkTool(),
+    createBatchTool()
   ];
   
   tools.forEach(tool => toolRegistry.registerTool(tool));
@@ -165,6 +167,7 @@ export {
   createFileEditTool,
   createFileWriteTool,
   createThinkTool,
+  createBatchTool,
   
   // Utils
   createLogger,
