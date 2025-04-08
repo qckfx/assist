@@ -1,20 +1,25 @@
 # /docker/Dockerfile
 FROM node:18-alpine
 
-# Install essential tools for command execution
-RUN apk add --no-cache bash curl git
+# Install essential tools for command execution, including xxd for binary operations
+RUN apk add --no-cache bash curl git vim-common
 
 # Set up a non-root user for better security
 RUN addgroup -S agent && adduser -S agent -G agent
 WORKDIR /app
 RUN chown -R agent:agent /app
 
+# Copy utility scripts - do this as root before switching to agent user
+COPY scripts/binary-replace.sh /usr/local/bin/binary-replace.sh
+RUN chmod +x /usr/local/bin/binary-replace.sh && \
+    chown agent:agent /usr/local/bin/binary-replace.sh
+
 # Switch to non-root user
 USER agent
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PATH="/app/node_modules/.bin:${PATH}"
+ENV PATH="/app/node_modules/.bin:/usr/local/bin:${PATH}"
 
 # Use bash as the default shell
 SHELL ["/bin/bash", "-c"]
