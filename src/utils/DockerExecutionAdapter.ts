@@ -19,6 +19,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
     warn: (message: string, ...args: unknown[]) => void;
     error: (message: string, ...args: unknown[]) => void;
   };
+  private lastEmittedStatus?: 'initializing' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
   /**
    * Create a Docker execution adapter with a container manager
@@ -89,6 +90,24 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
     isReady: boolean,
     error?: string
   ): void {
+    // Skip if this status was already emitted
+    if (this.lastEmittedStatus === status) {
+      this.logger?.debug(`Skipping duplicate Docker environment status: ${status}`, LogCategory.SYSTEM);
+      return;
+    }
+    
+    // Special handling for "initializing" status - only emit if previously disconnected or error
+    if (status === 'initializing' && 
+        this.lastEmittedStatus && 
+        !['disconnected', 'error', undefined].includes(this.lastEmittedStatus)) {
+      this.logger?.debug(`Skipping redundant initializing status (current: ${this.lastEmittedStatus})`, LogCategory.SYSTEM);
+      return;
+    }
+
+    console.log('Emitting environment status:', status, this.lastEmittedStatus);
+    // Update last emitted status
+    this.lastEmittedStatus = status;
+    
     const statusEvent: EnvironmentStatusEvent = {
       environmentType: 'docker',
       status,
@@ -134,11 +153,18 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
           
           this.logger?.warn('Container not running, attempting to restart', LogCategory.TOOLS);
           
+          // Update status to disconnected before restarting
+          this.emitEnvironmentStatus('disconnected', false);
+          
           // Try to restart container
           const containerInfo = await this.containerManager.ensureContainer();
           if (!containerInfo) {
+            this.emitEnvironmentStatus('error', false, 'Failed to restart container');
             throw new Error('Failed to restart container');
           }
+          
+          // Reconnected successfully
+          this.emitEnvironmentStatus('connected', true);
           
           // Retry command after restart
           const retryResult = await this.containerManager.executeCommand(command, containerWorkingDir);

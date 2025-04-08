@@ -1,7 +1,7 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { AgentService, AgentServiceEvent, getAgentService } from './AgentService';
-import { SessionManager, sessionManager } from './SessionManager';
+import { SessionManager, sessionManager, Session } from './SessionManager';
 import { serverLogger } from '../logger';
 import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from '../../utils/sessionUtils';
 import { 
@@ -18,6 +18,7 @@ import {
   ToolExecutionStatus
 } from '../../types/tool-execution';
 import { previewService } from './preview';
+import { getSessionStatePersistence } from './sessionPersistenceProvider';
 
 
 /**
@@ -230,19 +231,46 @@ export class WebSocketService {
       }
 
       // Handle join session requests
-      socket.on(WebSocketEvent.JOIN_SESSION, (sessionId: string) => {
-        serverLogger.debug(`Join session request: ${sessionId} from client ${socket.id}`);
-        
+      socket.on(WebSocketEvent.JOIN_SESSION, async (sessionId: string) => {
         try {
+          // First check in-memory (fast path)
           if (!this.sessionManager.getAllSessions().some(s => s.id === sessionId)) {
-            serverLogger.warn(`Session ${sessionId} not found for client ${socket.id}`);
-            socket.emit(WebSocketEvent.ERROR, {
-              message: `Session ${sessionId} not found`,
+            // Try to load from persistence
+            const sessionStatePersistence = getSessionStatePersistence();
+            const sessionData = await sessionStatePersistence.loadSession(sessionId);
+            
+            if (!sessionData) {
+              serverLogger.warn(`Session ${sessionId} not found in memory or persistence`);
+              socket.emit(WebSocketEvent.ERROR, {
+                message: `Session ${sessionId} not found`,
+              });
+              return;
+            }
+            
+            // Convert SavedSessionData to Session
+            const session: Session = {
+              id: sessionData.id,
+              createdAt: new Date(sessionData.createdAt),
+              lastActiveAt: new Date(sessionData.updatedAt),
+              state: sessionData.sessionState || { conversationHistory: [] },
+              isProcessing: false,
+              executionAdapterType: sessionData.sessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' | undefined
+            };
+
+            // Add the session to the session manager
+            this.sessionManager.addSession(session);
+            
+            // Join the session room
+            socket.join(sessionId);
+            
+            // Send the current session state
+            this.io.to(sessionId).emit(WebSocketEvent.SESSION_LOADED, {
+              sessionId,
+              state: session.state
             });
-            return;
           }
 
-          // Join the session's room
+          // Now proceed with join logic
           socket.join(sessionId);
           serverLogger.info(`Client ${socket.id} joined session ${sessionId}`);
 

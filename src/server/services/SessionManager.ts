@@ -103,6 +103,36 @@ export class SessionManager {
   }
 
   /**
+   * Add an existing session to the manager
+   * This is used when loading persisted sessions
+   */
+  public addSession(session: Session): Session {
+    // Check if we've reached the maximum number of sessions
+    if (this.sessions.size >= this.config.maxSessions) {
+      // Find the oldest session
+      let oldestSession: Session | null = null;
+      
+      for (const session of this.sessions.values()) {
+        if (!oldestSession || session.lastActiveAt < oldestSession.lastActiveAt) {
+          oldestSession = session;
+        }
+      }
+      
+      // Remove the oldest session
+      if (oldestSession) {
+        serverLogger.info(`Maximum sessions reached. Removing oldest session ${oldestSession.id}`);
+        this.sessions.delete(oldestSession.id);
+      }
+    }
+    
+    // Add the session
+    this.sessions.set(session.id, session);
+    serverLogger.info(`Added existing session ${session.id}`, LogCategory.SESSION);
+    
+    return session;
+  }
+
+  /**
    * Get a session by ID
    */
   public getSession(sessionId: string): Session {

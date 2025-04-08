@@ -40,6 +40,8 @@ import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../ut
 import { serverLogger } from '../logger';
 import { setSessionAborted, generateExecutionId } from '../../utils/sessionUtils';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
+import { ExecutionAdapter } from '../../types/tool';
+import { DockerExecutionAdapter } from '../../utils/DockerExecutionAdapter';
 
 /**
  * Events emitted by the agent service
@@ -1935,7 +1937,7 @@ export class AgentService extends EventEmitter {
   
   // Static cache to track Docker initialization status
   private static dockerInitializing = false;
-  private static dockerInitializationPromise: Promise<boolean> | null = null;
+  private static dockerInitializationPromise: Promise<ExecutionAdapter | null> | null = null;
 
   /**
    * Create an execution adapter for a session with the specified type
@@ -1993,10 +1995,10 @@ export class AgentService extends EventEmitter {
                   serverLogger.info('Docker container pre-initialization complete', 'system');
                 }
                 
-                resolve(true);
+                resolve(dockerAdapter as ExecutionAdapter);
               } catch (error) {
                 serverLogger.warn(`Docker pre-initialization failed: ${(error as Error).message}`, 'system');
-                resolve(false);
+                resolve(null);
               }
             })();
           });
@@ -2004,13 +2006,17 @@ export class AgentService extends EventEmitter {
       }
       
       // Wait for Docker initialization if it's in progress and we're using Docker
+      let adapter: ExecutionAdapter | null;
+      let type: 'local' | 'docker' | 'e2b' | undefined;
       if ((options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) && 
           AgentService.dockerInitializationPromise) {
-        await AgentService.dockerInitializationPromise;
+        adapter = await AgentService.dockerInitializationPromise;
+        type = 'docker';
+      } else {
+        const res = await createExecutionAdapter(adapterOptions);
+        adapter = res.adapter;
+        type = res.type;
       }
-      
-      // Create the execution adapter
-      const { adapter, type } = await createExecutionAdapter(adapterOptions);
       
       // Store the adapter type in the session
       this.setExecutionAdapterType(sessionId, type);
@@ -2019,7 +2025,7 @@ export class AgentService extends EventEmitter {
       sessionManager.updateSession(sessionId, {
         state: {
           ...session.state,
-          executionAdapter: adapter,
+          executionAdapter: adapter || undefined,
           executionAdapterType: type
         }
       });

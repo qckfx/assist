@@ -78,7 +78,7 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
     // We'll respond immediately and let the client poll for updates
     try {
       // Generate a message ID that will be used for the timeline message
-      let userMessageId = crypto.randomUUID();
+      const userMessageId = crypto.randomUUID();
       
       // Create a user message object for the timeline only (won't affect agent processing)
       const userMessage = {
