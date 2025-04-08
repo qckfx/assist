@@ -158,14 +158,11 @@ export class TimelineService extends EventEmitter {
     // Load directly from timeline persistence
     const timelineItems = await this.timelinePersistence.loadTimelineItems(sessionId);
     
-    // Sort the timeline items
-    const sortedItems = this.sortTimelineItems(timelineItems);
-    
     // Debug log to check if we have user messages
-    const userMessages = sortedItems.filter(item => 
+    const userMessages = timelineItems.filter(item => 
       item.type === TimelineItemType.MESSAGE && item.message.role === 'user'
     );
-    const assistantMessages = sortedItems.filter(item => 
+    const assistantMessages = timelineItems.filter(item => 
       item.type === TimelineItemType.MESSAGE && item.message.role === 'assistant'
     );
     
@@ -175,12 +172,12 @@ export class TimelineService extends EventEmitter {
     }
     
     // Log how many items we found
-    serverLogger.debug(`Loaded ${sortedItems.length} timeline items for session ${sessionId} (${userMessages.length} user, ${assistantMessages.length} assistant)`);
+    serverLogger.debug(`Loaded ${timelineItems.length} timeline items for session ${sessionId} (${userMessages.length} user, ${assistantMessages.length} assistant)`);
     
     // Apply filtering by types if specified
-    let filteredItems = sortedItems;
+    let filteredItems = timelineItems;
     if (types && types.length > 0) {
-      filteredItems = sortedItems.filter(item => types.includes(item.type));
+      filteredItems = timelineItems.filter(item => types.includes(item.type));
     }
     
     // Apply pagination
@@ -201,130 +198,6 @@ export class TimelineService extends EventEmitter {
     };
   }
   
-  /**
-   * Sort timeline items - maintains proper ordering of messages and tool executions
-   */
-  private sortTimelineItems(items: TimelineItem[]): TimelineItem[] {
-    // Map tool executions to their parent messages for faster lookup
-    const toolToParentMap = new Map<string, string>();
-    
-    // First pass to establish parent-child relationships
-    items.forEach(item => {
-      // If it's a message with tool calls, establish parent relationship
-      if (item.type === TimelineItemType.MESSAGE && item.message.toolCalls?.length) {
-        item.message.toolCalls.forEach(call => {
-          if (call.executionId) {
-            toolToParentMap.set(call.executionId, item.id);
-          }
-        });
-      }
-      
-      // If it's a tool execution with parentMessageId, record that too
-      if (item.type === TimelineItemType.TOOL_EXECUTION && 
-          (item as ToolExecutionTimelineItem).parentMessageId) {
-        const parentId = (item as ToolExecutionTimelineItem).parentMessageId;
-        if (parentId) {
-          toolToParentMap.set(item.id, parentId);
-        }
-      }
-    });
-    
-    // Group messages and their related tools to ensure proper order
-    const userMessages = items.filter(item => 
-      item.type === TimelineItemType.MESSAGE && item.message.role === 'user'
-    );
-    const assistantMessages = items.filter(item => 
-      item.type === TimelineItemType.MESSAGE && item.message.role === 'assistant'
-    );
-    
-    // Log what we found for diagnostic purposes
-    serverLogger.debug(`Timeline sorting: found ${userMessages.length} user messages, ${assistantMessages.length} assistant messages`);
-    
-    // Now sort with improved logic that enforces user -> tools -> assistant order
-    return items.sort((a, b) => {
-      // CASE 1: Always prioritize user messages over assistant messages
-      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
-        if (a.message.role === 'user' && b.message.role === 'assistant') {
-          return -1; // User messages always come before assistant messages
-        }
-        if (a.message.role === 'assistant' && b.message.role === 'user') {
-          return 1; // User messages always come before assistant messages
-        }
-      }
-      
-      // CASE 2: Use sequence numbers for messages when available
-      if (a.type === TimelineItemType.MESSAGE && 
-          b.type === TimelineItemType.MESSAGE && 
-          a.message.sequence !== undefined && 
-          b.message.sequence !== undefined) {
-        return a.message.sequence - b.message.sequence;
-      }
-      
-      // CASE 3: Enforce tool execution placement between their parent message and the next message
-      if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.MESSAGE) {
-        const parentId = toolToParentMap.get(a.id);
-        
-        // If b is the parent of tool a, then tool a comes after parent message b
-        if (parentId === b.id) {
-          return 1;
-        }
-        
-        // If b is an assistant message and a's parent is a user message, 
-        // tool a should appear before assistant message b
-        if (b.message.role === 'assistant' && 
-            parentId && 
-            userMessages.some(msg => msg.id === parentId)) {
-          return -1; // Tool comes before assistant message
-        }
-      }
-      
-      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.TOOL_EXECUTION) {
-        const parentId = toolToParentMap.get(b.id);
-        
-        // If a is the parent of tool b, then tool b comes after parent message a
-        if (parentId === a.id) {
-          return -1;
-        }
-        
-        // If a is an assistant message and b's parent is a user message, 
-        // tool b should appear before assistant message a
-        if (a.message.role === 'assistant' && 
-            parentId && 
-            userMessages.some(msg => msg.id === parentId)) {
-          return 1; // Tool comes before assistant message
-        }
-      }
-      
-      // CASE 4: Both are tools - order by parent message sequence, then by timestamp
-      if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.TOOL_EXECUTION) {
-        const aParentId = toolToParentMap.get(a.id);
-        const bParentId = toolToParentMap.get(b.id);
-        
-        // If both tools have the same parent, use timestamp
-        if (aParentId && bParentId && aParentId === bParentId) {
-          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-        }
-        
-        // If only a has a parent that's a user message, a comes first
-        if (aParentId && userMessages.some(msg => msg.id === aParentId) && 
-            (!bParentId || !userMessages.some(msg => msg.id === bParentId))) {
-          return -1;
-        }
-        
-        // If only b has a parent that's a user message, b comes first
-        if (bParentId && userMessages.some(msg => msg.id === bParentId) && 
-            (!aParentId || !userMessages.some(msg => msg.id === aParentId))) {
-          return 1;
-        }
-      }
-      
-      // CASE 5: Use timestamp as fallback
-      const aTime = new Date(a.timestamp).getTime();
-      const bTime = new Date(b.timestamp).getTime();
-      return aTime - bTime;
-    });
-  }
-
   /**
    * Add or update a message in the timeline
    * Public method that can be called directly from controllers
