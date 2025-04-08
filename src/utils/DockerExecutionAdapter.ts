@@ -376,21 +376,38 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         };
       }
       
-      // Read the file content
+      // Read the file content directly without line numbers
+      const containerPath = this.toContainerPath(filepath, containerInfo);
+      const { stdout: rawFileContent, stderr, exitCode } = await this.executeCommand(`cat "${containerPath}"`);
+      
+      if (exitCode !== 0) {
+        // Format path for display
+        const displayPath = this.formatPathForDisplay(filepath, containerInfo);
+        
+        return {
+          success: false as const,
+          path: filepath,
+          displayPath,
+          error: stderr || `Failed to read file: ${displayPath}`
+        };
+      }
+      
+      // For the UI display, we want to read with line numbers
       const fileResult = await this.readFile(filepath);
       if (!fileResult.success) {
         return {
           success: false as const,
           path: filepath,
-          displayPath: fileResult.displayPath || this.formatPathForDisplay(filepath, containerInfo),
+          displayPath: this.formatPathForDisplay(filepath, containerInfo),
           error: fileResult.error
         };
       }
       
-      const fileContent = fileResult.content;
+      // The numbered content is for display purposes only
+      const displayContent = fileResult.content;
       
-      // Count occurrences of the search code
-      const occurrences = fileContent.split(searchCode).length - 1;
+      // Count occurrences of the search code in the raw content (without line numbers)
+      const occurrences = rawFileContent.split(searchCode).length - 1;
       
       if (occurrences === 0) {
         // Format path for display
@@ -416,8 +433,8 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         };
       }
       
-      // Replace the code (only one match at this point)
-      const newContent = fileContent.replace(searchCode, replaceCode);
+      // Replace the code in the raw content (only one match at this point)
+      const newContent = rawFileContent.replace(searchCode, replaceCode);
       
       // Write the new content
       await this.writeFile(filepath, newContent);
@@ -429,8 +446,8 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         success: true as const,
         path: filepath,
         displayPath,
-        originalContent: fileContent,
-        newContent: newContent
+        originalContent: displayContent, // Return numbered content for display
+        newContent: displayContent.replace(searchCode, replaceCode) // Apply the same replacement to numbered content for display
       };
     } catch (error) {
       return {
