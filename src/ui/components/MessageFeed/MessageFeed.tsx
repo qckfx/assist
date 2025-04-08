@@ -84,15 +84,91 @@ export function MessageFeed({
       );
     }
 
+    // Keep track of tool executions we've rendered
+    const renderedToolExecutions = new Set<string>();
+    
+    // Map of tool execution IDs to their parent message IDs
+    const toolToParentMap = new Map<string, string>();
+    
+    // First identify all tool executions
+    timeline.forEach(item => {
+      if (item.type === TimelineItemType.TOOL_EXECUTION) {
+        renderedToolExecutions.add(item.id);
+        
+        // Store parent message ID if available
+        if (item.parentMessageId) {
+          toolToParentMap.set(item.id, item.parentMessageId);
+        }
+      }
+    });
+
+    // Then look at messages to see if they reference tool executions
+    // and establish parent-child relationships
+    timeline.forEach(item => {
+      if (item.type === TimelineItemType.MESSAGE && item.message.toolCalls?.length) {
+        // Establish parent-child relationships for all tool calls
+        item.message.toolCalls.forEach(call => {
+          if (renderedToolExecutions.has(call.executionId)) {
+            // Store the parent-child relationship
+            toolToParentMap.set(call.executionId, item.id);
+          }
+        });
+      }
+    });
+    
     // Render each timeline item
     return timeline.map(item => {
       if (item.type === TimelineItemType.MESSAGE) {
+        // We should always render user messages, regardless of tool calls
+        // For AI messages, we can apply the logic to hide empty ones that only have tool calls
+        
+        // First determine if the message has tool calls
+        const hasToolCalls = item.message.toolCalls && item.message.toolCalls.length > 0;
+        
+        // If there are no tool calls, or the message has actual content, we should always render it
+        const hasContent = Array.isArray(item.message.content) && item.message.content.length > 0;
+        
+        if (item.message.role === 'user') {
+          // Always render user messages
+        }
+        // If the message has content, we should always render it regardless of tools
+        else if (hasContent) {
+          // Render messages with content
+        }
+        // If there are no tool calls, we should render it (unless it has no content)
+        else if (!hasToolCalls) {
+          // Render messages without tool calls
+        }
+        // If we get here, message is AI message with tool calls but no content
+        // Check if ALL tool calls have corresponding tool executions that will be rendered
+        else if (item.message.toolCalls) {
+          const allToolsRendered = item.message.toolCalls.every(call => {
+            return renderedToolExecutions.has(call.executionId);
+          });
+          
+          if (allToolsRendered) {
+            return null;
+          }
+        }
+        
         // Convert the stored message to the format expected by Message component
+        // Safely handle the timestamp conversion
+        let timestamp: number;
+        try {
+          timestamp = new Date(item.timestamp).getTime();
+          // Check if the timestamp is valid
+          if (isNaN(timestamp)) {
+            timestamp = Date.now(); // Use current time as fallback
+          }
+        } catch (e) {
+          timestamp = Date.now(); // Use current time as fallback
+        }
+        
         const message = {
           id: item.message.id,
           type: item.message.role as 'user' | 'assistant' | 'system' | 'error',
           content: item.message.content,
-          timestamp: new Date(item.timestamp).getTime()
+          timestamp: timestamp
         };
 
         return (
@@ -117,25 +193,6 @@ export function MessageFeed({
           </div>
         );
       } else if (item.type === TimelineItemType.TOOL_EXECUTION) {
-        // Log the timeline item to see what we're getting from the server
-        console.log(`[DEBUG] MessageFeed timeline item for tool ${item.id}:`, {
-          hasTopLevelPreview: !!item.preview,
-          hasToolExecutionPreview: !!item.toolExecution.preview,
-          hasPreviewFlag: item.toolExecution.hasPreview === true,
-          previewDetails: item.preview ? {
-            contentType: item.preview.contentType,
-            hasBriefContent: !!item.preview.briefContent,
-            briefContentLength: item.preview.briefContent?.length || 0,
-          } : null,
-          toolExecutionPreviewDetails: item.toolExecution.preview ? {
-            contentType: item.toolExecution.preview.contentType,
-            hasBriefContent: !!item.toolExecution.preview.briefContent,
-            briefContentLength: item.toolExecution.preview.briefContent?.length || 0,
-          } : null,
-          itemProps: Object.keys(item),
-          toolExecutionProps: Object.keys(item.toolExecution)
-        });
-        
         // Convert the stored tool execution to the format expected by ToolVisualization
         const toolExecution = {
           id: item.id,
@@ -149,29 +206,34 @@ export function MessageFeed({
           result: item.toolExecution.result,
           error: item.toolExecution.error,
           permissionId: item.toolExecution.permissionId,
-          // Use preview from the timeline item (if available) or from toolExecution
+          // Use preview from the timeline item if available
           preview: item.preview ? {
             contentType: item.preview.contentType,
             briefContent: item.preview.briefContent,
             fullContent: item.preview.fullContent,
             metadata: item.preview.metadata
-          } : (item.toolExecution.preview ? {
-            contentType: item.toolExecution.preview.contentType,
-            briefContent: item.toolExecution.preview.briefContent,
-            fullContent: item.toolExecution.preview.fullContent,
-            metadata: item.toolExecution.preview.metadata
-          } : undefined),
+          } : undefined,
           // Add the explicit hasPreview flag
-          hasPreview: item.toolExecution.hasPreview === true || !!item.preview,
+          hasPreview: !!item.preview,
           // Add the missing viewMode property 
           viewMode: defaultViewMode
         };
 
+        // Check if this tool has a parent message for proper positioning
+        const parentMessageId = toolToParentMap.get(item.id);
+        
+        // Assign CSS class based on parent message relationship
+        // This is critical for proper positioning of tools relative to messages
+        const toolClasses = parentMessageId 
+          ? "w-4/5 self-start mt-2 mb-4 ml-8" // Indent for tools with parent message
+          : "w-4/5 self-start mt-2 mb-4 ml-2"; // Default positioning
+
         return (
           <div
             key={`tool-${item.id}`}
-            className="w-4/5 self-start mt-2 mb-2 ml-2"
+            className={toolClasses}
             data-testid={`tool-${toolExecution.id}`}
+            data-parent-message={parentMessageId || "none"}
             role="listitem"
             aria-label={`Tool execution: ${toolExecution.toolName || toolExecution.id}`}
           >

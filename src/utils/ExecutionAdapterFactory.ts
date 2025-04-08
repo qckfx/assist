@@ -109,6 +109,8 @@ export async function createExecutionAdapter(
       
       logger?.info('Successfully created Docker execution adapter', LogCategory.SYSTEM);
       
+      // Environment status events are now emitted by the DockerExecutionAdapter itself
+      
       return {
         adapter: dockerAdapter,
         type: 'docker'

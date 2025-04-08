@@ -229,7 +229,7 @@ export interface ToolExecutionManager {
   /**
    * Create a new tool execution
    */
-  createExecution(sessionId: string, toolId: string, toolName: string, args: Record<string, unknown>): ToolExecutionState;
+  createExecution(sessionId: string, toolId: string, toolName: string, executionId: string, args: Record<string, unknown>): ToolExecutionState;
   
   /**
    * Update an existing tool execution

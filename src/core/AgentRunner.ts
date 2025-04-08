@@ -176,12 +176,6 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             content: [{ type: 'text', text: query }]
           };
           sessionState.conversationHistory.push(userMessage);
-          
-          // Emit message:added event for TimelineService to pick up
-          AgentEvents.emit(MESSAGE_ADDED, {
-            sessionId,
-            message: userMessage
-          });
         }
         
         // Create the context for tool execution
@@ -208,14 +202,6 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         });
         
         while (iterations < maxIterations) {
-          console.log(`⚠️ LOOP CHECK: ITERATION ${iterations}/${maxIterations}, HAS FINAL RESPONSE: ${!!finalResponse}`);
-          console.log('⚠️ LOOP ENTRY STATE:', {
-            toolResults: toolResults.length,
-            firstToolId: toolResults.length > 0 ? toolResults[0].toolId : 'none',
-            lastToolId: toolResults.length > 0 ? toolResults[toolResults.length - 1].toolId : 'none',
-            conversationHistoryLength: sessionState.conversationHistory?.length || 0
-          });
-          
           // Add this check at the beginning of each iteration
           if (isSessionAborted(sessionId)) {
             logger.info("Operation aborted - stopping processing", LogCategory.SYSTEM);
@@ -223,33 +209,22 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           }
           
           iterations++;
-          console.log(`⚠️ STARTING ITERATION ${iterations}/${maxIterations} - ABOUT TO BEGIN EXECUTION`);
           logger.debug(`Iteration ${iterations}/${maxIterations}`, LogCategory.SYSTEM);
-          
-          // Also log the state before each model call
-          console.log('⚠️ PRE-MODEL CALL STATE:', {
-            currentQuery: currentQuery ? currentQuery.substring(0, 50) + '...' : 'none',
-            toolsCount: toolRegistry.getAllTools().length,
-            conversationHistoryLength: sessionState.conversationHistory?.length || 0,
-            sessionId
-          });
           
           try {
             // 1. Ask the model what to do next
             logger.debug('Getting tool call from model', LogCategory.MODEL);
-            
-            console.log(`⚠️ AGENT_LOOP: About to call modelClient.getToolCall with query: ${currentQuery?.substring(0, 50)}...`);
             
             const toolCallChat = await modelClient.getToolCall(
               currentQuery, 
               toolRegistry.getToolDescriptions(), 
               sessionState
             );
-            
-            console.log(`⚠️ AGENT_LOOP: Received toolCallChat response, toolChosen: ${toolCallChat.toolChosen}, aborted: ${toolCallChat.aborted}`);
-            if (toolCallChat.toolCall) {
-              console.log(`⚠️ AGENT_LOOP: Tool selected: ${toolCallChat.toolCall.toolId}`);
-            }
+
+            // AgentEvents.emit(MESSAGE_ADDED, {
+            //   sessionId,
+            //   message: toolCallChat.response
+            // });
             
             // Check if the operation was aborted during the model call
             if (toolCallChat.aborted || isSessionAborted(sessionId)) {
@@ -366,6 +341,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               try {
                 result = await toolRegistry.executeToolWithCallbacks(
                   toolCall.toolId, 
+                  toolCall.toolUseId,
                   toolCall.args as Record<string, unknown>, 
                   context
                 );

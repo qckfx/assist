@@ -244,6 +244,18 @@ export const apiClient = {
   },
   
   /**
+   * Validate multiple session IDs
+   */
+  validateSessions: (sessionIds: string[]) => 
+    apiRequest<{ validSessionIds: string[] }>(API_ENDPOINTS.SESSIONS_VALIDATE, 'POST', { sessionIds }),
+    
+  /**
+   * Alias for validateSessions for consistency
+   */
+  validateSession: (sessionIds: string[]) =>
+    apiRequest<{ validSessionIds: string[] }>(API_ENDPOINTS.SESSIONS_VALIDATE, 'POST', { sessionIds }),
+  
+  /**
    * Fetch timeline data for a session
    */
   fetchTimeline: <T>(sessionId: string, queryParams: string) => {

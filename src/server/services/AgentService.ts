@@ -38,8 +38,10 @@ import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
 import { serverLogger } from '../logger';
-import { setSessionAborted } from '../../utils/sessionUtils';
+import { setSessionAborted, generateExecutionId } from '../../utils/sessionUtils';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
+import { ExecutionAdapter } from '../../types/tool';
+import { DockerExecutionAdapter } from '../../utils/DockerExecutionAdapter';
 
 /**
  * Events emitted by the agent service
@@ -668,15 +670,26 @@ export class AgentService extends EventEmitter {
   }
   
   // When a tool execution starts (from the onToolExecutionStart callback)
-  private handleToolExecutionStart(toolId: string, args: Record<string, unknown>, sessionId: string): void {
+  private handleToolExecutionStart(toolId: string, toolUseId: string, args: Record<string, unknown>, sessionId: string): void {
     const tool = this.agent?.toolRegistry.getTool(toolId);
     const toolName = tool?.name || toolId;
     
-    // Create a new tool execution in the manager
+    // Generate executionId from toolUseId using the same function used for message.toolCalls
+    // This ensures the executionId matches what's in message.toolCalls
+    const executionId = generateExecutionId(toolUseId);
+    
+    serverLogger.debug(`Generated executionId for tool execution: ${executionId}`, {
+      toolUseId,
+      toolId,
+      toolName
+    });
+    
+    // Create a new tool execution in the manager with the generated executionId
     const execution = this.toolExecutionManager.createExecution(
       sessionId,
       toolId,
       toolName,
+      executionId,
       args
     );
     
@@ -733,23 +746,7 @@ export class AgentService extends EventEmitter {
       this.activeToolArgs.delete(`${sessionId}:${toolId}`);
       this.activeToolArgs.delete(`${sessionId}:${executionId}`);
     } else {
-      // If we don't have an execution ID, fall back to old behavior
-      serverLogger.warn(`No execution ID found for completed tool: ${toolId}, using fallback behavior`);
-      
-      // Emit directly instead of through the manager
-      const toolName = this.agent?.toolRegistry.getTool(toolId)?.name || toolId;
-      const timestamp = new Date().toISOString();
-      
-      this.emit(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, {
-        sessionId,
-        tool: {
-          id: toolId,
-          name: toolName
-        },
-        result,
-        executionTime,
-        timestamp
-      });
+      serverLogger.warn(`No execution ID found for completed tool: ${toolId}`);
     }
   }
   
@@ -781,20 +778,6 @@ export class AgentService extends EventEmitter {
     } else {
       // If we don't have an execution ID, fall back to old behavior
       serverLogger.warn(`No execution ID found for failed tool: ${toolId}`);
-      
-      // Emit directly instead of through the manager
-      this.emit(AgentServiceEvent.TOOL_EXECUTION_ERROR, {
-        sessionId,
-        tool: {
-          id: toolId,
-          name: this.agent?.toolRegistry.getTool(toolId)?.name || toolId
-        },
-        error: {
-          message: error.message,
-          stack: error.stack
-        },
-        timestamp: new Date().toISOString()
-      });
     }
   }
 
@@ -937,9 +920,14 @@ export class AgentService extends EventEmitter {
             // Handle tool use blocks
             if (!toolCalls) toolCalls = [];
             
-            // Add tool call reference
+            // Generate a deterministic UUID from Anthropic's tool use ID
+            // using our shared utility function
+            const executionId = generateExecutionId(block.id);
+            
+            // Add tool call reference with our UUID
             toolCalls.push({
-              executionId: block.id,
+              executionId: executionId,
+              toolUseId: block.id, // Also store the original Anthropic ID
               toolName: block.name,
               index: toolCalls.length,
               isBatchedCall: block.name === 'BatchTool'
@@ -1281,32 +1269,8 @@ export class AgentService extends EventEmitter {
             if (activeTool?.executionId) {
               executionId = activeTool.executionId;
             } else {
-              // Create a new execution for this permission request
-              const tool = this.agent?.toolRegistry.getTool(toolId);
-              const toolName = tool?.name || toolId;
-              const execution = this.toolExecutionManager.createExecution(
-                sessionId,
-                toolId,
-                toolName,
-                args
-              );
-              executionId = execution.id;
-              
-              // Add to active tools
-              const paramSummary = this.summarizeToolParameters(toolId, args);
-              this.toolExecutionManager.updateExecution(executionId, { summary: paramSummary });
-              
-              if (!this.activeTools.has(sessionId)) {
-                this.activeTools.set(sessionId, []);
-              }
-              
-              this.activeTools.get(sessionId)?.push({
-                toolId,
-                executionId,
-                name: toolName,
-                startTime: new Date(execution.startTime),
-                paramSummary
-              });
+              serverLogger.warn(`No execution ID found for permission request: ${toolId}`);
+              throw new Error(`No execution ID found for permission request: ${toolId}`);
             }
             
             // Create the permission request in the manager
@@ -1361,8 +1325,8 @@ export class AgentService extends EventEmitter {
       
       // Register callbacks for tool execution events using the new API
       const unregisterStart = this.agent.toolRegistry.onToolExecutionStart(
-        (toolId: string, args: Record<string, unknown>, _context: unknown) => {
-          this.handleToolExecutionStart(toolId, args, sessionId);
+        (toolId: string, toolUseId: string, args: Record<string, unknown>, _context: unknown) => {
+          this.handleToolExecutionStart(toolId, toolUseId, args, sessionId);
         }
       );
       
@@ -1728,28 +1692,9 @@ export class AgentService extends EventEmitter {
         } catch (error) {
           // If abortion in manager fails, fall back to old behavior
           serverLogger.warn(`Failed to abort tool execution ${tool.executionId}: ${(error as Error).message}`);
-          this.emit(AgentServiceEvent.TOOL_EXECUTION_ABORTED, {
-            sessionId,
-            tool: {
-              id: tool.toolId,
-              name: tool.name,
-              executionId: tool.executionId
-            },
-            timestamp: new Date().toISOString(),
-            abortTimestamp
-          });
         }
       } else {
-        // Emit the old-style event if we don't have an execution ID
-        this.emit(AgentServiceEvent.TOOL_EXECUTION_ABORTED, {
-          sessionId,
-          tool: {
-            id: tool.toolId,
-            name: tool.name,
-          },
-          timestamp: new Date().toISOString(),
-          abortTimestamp
-        });
+         serverLogger.warn(`No execution ID found for aborted tool: ${tool.toolId}`);
       }
     }
 
@@ -1992,7 +1937,7 @@ export class AgentService extends EventEmitter {
   
   // Static cache to track Docker initialization status
   private static dockerInitializing = false;
-  private static dockerInitializationPromise: Promise<boolean> | null = null;
+  private static dockerInitializationPromise: Promise<ExecutionAdapter | null> | null = null;
 
   /**
    * Create an execution adapter for a session with the specified type
@@ -2050,10 +1995,10 @@ export class AgentService extends EventEmitter {
                   serverLogger.info('Docker container pre-initialization complete', 'system');
                 }
                 
-                resolve(true);
+                resolve(dockerAdapter as ExecutionAdapter);
               } catch (error) {
                 serverLogger.warn(`Docker pre-initialization failed: ${(error as Error).message}`, 'system');
-                resolve(false);
+                resolve(null);
               }
             })();
           });
@@ -2061,13 +2006,17 @@ export class AgentService extends EventEmitter {
       }
       
       // Wait for Docker initialization if it's in progress and we're using Docker
+      let adapter: ExecutionAdapter | null;
+      let type: 'local' | 'docker' | 'e2b' | undefined;
       if ((options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) && 
           AgentService.dockerInitializationPromise) {
-        await AgentService.dockerInitializationPromise;
+        adapter = await AgentService.dockerInitializationPromise;
+        type = 'docker';
+      } else {
+        const res = await createExecutionAdapter(adapterOptions);
+        adapter = res.adapter;
+        type = res.type;
       }
-      
-      // Create the execution adapter
-      const { adapter, type } = await createExecutionAdapter(adapterOptions);
       
       // Store the adapter type in the session
       this.setExecutionAdapterType(sessionId, type);
@@ -2076,7 +2025,7 @@ export class AgentService extends EventEmitter {
       sessionManager.updateSession(sessionId, {
         state: {
           ...session.state,
-          executionAdapter: adapter,
+          executionAdapter: adapter || undefined,
           executionAdapterType: type
         }
       });

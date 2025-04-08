@@ -16,6 +16,7 @@ import { TextContentPart } from '../../types/message';
 import { ToolPreviewState } from '../../types/preview';
 import { serverLogger } from '../logger';
 import { EventEmitter } from 'events';
+import { LogCategory } from '../../utils/logger';
 
 /**
  * Service for persisting complete session state to disk
@@ -97,9 +98,78 @@ export class SessionStatePersistence extends EventEmitter {
       }
       
       const data = await fs.readFile(filePath, 'utf-8');
-      const sessionData = JSON.parse(data) as SavedSessionData;
+      let sessionData = JSON.parse(data) as SavedSessionData;
       
-      serverLogger.debug(`Loaded session data for session ${sessionId}`);
+      // IMPORTANT ADDITION: Try to load messages from subdirectory if they exist
+      try {
+        // Check if we have a subdirectory with messages
+        const messagesFile = path.join(this.getSessionDir(sessionId), 'messages.json');
+        await fs.access(messagesFile);
+        
+        // If we get here, the file exists, so load the messages
+        const messagesData = await fs.readFile(messagesFile, 'utf-8');
+        const messages = JSON.parse(messagesData) as StoredMessage[];
+        
+        // Update the session data with these messages
+        sessionData.messages = messages;
+        serverLogger.debug(`Loaded ${messages.length} messages from separate file for session ${sessionId}`);
+      } catch (err) {
+        // It's okay if the messages file doesn't exist - the session might be empty
+        serverLogger.debug(`No separate messages file found for session ${sessionId}`);
+      }
+      
+      // Also try to load tool executions from subdirectory if they exist
+      try {
+        const toolExecutionsFile = path.join(this.getSessionDir(sessionId), 'tool-executions.json');
+        await fs.access(toolExecutionsFile);
+        
+        // If we get here, the file exists, so load the tool executions
+        const toolExecutionsData = await fs.readFile(toolExecutionsFile, 'utf-8');
+        const toolExecutions = JSON.parse(toolExecutionsData) as ToolExecutionState[];
+        
+        // Update the session data with these tool executions
+        sessionData.toolExecutions = toolExecutions;
+        serverLogger.debug(`Loaded ${toolExecutions.length} tool executions from separate file for session ${sessionId}`);
+      } catch (err) {
+        // It's okay if the tool executions file doesn't exist
+        serverLogger.debug(`No separate tool executions file found for session ${sessionId}`);
+      }
+      
+      // Also try to load permission requests from subdirectory if they exist
+      try {
+        const permissionsFile = path.join(this.getSessionDir(sessionId), 'permission-requests.json');
+        await fs.access(permissionsFile);
+        
+        // If we get here, the file exists, so load the permission requests
+        const permissionsData = await fs.readFile(permissionsFile, 'utf-8');
+        const permissions = JSON.parse(permissionsData) as PermissionRequestState[];
+        
+        // Update the session data with these permission requests
+        sessionData.permissionRequests = permissions;
+        serverLogger.debug(`Loaded ${permissions.length} permission requests from separate file for session ${sessionId}`);
+      } catch (err) {
+        // It's okay if the permissions file doesn't exist
+        serverLogger.debug(`No separate permissions file found for session ${sessionId}`);
+      }
+      
+      // Also try to load previews from subdirectory if they exist
+      try {
+        const previewsFile = path.join(this.getSessionDir(sessionId), 'previews.json');
+        await fs.access(previewsFile);
+        
+        // If we get here, the file exists, so load the previews
+        const previewsData = await fs.readFile(previewsFile, 'utf-8');
+        const previews = JSON.parse(previewsData) as ToolPreviewState[];
+        
+        // Update the session data with these previews
+        sessionData.previews = previews;
+        serverLogger.debug(`Loaded ${previews.length} previews from separate file for session ${sessionId}`);
+      } catch (err) {
+        // It's okay if the previews file doesn't exist
+        serverLogger.debug(`No separate previews file found for session ${sessionId}`);
+      }
+      
+      serverLogger.debug(`Loaded session data for session ${sessionId} with ${sessionData.messages?.length || 0} messages`);
       
       return sessionData;
     } catch (error) {
@@ -111,12 +181,16 @@ export class SessionStatePersistence extends EventEmitter {
   /**
    * Load complete session data
    * This method will emit a SESSION_LOADED event, which can trigger listeners
+   * PERFORMANCE CRITICAL: Use getSessionDataWithoutEvents to avoid triggering cascades
    */
   async loadSession(sessionId: string): Promise<SavedSessionData | undefined> {
     try {
       const sessionData = await this.loadSessionInternal(sessionId);
       
       if (sessionData) {
+        // Only log this at debug level to reduce log noise
+        serverLogger.debug(`Loading session data for ${sessionId}`, LogCategory.SESSION);
+        
         // Emit the loaded event
         this.emit(SessionPersistenceEvent.SESSION_LOADED, {
           sessionId,
@@ -181,6 +255,7 @@ export class SessionStatePersistence extends EventEmitter {
   
   /**
    * List all saved sessions
+   * Optimized to use only metadata files and avoid loading full session data
    */
   async listSessions(): Promise<SessionListEntry[]> {
     await this.initialize();
@@ -193,6 +268,9 @@ export class SessionStatePersistence extends EventEmitter {
       // Read all metadata files
       const files = await fs.readdir(metadataDir);
       const metadataFiles = files.filter(file => file.endsWith('.meta.json'));
+      
+      // Don't log this on server startup to reduce log clutter
+      serverLogger.debug(`Found ${metadataFiles.length} session metadata files`, LogCategory.SESSION);
       
       const sessions: SessionListEntry[] = [];
       
@@ -675,47 +753,39 @@ export class SessionStatePersistence extends EventEmitter {
   
   /**
    * Helper method to capture repository information
+   * Modified to return minimal information for performance
    */
   async captureRepositoryInfo(workingDir?: string): Promise<RepositoryInfo | null> {
     try {
       // Use current working directory if none specified
       const dir = workingDir || process.cwd();
       
-      // Check if .git directory exists to determine if this is a git repository
-      const gitDir = path.join(dir, '.git');
-      let isGitRepository = false;
-      
-      try {
-        const gitDirStats = await fs.stat(gitDir);
-        isGitRepository = gitDirStats.isDirectory();
-      } catch {
-        // Not a git repository
-        isGitRepository = false;
-      }
-      
+      // Return minimal repository info to avoid expensive operations
       const repoInfo: RepositoryInfo = {
         workingDirectory: dir,
-        isGitRepository
+        isGitRepository: false
       };
-      
-      // If it's a git repository, get additional information
-      if (isGitRepository) {
-        // This would normally use actual git commands
-        // For safety, we're just flagging that we would need to check
-        repoInfo.warnings = {
-          uncommittedChanges: true,
-          untrackedFiles: true
-        };
-        
-        repoInfo.hasUncommittedChanges = true;
-        repoInfo.currentBranch = 'unknown';
-        repoInfo.latestCommitHash = 'unknown';
-      }
       
       return repoInfo;
     } catch (error) {
       serverLogger.warn('Failed to capture repository information:', error);
       return null;
+    }
+  }
+  
+  /**
+   * Check if session metadata exists without loading the full session
+   * This is a lightweight validation method
+   */
+  async sessionMetadataExists(sessionId: string): Promise<boolean> {
+    await this.initialize();
+    
+    try {
+      const metadataPath = this.getSessionMetadataPath(sessionId);
+      await fs.access(metadataPath);
+      return true;
+    } catch {
+      return false;
     }
   }
 }

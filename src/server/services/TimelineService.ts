@@ -3,6 +3,7 @@
  */
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
+import fs from 'fs';
 import { StoredMessage } from '../../types/session';
 import { 
   ToolExecutionState, 
@@ -10,6 +11,20 @@ import {
   ToolExecutionStatus,
   ToolExecutionManager
 } from '../../types/tool-execution';
+
+/**
+ * Helper function to truncate message content for logging
+ */
+function truncateContent(content: any): string {
+  if (!content) return 'empty';
+  if (typeof content === 'string') {
+    return content.length > 30 ? content.substring(0, 30) + '...' : content;
+  }
+  if (Array.isArray(content)) {
+    return `array with ${content.length} items`;
+  }
+  return JSON.stringify(content).substring(0, 30) + '...';
+}
 
 // Import the enum with a different name to avoid conflicts
 import { ToolExecutionEvent as ToolExecEvent } from '../../types/tool-execution';
@@ -37,6 +52,7 @@ import { serverLogger } from '../logger';
 import { AgentService, AgentServiceEvent } from './AgentService';
 import { previewService } from './preview';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
+import { TimelineStatePersistence } from './TimelineStatePersistence';
 import { AgentEvents } from '../../utils/sessionUtils';
 
 import { Server as SocketIOServer } from 'socket.io';
@@ -103,13 +119,6 @@ interface SessionEvent {
   sessionId: string;
 }
 
-interface TimelineItemsCache {
-  [sessionId: string]: {
-    items: TimelineItem[];
-    lastUpdated: number;
-  };
-}
-
 export enum TimelineServiceEvent {
   ITEM_ADDED = 'item_added',
   ITEMS_UPDATED = 'items_updated',
@@ -117,8 +126,7 @@ export enum TimelineServiceEvent {
 }
 
 export class TimelineService extends EventEmitter {
-  private itemsCache: TimelineItemsCache = {};
-  private cacheExpiryMs = 30 * 1000; // 30 seconds
+  // No cache needed, using timeline persistence directly
   private cleanup: () => void = () => {};
   private processingSessionIds: Map<string, number> = new Map();
   private sessionProcessingThresholdMs = 2000; // 2 seconds
@@ -126,7 +134,8 @@ export class TimelineService extends EventEmitter {
 
   constructor(
     private sessionManager: SessionManager,
-    private webSocketService: WebSocketService
+    private webSocketService: WebSocketService,
+    private timelinePersistence: TimelineStatePersistence
   ) {
     super();
     
@@ -143,37 +152,35 @@ export class TimelineService extends EventEmitter {
   ): Promise<TimelineResponse> {
     const { limit = 50, pageToken, types, includeRelated = true } = params;
     
-    // Always clear the cache for API requests to ensure we get the latest data
-    delete this.itemsCache[sessionId];
-    
     // Log that we're retrieving timeline items
     serverLogger.debug(`Retrieving timeline items for session ${sessionId}`);
     
-    // Try to load the session from persistence first WITHOUT triggering SESSION_LOADED events
-    const sessionStatePersistence = getSessionStatePersistence();
-    if (sessionStatePersistence) {
-      try {
-        // Use getSessionDataWithoutEvents instead of loadSession to avoid the event loop
-        const persistedData = await sessionStatePersistence.getSessionDataWithoutEvents(sessionId);
-        if (persistedData) {
-          serverLogger.debug(`API request: Loaded persisted session ${sessionId} with ${persistedData.messages?.length || 0} messages`);
-        }
-      } catch (err) {
-        // Just log but continue - we'll fall back to in-memory session
-        serverLogger.debug(`API request: No persisted data for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    // Load directly from timeline persistence
+    const timelineItems = await this.timelinePersistence.loadTimelineItems(sessionId);
+    
+    // Sort the timeline items
+    const sortedItems = this.sortTimelineItems(timelineItems);
+    
+    // Debug log to check if we have user messages
+    const userMessages = sortedItems.filter(item => 
+      item.type === TimelineItemType.MESSAGE && item.message.role === 'user'
+    );
+    const assistantMessages = sortedItems.filter(item => 
+      item.type === TimelineItemType.MESSAGE && item.message.role === 'assistant'
+    );
+    
+    // Warn if we're missing user messages but have assistant messages (suspicious)
+    if (userMessages.length === 0 && assistantMessages.length > 0) {
+      serverLogger.warn(`[TIMELINE WARNING] Found ${assistantMessages.length} assistant messages but NO user messages. This might indicate a timeline sorting issue.`);
     }
     
-    // Get or build the timeline
-    const timeline = await this.buildSessionTimeline(sessionId, includeRelated);
-    
     // Log how many items we found
-    serverLogger.debug(`Built timeline for session ${sessionId} with ${timeline.items.length} total items`);
+    serverLogger.debug(`Loaded ${sortedItems.length} timeline items for session ${sessionId} (${userMessages.length} user, ${assistantMessages.length} assistant)`);
     
     // Apply filtering by types if specified
-    let filteredItems = timeline.items;
+    let filteredItems = sortedItems;
     if (types && types.length > 0) {
-      filteredItems = timeline.items.filter(item => types.includes(item.type));
+      filteredItems = sortedItems.filter(item => types.includes(item.type));
     }
     
     // Apply pagination
@@ -193,32 +200,209 @@ export class TimelineService extends EventEmitter {
       totalCount: filteredItems.length
     };
   }
+  
+  /**
+   * Sort timeline items - maintains proper ordering of messages and tool executions
+   */
+  private sortTimelineItems(items: TimelineItem[]): TimelineItem[] {
+    // Map tool executions to their parent messages for faster lookup
+    const toolToParentMap = new Map<string, string>();
+    
+    // First pass to establish parent-child relationships
+    items.forEach(item => {
+      // If it's a message with tool calls, establish parent relationship
+      if (item.type === TimelineItemType.MESSAGE && item.message.toolCalls?.length) {
+        item.message.toolCalls.forEach(call => {
+          if (call.executionId) {
+            toolToParentMap.set(call.executionId, item.id);
+          }
+        });
+      }
+      
+      // If it's a tool execution with parentMessageId, record that too
+      if (item.type === TimelineItemType.TOOL_EXECUTION && 
+          (item as ToolExecutionTimelineItem).parentMessageId) {
+        const parentId = (item as ToolExecutionTimelineItem).parentMessageId;
+        if (parentId) {
+          toolToParentMap.set(item.id, parentId);
+        }
+      }
+    });
+    
+    // Group messages and their related tools to ensure proper order
+    const userMessages = items.filter(item => 
+      item.type === TimelineItemType.MESSAGE && item.message.role === 'user'
+    );
+    const assistantMessages = items.filter(item => 
+      item.type === TimelineItemType.MESSAGE && item.message.role === 'assistant'
+    );
+    
+    // Log what we found for diagnostic purposes
+    serverLogger.debug(`Timeline sorting: found ${userMessages.length} user messages, ${assistantMessages.length} assistant messages`);
+    
+    // Now sort with improved logic that enforces user -> tools -> assistant order
+    return items.sort((a, b) => {
+      // CASE 1: Always prioritize user messages over assistant messages
+      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
+        if (a.message.role === 'user' && b.message.role === 'assistant') {
+          return -1; // User messages always come before assistant messages
+        }
+        if (a.message.role === 'assistant' && b.message.role === 'user') {
+          return 1; // User messages always come before assistant messages
+        }
+      }
+      
+      // CASE 2: Use sequence numbers for messages when available
+      if (a.type === TimelineItemType.MESSAGE && 
+          b.type === TimelineItemType.MESSAGE && 
+          a.message.sequence !== undefined && 
+          b.message.sequence !== undefined) {
+        return a.message.sequence - b.message.sequence;
+      }
+      
+      // CASE 3: Enforce tool execution placement between their parent message and the next message
+      if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.MESSAGE) {
+        const parentId = toolToParentMap.get(a.id);
+        
+        // If b is the parent of tool a, then tool a comes after parent message b
+        if (parentId === b.id) {
+          return 1;
+        }
+        
+        // If b is an assistant message and a's parent is a user message, 
+        // tool a should appear before assistant message b
+        if (b.message.role === 'assistant' && 
+            parentId && 
+            userMessages.some(msg => msg.id === parentId)) {
+          return -1; // Tool comes before assistant message
+        }
+      }
+      
+      if (a.type === TimelineItemType.MESSAGE && b.type === TimelineItemType.TOOL_EXECUTION) {
+        const parentId = toolToParentMap.get(b.id);
+        
+        // If a is the parent of tool b, then tool b comes after parent message a
+        if (parentId === a.id) {
+          return -1;
+        }
+        
+        // If a is an assistant message and b's parent is a user message, 
+        // tool b should appear before assistant message a
+        if (a.message.role === 'assistant' && 
+            parentId && 
+            userMessages.some(msg => msg.id === parentId)) {
+          return 1; // Tool comes before assistant message
+        }
+      }
+      
+      // CASE 4: Both are tools - order by parent message sequence, then by timestamp
+      if (a.type === TimelineItemType.TOOL_EXECUTION && b.type === TimelineItemType.TOOL_EXECUTION) {
+        const aParentId = toolToParentMap.get(a.id);
+        const bParentId = toolToParentMap.get(b.id);
+        
+        // If both tools have the same parent, use timestamp
+        if (aParentId && bParentId && aParentId === bParentId) {
+          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        }
+        
+        // If only a has a parent that's a user message, a comes first
+        if (aParentId && userMessages.some(msg => msg.id === aParentId) && 
+            (!bParentId || !userMessages.some(msg => msg.id === bParentId))) {
+          return -1;
+        }
+        
+        // If only b has a parent that's a user message, b comes first
+        if (bParentId && userMessages.some(msg => msg.id === bParentId) && 
+            (!aParentId || !userMessages.some(msg => msg.id === aParentId))) {
+          return 1;
+        }
+      }
+      
+      // CASE 5: Use timestamp as fallback
+      const aTime = new Date(a.timestamp).getTime();
+      const bTime = new Date(b.timestamp).getTime();
+      return aTime - bTime;
+    });
+  }
 
   /**
    * Add or update a message in the timeline
+   * Public method that can be called directly from controllers
    */
-  private async addMessageToTimeline(sessionId: string, message: StoredMessage): Promise<MessageTimelineItem> {
-    // Create the timeline item
+  public async addMessageToTimeline(sessionId: string, message: StoredMessage): Promise<MessageTimelineItem> {
+    // Use the internal implementation and also emit events to the agent service
+    const timelineItem = await this.addMessageToTimelineInternal(sessionId, message);
+    
+    // Emit the MESSAGE_RECEIVED event to WebSocket clients
+    this.emitToSession(sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
+      sessionId,
+      message: timelineItem.message
+    });
+    
+    return timelineItem;
+  }
+  
+  /**
+   * Internal version of addMessageToTimeline that doesn't emit events back to agent
+   * Used to break circular dependencies when handling agent events
+   */
+  private async addMessageToTimelineInternal(sessionId: string, message: StoredMessage): Promise<MessageTimelineItem> {
+    // Create the timeline item with a validated timestamp
+    const timestamp = message.timestamp || new Date().toISOString();
+    
+    // Validate timestamp by trying to parse it
+    let validatedTimestamp = timestamp;
+    try {
+      // Check if it's a valid timestamp
+      new Date(timestamp).toISOString();
+    } catch (e) {
+      // If invalid, use current time
+      validatedTimestamp = new Date().toISOString();
+      serverLogger.warn(`Invalid timestamp detected for message ${message.id}, using current time instead`);
+    }
+    
+    // Set appropriate sequence number if not already provided
+    if (message.sequence === undefined) {
+      // Get existing messages to determine next sequence number
+      const existingItems = await this.timelinePersistence.loadTimelineItems(sessionId);
+      const messageItems = existingItems.filter(item => 
+        item.type === TimelineItemType.MESSAGE
+      );
+      
+      // Find the highest sequence number
+      let highestSequence = -1;
+      messageItems.forEach(item => {
+        if (item.message.sequence !== undefined && item.message.sequence > highestSequence) {
+          highestSequence = item.message.sequence;
+        }
+      });
+      
+      // Use even numbers (0, 2, 4...) for user messages, odd (1, 3, 5...) for assistant
+      // This helps maintain proper conversation order
+      if (message.role === 'user') {
+        message.sequence = highestSequence < 0 ? 0 : highestSequence + (highestSequence % 2 === 0 ? 2 : 1);
+      } else {
+        message.sequence = highestSequence < 0 ? 1 : highestSequence + (highestSequence % 2 === 0 ? 1 : 2);
+      }
+    }
+    
+    // Log the message being added with sequence number
+    serverLogger.debug(`Adding message to timeline: role=${message.role}, id=${message.id}, sequence=${message.sequence}`);
+    
     const timelineItem: MessageTimelineItem = {
       id: message.id,
       type: TimelineItemType.MESSAGE,
-      timestamp: message.timestamp,
+      timestamp: validatedTimestamp,
       sessionId,
       message,
       toolExecutions: message.toolCalls?.map(call => call.executionId)
     };
     
-    // Update cache
-    await this.updateTimelineCache(sessionId, timelineItem);
+    // Save to timeline persistence
+    await this.timelinePersistence.addTimelineItem(sessionId, timelineItem);
     
-    // Emit events
+    // Only emit our internal timeline event, NOT back to agent service
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
-    
-    // Emit the MESSAGE_RECEIVED event instead of TIMELINE_UPDATE
-    this.emitToSession(sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
-      sessionId,
-      message: timelineItem.message
-    });
     
     return timelineItem;
   }
@@ -272,11 +456,24 @@ export class TimelineService extends EventEmitter {
         this.lastToolUpdates.delete(recentKey);
       }
     }, 5000);
+    
+    // Validate timestamp for tool execution
+    const startTime = toolExecution.startTime || new Date().toISOString();
+    let validatedStartTime = startTime;
+    try {
+      // Check if it's a valid timestamp
+      new Date(startTime).toISOString();
+    } catch (e) {
+      // If invalid, use current time
+      validatedStartTime = new Date().toISOString();
+      serverLogger.warn(`Invalid timestamp detected for tool execution ${toolExecution.id}, using current time instead`);
+    }
+    
     // Create the timeline item with the provided preview
     const timelineItem: ToolExecutionTimelineItem = {
       id: toolExecution.id,
       type: TimelineItemType.TOOL_EXECUTION,
-      timestamp: toolExecution.startTime,
+      timestamp: validatedStartTime,
       sessionId,
       toolExecution,
       permissionRequest: toolExecution.permissionId,
@@ -284,8 +481,8 @@ export class TimelineService extends EventEmitter {
       parentMessageId
     };
     
-    // Update cache
-    await this.updateTimelineCache(sessionId, timelineItem);
+    // Save to timeline persistence
+    await this.timelinePersistence.addTimelineItem(sessionId, timelineItem);
     
     // Emit events
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
@@ -313,32 +510,14 @@ export class TimelineService extends EventEmitter {
       // Check if we have a valid preview with required content
       const hasValidPreview = !!(preview && preview.briefContent);
       
-      // Enhanced validation and debug logging
-      if (preview) {
+      // Only log if debug preview is enabled
+      if (preview && process.env.DEBUG_PREVIEW) {
         serverLogger.info(`Preview data availability for ${toolExecution.id}:`, {
           hasPreview: !!preview,
           hasValidPreview,
           contentType: preview.contentType,
           briefContentExists: !!preview.briefContent,
-          briefContentLength: preview.briefContent?.length || 0,
-          fullContentExists: !!preview.fullContent,
-          fullContentLength: preview.fullContent?.length || 0,
-          briefContentSample: preview.briefContent ? 
-            preview.briefContent.substring(0, 100) + (preview.briefContent.length > 100 ? '...' : '') : 'MISSING',
-          metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
-        });
-      }
-      
-      if (hasValidPreview) {
-        serverLogger.info(`Emitting TOOL_EXECUTION_UPDATED with preview for ${toolExecution.id}:`, {
-          toolId: toolExecution.id,
-          toolName: toolExecution.toolName,
-          status: toolExecution.status,
-          hasPreview: true,
-          previewContentType: preview?.contentType,
-          previewBriefContentLength: preview?.briefContent?.length,
-          previewFullContentLength: preview?.fullContent?.length,
-          previewMetadataKeys: preview?.metadata ? Object.keys(preview.metadata) : []
+          briefContentLength: preview.briefContent?.length || 0
         });
       }
       
@@ -397,8 +576,8 @@ export class TimelineService extends EventEmitter {
       preview
     };
     
-    // Update cache
-    await this.updateTimelineCache(sessionId, timelineItem);
+    // Save to timeline persistence
+    await this.timelinePersistence.addTimelineItem(sessionId, timelineItem);
     
     // Emit events
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
@@ -453,24 +632,24 @@ export class TimelineService extends EventEmitter {
    */
   private emitToSession(sessionId: string, event: string, data: Record<string, unknown>): void {
     try {
-      serverLogger.debug(`[emitToSession] Attempting to emit ${event} to session ${sessionId} with stack trace: ${new Error().stack}`);
+      // Log important timeline objects
+      if (event === WebSocketEvent.TOOL_EXECUTION_UPDATED || 
+          event === WebSocketEvent.TOOL_EXECUTION_RECEIVED) {
+        serverLogger.debug(`[TIMELINE] Timeline object for ${event}:`, JSON.stringify(data, null, 2));
+      }
       
       // Type-safe access to WebSocketService properties
       // Access the socket.io instance directly
       const socketIoServer = this.getSocketIOServer();
       
       if (socketIoServer) {
-        serverLogger.debug(`[emitToSession] Using Socket.IO to emit ${event} to session ${sessionId}`);
         socketIoServer.to(sessionId).emit(event, data);
-        serverLogger.debug(`[emitToSession] Emitted ${event} to session ${sessionId} via Socket.IO`);
       } else {
         // Fallback method if direct io access is not available
         const agentService = this.getAgentService();
         if (agentService) {
           // If AgentService is accessible, emit the event through it
-          serverLogger.debug(`[emitToSession] Using AgentService to emit timeline:${event} for session ${sessionId}`);
           agentService.emit(`timeline:${event}`, { sessionId, ...data });
-          serverLogger.debug(`[emitToSession] Emitted timeline:${event} through AgentService for session ${sessionId}`);
         } else {
           serverLogger.warn(`[emitToSession] Could not emit ${event} to session ${sessionId}: No socket.io or AgentService instance found`);
         }
@@ -540,36 +719,66 @@ export class TimelineService extends EventEmitter {
     
     // Listen for message events - custom events not in AgentServiceEvent enum
     agentService.on(MESSAGE_ADDED, (data: MessageAddedEvent) => {
-      this.addMessageToTimeline(data.sessionId, data.message);
-      
-      // Also emit our new message received event
-      agentService.emit(AgentServiceEvent.MESSAGE_RECEIVED, {
-        sessionId: data.sessionId,
-        message: data.message
-      });
+      // Use the internal method to add to timeline without emitting events back to agent
+      this.addMessageToTimelineInternal(data.sessionId, data.message)
+        .then(() => {
+          // Emit to WebSocket clients only
+          this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
+            sessionId: data.sessionId,
+            message: data.message
+          });
+        })
+        .catch(err => {
+          serverLogger.error(`Error adding message to timeline from MESSAGE_ADDED: ${err.message}`);
+        });
     });
     
     agentService.on(MESSAGE_UPDATED, (data: MessageAddedEvent) => {
-      this.addMessageToTimeline(data.sessionId, data.message);
-      
-      // Also emit our new message updated event
-      agentService.emit(AgentServiceEvent.MESSAGE_UPDATED, {
-        sessionId: data.sessionId,
-        messageId: data.message.id,
-        content: data.message.content,
-        isComplete: true
-      });
+      // Use the internal method to add to timeline without emitting events back to agent
+      this.addMessageToTimelineInternal(data.sessionId, data.message)
+        .then(() => {
+          // Emit to WebSocket clients only
+          this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_UPDATED, {
+            sessionId: data.sessionId,
+            messageId: data.message.id,
+            content: data.message.content,
+            isComplete: true
+          });
+        })
+        .catch(err => {
+          serverLogger.error(`Error adding updated message to timeline: ${err.message}`);
+        });
     });
     
-    // Also listen for message events from AgentEvents (from AgentRunner)
+    // Listen for message events from AgentEvents (from AgentRunner)
+    // This is a one-way flow: Agent -> Timeline -> UI WebSocket
     const handleAgentEventsMessage = (data: MessageAddedEvent) => {
-      this.addMessageToTimeline(data.sessionId, data.message);
+      // Still add the message to timeline for UI to display
+      // BUT don't emit back to the agent service to avoid feedback loops
+      const storedMessage: StoredMessage = {
+        id: data.message.id || crypto.randomUUID(),
+        role: data.message.role as 'user' | 'assistant',
+        timestamp: new Date().toISOString(),
+        content: data.message.content,
+        sequence: 0, // Will be set properly by addMessageToTimeline
+      };
       
-      // Also emit our new message received event
-      agentService.emit(AgentServiceEvent.MESSAGE_RECEIVED, {
-        sessionId: data.sessionId,
-        message: data.message
-      });
+      // Add to timeline without emitting back to the agent
+      try {
+        // Call a special internal version of addMessageToTimeline that doesn't emit events
+        this.addMessageToTimelineInternal(data.sessionId, storedMessage)
+          .then(timelineItem => {
+            // Explicitly emit the WebSocket event to the frontend
+            this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
+              sessionId: data.sessionId,
+              message: timelineItem.message
+            });
+            serverLogger.debug(`Emitted WebSocket message for ${data.message.role} message from AgentEvents`);
+          })
+          .catch(err => serverLogger.error(`Error adding message to timeline from agent: ${err.message}`));
+      } catch (err) {
+        serverLogger.error(`Error adding message to timeline from agent: ${err instanceof Error ? err.message : String(err)}`);
+      }
     };
     AgentEvents.on(MESSAGE_ADDED, handleAgentEventsMessage);
     
@@ -583,74 +792,6 @@ export class TimelineService extends EventEmitter {
         originalCleanup();
       }
     };
-    
-    // Listen for tool execution events
-    agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, (data: LegacyToolExecutionEventData) => {
-      if (!data || !data.sessionId || !data.tool || !data.tool.executionId) {
-        serverLogger.error('TimelineService: Missing required data in TOOL_EXECUTION_STARTED event');
-        return;
-      }
-      
-      const executionId = data.tool.executionId;
-      
-      this.findParentMessageId(data.sessionId, executionId)
-        .then(parentMessageId => {
-          // Create an execution object from the tool data that matches ToolExecutionState
-          const execution: ToolExecutionState = {
-            id: executionId,
-            sessionId: data.sessionId,
-            toolId: data.tool.id,
-            toolName: data.tool.name,
-            args: data.args || {},
-            status: ToolExecutionStatus.RUNNING,
-            startTime: data.timestamp || new Date().toISOString()
-          };
-          
-          this.addToolExecutionToTimeline(data.sessionId, execution, undefined, parentMessageId);
-        });
-    });
-    
-    agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: LegacyToolExecutionEventData) => {
-      if (!data || !data.sessionId || !data.tool || !data.tool.executionId) {
-        serverLogger.error('TimelineService: Missing required data in TOOL_EXECUTION_COMPLETED event');
-        return;
-      }
-      
-      const executionId = data.tool.executionId;
-      
-      this.findParentMessageId(data.sessionId, executionId)
-        .then(parentMessageId => {
-          // Create an execution object from the tool data
-          const execution: ToolExecutionState = {
-            id: executionId,
-            sessionId: data.sessionId,
-            toolId: data.tool.id,
-            toolName: data.tool.name,
-            args: data.args || {},
-            result: data.result,
-            status: ToolExecutionStatus.COMPLETED,
-            startTime: data.startTime || data.timestamp || new Date().toISOString(),
-            endTime: data.timestamp || new Date().toISOString(),
-            executionTime: data.executionTime || 0
-          };
-          
-          // Create proper preview object if it exists
-          let toolPreview: ToolPreviewState | undefined = undefined;
-          if (data.preview) {
-            toolPreview = {
-              id: crypto.randomUUID(),
-              sessionId: data.sessionId,
-              executionId: executionId,
-              contentType: data.preview.contentType as PreviewContentType,
-              briefContent: data.preview.briefContent,
-              fullContent: data.preview.fullContent,
-              metadata: data.preview.metadata
-            };
-          }
-          
-          this.addToolExecutionToTimeline(data.sessionId, execution, toolPreview, parentMessageId);
-        });
-    });
     
     // Listen for permission request events - use a debounce mechanism to prevent cascading permission events
     const permissionDebounce = new Map<string, number>();
@@ -757,355 +898,23 @@ export class TimelineService extends EventEmitter {
    * Find the parent message ID for a tool execution
    */
   private async findParentMessageId(sessionId: string, executionId: string): Promise<string | undefined> {
-    const sessionData = await this.getSessionData(sessionId);
-    if (!sessionData) return undefined;
+    // Get timeline items for the session
+    const timelineItems = await this.timelinePersistence.loadTimelineItems(sessionId);
+    if (!timelineItems || timelineItems.length === 0) return undefined;
     
-    // Look through messages to find one that references this execution
-    for (const message of sessionData.messages) {
-      if (message.toolCalls?.some(call => call.executionId === executionId)) {
-        return message.id;
+    // Look through message timeline items to find one that references this execution
+    for (const item of timelineItems) {
+      if (item.type === TimelineItemType.MESSAGE) {
+        const messageItem = item as MessageTimelineItem;
+        if (messageItem.message.toolCalls?.some(call => call.executionId === executionId)) {
+          return messageItem.id;
+        }
       }
     }
     
     return undefined;
   }
 
-  /**
-   * Get session data from SessionManager and associated services
-   */
-  private async getSessionData(sessionId: string): Promise<SessionData | null> {
-    try {
-      // First, try to load the session from persistence
-      const sessionStatePersistence = getSessionStatePersistence();
-      let persistedSessionData = null;
-      
-      if (sessionStatePersistence) {
-        try {
-          // Use the non-event-emitting method to avoid recursive event emission
-          persistedSessionData = await sessionStatePersistence.getSessionDataWithoutEvents(sessionId);
-          // If we have persisted data, use it instead of in-memory session
-          if (persistedSessionData) {
-            serverLogger.debug(`Loaded persisted session data for ${sessionId} with ${persistedSessionData.messages?.length || 0} messages`);
-            
-            // Return the persisted session data directly
-            return {
-              messages: persistedSessionData.messages || [],
-              toolExecutions: persistedSessionData.toolExecutions || [],
-              permissionRequests: persistedSessionData.permissionRequests || [],
-              previews: persistedSessionData.previews || [],
-            };
-          }
-        } catch (err) {
-          serverLogger.debug(`Error loading persisted session: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-      
-      // Get the session from SessionManager if we couldn't load from persistence
-      if (!this.sessionManager.getSession) {
-        serverLogger.error('SessionManager does not have a getSession method');
-        return null;
-      }
-      
-      const session = this.sessionManager.getSession(sessionId);
-      if (!session) {
-        serverLogger.debug(`Session ${sessionId} not found`);
-        return null;
-      }
-      
-      // Get the AgentService to access associated data
-      const agentService = this.getAgentService();
-      if (!agentService) {
-        serverLogger.error('Could not access AgentService to get session data');
-        return null;
-      }
-      
-      // Get all the data from the correct services
-      
-      // 1. Get messages from the session's conversation history
-      let messages: StoredMessage[] = [];
-      if (session.state?.conversationHistory) {
-        // Safe conversion with proper type handling
-        messages = session.state.conversationHistory.map((msg: any) => ({
-          id: msg.id || crypto.randomUUID(),
-          role: (msg.role || 'user') as ('user' | 'assistant'),
-          timestamp: msg.timestamp || new Date().toISOString(),
-          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
-          sequence: msg.sequence || 0,
-          toolCalls: Array.isArray(msg.toolCalls) ? msg.toolCalls : []
-        }));
-      }
-      
-      // 2. Get tool executions directly from the AgentService
-      let toolExecutions: ToolExecutionState[] = [];
-      // AgentService has getToolExecution (singular) but not getToolExecutions (plural)
-      // So we'll adapt to work with what's available
-      if (typeof agentService.getToolExecution === 'function') {
-        // We'll need to get a list of execution IDs from somewhere
-        // For now, we can check if there are any tools in toolCalls from messages
-        const executionIds = new Set<string>();
-        
-        // Extract execution IDs from message toolCalls
-        messages.forEach(msg => {
-          if (msg.toolCalls && Array.isArray(msg.toolCalls)) {
-            msg.toolCalls.forEach(toolCall => {
-              if (toolCall.executionId) {
-                executionIds.add(toolCall.executionId);
-              }
-            });
-          }
-        });
-        
-        // Fetch each tool execution individually
-        Array.from(executionIds).forEach(executionId => {
-          try {
-            const execution = agentService.getToolExecution(executionId);
-            if (execution) {
-              toolExecutions.push(execution);
-            }
-          } catch (err) {
-            // Continue even if one execution fetch fails
-            serverLogger.debug(`Failed to get tool execution ${executionId}:`, err);
-          }
-        });
-      }
-      
-      // 3. Get permission requests from AgentService
-      let permissionRequests: PermissionRequestState[] = [];
-      if (typeof agentService.getPermissionRequests === 'function') {
-        try {
-          const requests = agentService.getPermissionRequests(sessionId);
-          if (Array.isArray(requests)) {
-            // Transform to match PermissionRequestState if needed
-            permissionRequests = requests.map((req: any) => {
-              // Create a properly structured PermissionRequestState
-              const permState: PermissionRequestState = {
-                id: (req.permissionId || req.id || crypto.randomUUID()),
-                sessionId: sessionId,
-                toolId: req.toolId || '',
-                toolName: req.toolName || req.toolId || 'unknown',
-                args: req.args || {},
-                requestTime: req.timestamp || new Date().toISOString(),
-                executionId: req.executionId || req.toolExecutionId || '',
-                resolvedTime: req.resolvedTime,
-                granted: req.granted,
-                previewId: req.previewId
-              };
-              return permState;
-            });
-          }
-        } catch (err) {
-          serverLogger.error('Error getting permission requests:', err);
-        }
-      }
-      
-      // 4. Get previews from the available services
-      let previews: ToolPreviewState[] = [];
-      
-      // Get previews associated with tool executions and permission requests
-      try {
-        // First, check if there's a session persistence provider we can access
-        // to get the complete session data
-        const sessionStatePersistence = getSessionStatePersistence();
-        if (sessionStatePersistence) {
-          try {
-            // Try to get the session data with previews included
-            const sessionData = await sessionStatePersistence.loadSession(sessionId);
-            if (sessionData?.previews && Array.isArray(sessionData.previews)) {
-              previews = sessionData.previews;
-              serverLogger.debug(`Retrieved ${previews.length} previews from session state`);
-            }
-          } catch (err) {
-            serverLogger.debug(`Error accessing session state persistence: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
-        
-        // If we couldn't get previews from session state, try to reconstruct
-        // them from tool executions and permission requests
-        if (previews.length === 0) {
-          const previewMap = new Map<string, ToolPreviewState>();
-          
-          // Collect preview IDs from tool executions
-          toolExecutions.forEach(execution => {
-            if (execution.previewId) {
-              // Try to create a basic preview state
-              previewMap.set(execution.previewId, {
-                id: execution.previewId,
-                sessionId: sessionId,
-                executionId: execution.id,
-                contentType: PreviewContentType.TEXT, // Using the enum value
-                briefContent: `${execution.toolName || execution.toolId || 'Tool'} execution result`,
-                fullContent: execution.result ? 
-                  (typeof execution.result === 'string' ? 
-                    execution.result : 
-                    JSON.stringify(execution.result, null, 2)
-                  ) : undefined
-              });
-            }
-          });
-          
-          // Add any previews from permission requests
-          permissionRequests.forEach(request => {
-            if (request.previewId && !previewMap.has(request.previewId)) {
-              previewMap.set(request.previewId, {
-                id: request.previewId,
-                sessionId: sessionId,
-                executionId: request.executionId,
-                permissionId: request.id,
-                contentType: PreviewContentType.TEXT,
-                briefContent: `Permission request for ${request.toolName || request.toolId || 'tool'}`
-              });
-            }
-          });
-          
-          // Convert the map to an array
-          previews = Array.from(previewMap.values());
-          serverLogger.debug(`Created ${previews.length} preview objects from references`);
-        }
-      } catch (err) {
-        serverLogger.error('Error building preview list:', err);
-      }
-      
-      // Combine all data into SessionData
-      return {
-        messages,
-        toolExecutions,
-        permissionRequests,
-        previews
-      };
-    } catch (error) {
-      serverLogger.error(`Error getting session data for ${sessionId}:`, 
-        error instanceof Error ? error.message : String(error));
-      return null;
-    }
-  }
-
-  /**
-   * Build or retrieve a full session timeline
-   */
-  private async buildSessionTimeline(
-    sessionId: string,
-    includeRelated = true
-  ): Promise<TimelineResponse> {
-    // Check cache first
-    const now = Date.now();
-    const cached = this.itemsCache[sessionId];
-    
-    if (cached && now - cached.lastUpdated < this.cacheExpiryMs) {
-      return { items: cached.items, totalCount: cached.items.length };
-    }
-    
-    // Get session data
-    const sessionData = await this.getSessionData(sessionId);
-    if (!sessionData) {
-      return { items: [], totalCount: 0 };
-    }
-    
-    // We no longer generate previews in the timeline service
-    // All preview generation is now handled by ToolExecutionManager
-    
-    const timeline: TimelineItem[] = [];
-    
-    // Add existing messages to timeline
-    for (const message of sessionData.messages) {
-      const item: MessageTimelineItem = {
-        id: message.id,
-        type: TimelineItemType.MESSAGE,
-        timestamp: message.timestamp,
-        sessionId,
-        message,
-        toolExecutions: message.toolCalls?.map(call => call.executionId)
-      };
-      
-      timeline.push(item);
-    }
-    
-    // Add tool executions to timeline
-    for (const execution of sessionData.toolExecutions) {
-      // Find parent message ID
-      let parentMessageId: string | undefined;
-      
-      for (const message of sessionData.messages) {
-        if (message.toolCalls?.some(call => call.executionId === execution.id)) {
-          parentMessageId = message.id;
-          break;
-        }
-      }
-      
-      // Find associated preview
-      let preview: ToolPreviewState | undefined;
-      
-      if (includeRelated && execution.previewId) {
-        preview = sessionData.previews.find(p => p.id === execution.previewId);
-      }
-      
-      const item: ToolExecutionTimelineItem = {
-        id: execution.id,
-        type: TimelineItemType.TOOL_EXECUTION,
-        timestamp: execution.startTime,
-        sessionId,
-        toolExecution: execution,
-        permissionRequest: execution.permissionId,
-        preview,
-        parentMessageId
-      };
-      
-      timeline.push(item);
-    }
-    
-    // Add permission requests to timeline
-    for (const permissionRequest of sessionData.permissionRequests) {
-      // Find associated preview
-      let preview: ToolPreviewState | undefined;
-      
-      if (includeRelated && permissionRequest.previewId) {
-        preview = sessionData.previews.find(p => p.id === permissionRequest.previewId);
-      }
-      
-      const item: PermissionRequestTimelineItem = {
-        id: permissionRequest.id,
-        type: TimelineItemType.PERMISSION_REQUEST,
-        timestamp: permissionRequest.requestTime,
-        sessionId,
-        permissionRequest,
-        toolExecutionId: permissionRequest.executionId,
-        preview
-      };
-      
-      timeline.push(item);
-    }
-    
-    // Sort timeline by timestamp
-    timeline.sort((a, b) => {
-      const dateA = new Date(a.timestamp).getTime();
-      const dateB = new Date(b.timestamp).getTime();
-      
-      if (dateA === dateB) {
-        // If timestamps are the same, prioritize messages over tool executions
-        if (a.type === TimelineItemType.MESSAGE && b.type !== TimelineItemType.MESSAGE) {
-          return -1;
-        }
-        if (a.type !== TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
-          return 1;
-        }
-      }
-      
-      return dateA - dateB;
-    });
-    
-    // Update cache
-    this.itemsCache[sessionId] = {
-      items: timeline,
-      lastUpdated: now
-    };
-    
-    return { items: timeline, totalCount: timeline.length };
-  }
-
-  /**
-   * The TimelineService no longer generates previews directly.
-   * All preview generation is now handled by ToolExecutionManager.
-   */
-   
   /**
    * Update the preview for an existing timeline item
    * This is used when a preview is generated asynchronously after the timeline item was created
@@ -1115,19 +924,20 @@ export class TimelineService extends EventEmitter {
     executionId: string,
     preview: ToolPreviewState
   ): Promise<void> {
-    // Find the existing timeline item in the cache
-    const cachedItems = this.itemsCache[sessionId]?.items || [];
-    const itemIndex = cachedItems.findIndex(
-      item => item.type === TimelineItemType.TOOL_EXECUTION && item.id === executionId
-    );
+    // Load timeline items
+    const timelineItems = await this.timelinePersistence.loadTimelineItems(sessionId);
     
-    if (itemIndex >= 0) {
+    // Find the existing timeline item
+    const item = timelineItems.find(
+      item => item.type === TimelineItemType.TOOL_EXECUTION && item.id === executionId
+    ) as ToolExecutionTimelineItem | undefined;
+    
+    if (item) {
       // Update the preview in the timeline item
-      const item = cachedItems[itemIndex] as ToolExecutionTimelineItem;
       item.preview = preview;
       
-      // Update the cache
-      await this.updateTimelineCache(sessionId, item);
+      // Save back to persistence
+      await this.timelinePersistence.addTimelineItem(sessionId, item);
       
       // Emit events
       this.emit(TimelineServiceEvent.ITEM_UPDATED, item);
@@ -1135,109 +945,43 @@ export class TimelineService extends EventEmitter {
       // Check if we have a valid preview with required content
       const hasValidPreview = !!(preview && preview.briefContent);
       
-      // Enhanced validation and debug logging
-      if (preview) {
+      // Only log if debug preview is enabled
+      if (preview && process.env.DEBUG_PREVIEW) {
         serverLogger.info(`Preview data for timeline item update ${executionId}:`, {
           hasPreview: !!preview,
           hasValidPreview,
           contentType: preview.contentType,
-          briefContentExists: !!preview.briefContent,
-          briefContentLength: preview.briefContent?.length || 0,
-          fullContentExists: !!preview.fullContent,
-          fullContentLength: preview.fullContent?.length || 0,
-          briefContentSample: preview.briefContent ? 
-            preview.briefContent.substring(0, 100) + (preview.briefContent.length > 100 ? '...' : '') : 'MISSING',
-          metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+          briefContentLength: preview.briefContent?.length || 0
         });
       }
       
-      if (hasValidPreview) {
-        serverLogger.info(`Updating timeline item with preview for ${executionId}:`, {
+      // IMPORTANT: Use a copy of the preview object to avoid reference issues
+      // This ensures a complete copy of the preview data is sent
+      const previewToSend = {
+        contentType: preview.contentType,
+        briefContent: preview.briefContent,
+        fullContent: preview.fullContent,
+        metadata: preview.metadata ? {...preview.metadata} : undefined,
+        // Add extra fields to ensure client gets all the data
+        hasActualContent: true
+      };
+      
+      // Send the execution update with preview directly in the toolExecution object
+      this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+        sessionId,
+        toolExecution: {
+          id: item.toolExecution.id,
           toolId: item.toolExecution.toolId,
           toolName: item.toolExecution.toolName,
           status: item.toolExecution.status,
+          preview: previewToSend,
+          // Add these flags to help client-side detection
           hasPreview: true,
-          previewContentType: preview.contentType,
-          previewBriefContentLength: preview.briefContent?.length,
-          previewFullContentLength: preview.fullContent?.length,
-          previewMetadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
-        });
-        
-        // IMPORTANT: Use a copy of the preview object to avoid reference issues
-        // This ensures a complete copy of the preview data is sent
-        const previewToSend = {
-          contentType: preview.contentType,
-          briefContent: preview.briefContent,
-          fullContent: preview.fullContent,
-          metadata: preview.metadata ? {...preview.metadata} : undefined,
-          // Add extra fields to ensure client gets all the data
-          hasActualContent: true
-        };
-        
-        // Send the execution update with preview directly in the toolExecution object
-        this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-          sessionId,
-          toolExecution: {
-            id: item.toolExecution.id,
-            toolId: item.toolExecution.toolId,
-            toolName: item.toolExecution.toolName,
-            status: item.toolExecution.status,
-            preview: previewToSend,
-            // Add these flags to help client-side detection
-            hasPreview: true,
-            previewContentType: preview.contentType
-          }
-        });
-      } else {
-        serverLogger.warn(`Cannot update timeline item with invalid preview for ${executionId}`);
-      }
-    } else {
-      serverLogger.warn(`Timeline item not found for execution ${executionId} in session ${sessionId}`);
-    }
-  }
-
-  /**
-   * Update the timeline cache with a new or updated item
-   */
-  private async updateTimelineCache(sessionId: string, item: TimelineItem): Promise<void> {
-    if (!this.itemsCache[sessionId]) {
-      // Cache doesn't exist, so create a new timeline
-      await this.buildSessionTimeline(sessionId, true);
-      return;
-    }
-    
-    const cache = this.itemsCache[sessionId];
-    
-    // Check if the item already exists in the cache
-    const existingIndex = cache.items.findIndex(i => i.id === item.id && i.type === item.type);
-    
-    if (existingIndex >= 0) {
-      // Update existing item
-      cache.items[existingIndex] = item;
-    } else {
-      // Add new item
-      cache.items.push(item);
-      
-      // Re-sort the timeline
-      cache.items.sort((a, b) => {
-        const dateA = new Date(a.timestamp).getTime();
-        const dateB = new Date(b.timestamp).getTime();
-        
-        if (dateA === dateB) {
-          // If timestamps are the same, prioritize messages over tool executions
-          if (a.type === TimelineItemType.MESSAGE && b.type !== TimelineItemType.MESSAGE) {
-            return -1;
-          }
-          if (a.type !== TimelineItemType.MESSAGE && b.type === TimelineItemType.MESSAGE) {
-            return 1;
-          }
+          previewContentType: preview.contentType
         }
-        
-        return dateA - dateB;
       });
+    } else {
+      serverLogger.warn(`Cannot update timeline item with invalid preview for ${executionId}`);
     }
-    
-    // Update the last updated timestamp
-    cache.lastUpdated = Date.now();
   }
 }

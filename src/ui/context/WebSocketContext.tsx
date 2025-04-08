@@ -108,6 +108,15 @@ export function WebSocketProvider({
     const handleStatusChange = (status: ConnectionStatus) => {
       console.log(`WebSocketContext: Connection status changed to ${status}`);
       setConnectionStatus(status);
+      
+      // Auto-reconnect when disconnected
+      if (status === ConnectionStatus.DISCONNECTED) {
+        console.log('WebSocketContext: Auto-reconnecting due to disconnection');
+        // Add slight delay to avoid reconnection storm
+        setTimeout(() => {
+          manager.reconnect();
+        }, 1000);
+      }
     };
     
     // Listen for reconnect attempts

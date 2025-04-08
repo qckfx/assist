@@ -1,8 +1,9 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { AgentService, AgentServiceEvent, getAgentService } from './AgentService';
-import { SessionManager, sessionManager } from './SessionManager';
+import { SessionManager, sessionManager, Session } from './SessionManager';
 import { serverLogger } from '../logger';
+import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from '../../utils/sessionUtils';
 import { 
   ToolPreviewData, 
   ToolPreviewState,
@@ -17,6 +18,7 @@ import {
   ToolExecutionStatus
 } from '../../types/tool-execution';
 import { previewService } from './preview';
+import { getSessionStatePersistence } from './sessionPersistenceProvider';
 
 
 /**
@@ -85,6 +87,7 @@ export class WebSocketService {
     this.setupSocketHandlers();
     this.setupAgentEventListeners();
     this.setupSessionEventForwarding();
+    this.setupEnvironmentEventListeners();
 
     serverLogger.info('WebSocketService initialized');
   }
@@ -228,26 +231,62 @@ export class WebSocketService {
       }
 
       // Handle join session requests
-      socket.on(WebSocketEvent.JOIN_SESSION, (sessionId: string) => {
-        serverLogger.debug(`Join session request: ${sessionId} from client ${socket.id}`);
-        
+      socket.on(WebSocketEvent.JOIN_SESSION, async (sessionId: string) => {
         try {
-          if (!this.sessionManager.getSession(sessionId)) {
-            serverLogger.warn(`Session ${sessionId} not found for client ${socket.id}`);
-            socket.emit(WebSocketEvent.ERROR, {
-              message: `Session ${sessionId} not found`,
+          // First check in-memory (fast path)
+          if (!this.sessionManager.getAllSessions().some(s => s.id === sessionId)) {
+            // Try to load from persistence
+            const sessionStatePersistence = getSessionStatePersistence();
+            const sessionData = await sessionStatePersistence.loadSession(sessionId);
+            
+            if (!sessionData) {
+              serverLogger.warn(`Session ${sessionId} not found in memory or persistence`);
+              socket.emit(WebSocketEvent.ERROR, {
+                message: `Session ${sessionId} not found`,
+              });
+              return;
+            }
+            
+            // Convert SavedSessionData to Session
+            const session: Session = {
+              id: sessionData.id,
+              createdAt: new Date(sessionData.createdAt),
+              lastActiveAt: new Date(sessionData.updatedAt),
+              state: sessionData.sessionState || { conversationHistory: [] },
+              isProcessing: false,
+              executionAdapterType: sessionData.sessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' | undefined
+            };
+
+            // Add the session to the session manager
+            this.sessionManager.addSession(session);
+            
+            // Join the session room
+            socket.join(sessionId);
+            
+            // Send the current session state
+            this.io.to(sessionId).emit(WebSocketEvent.SESSION_LOADED, {
+              sessionId,
+              state: session.state
             });
-            return;
           }
 
-          // Join the session's room
+          // Now proceed with join logic
           socket.join(sessionId);
           serverLogger.info(`Client ${socket.id} joined session ${sessionId}`);
 
-          // Send current session state
-          const session = this.sessionManager.getSession(sessionId);
-          socket.emit(WebSocketEvent.SESSION_UPDATED, session);
-          serverLogger.debug(`Sent updated session to client ${socket.id}`);
+          try {
+            // Send current session state
+            const session = this.sessionManager.getSession(sessionId);
+            socket.emit(WebSocketEvent.SESSION_UPDATED, session);
+            serverLogger.debug(`Sent updated session to client ${socket.id}`);
+          } catch (error) {
+            // Session might not be available, send error
+            serverLogger.error(`Error getting session ${sessionId}:`, error);
+            socket.emit(WebSocketEvent.ERROR, {
+              message: `Error getting session: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            return;
+          }
           
           // Send init event with execution environment info
           this.sendInitEvent(socket);
@@ -466,20 +505,7 @@ export class WebSocketService {
     // Use the tool execution events from the ToolExecutionManager
     // The AgentService will forward these events after transforming them
     
-    // Tool execution started
-    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_STARTED, this.handleToolExecutionStarted.bind(this));
-    
-    // Tool execution updated
-    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION, this.handleToolExecutionUpdated.bind(this));
-    
-    // Tool execution completed
-    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, this.handleToolExecutionCompleted.bind(this));
-    
-    // Tool execution error
-    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_ERROR, this.handleToolExecutionError.bind(this));
-    
-    // Tool execution aborted
-    this.agentService.on(AgentServiceEvent.TOOL_EXECUTION_ABORTED, this.handleToolExecutionAborted.bind(this));
+    // Tool execution events are now fully handled via TIMELINE_ITEM_UPDATED
     
     // Permission requested
     this.agentService.on(AgentServiceEvent.PERMISSION_REQUESTED, this.handlePermissionRequested.bind(this));
@@ -721,398 +747,91 @@ export class WebSocketService {
         return;
       }
       
+      // Get the execution adapter type, defaulting to 'docker' if not specified
+      const executionEnvironment = session.state.executionAdapterType || 
+                               session.executionAdapterType || 
+                               'docker';
+      
       // Include execution adapter type and sandbox ID in init event
       socket.emit('init', {
         sessionId,
-        executionEnvironment: session.state.executionAdapterType || 'docker',
+        executionEnvironment: executionEnvironment,
         e2bSandboxId: session.state.e2bSandboxId
       });
+      
+      // For Docker sessions, initialize the container
+      if (executionEnvironment === 'docker') {
+        serverLogger.info(`Initializing Docker container for session ${sessionId}`, 'system');
+        
+        // First emit event that Docker is initializing so the UI shows the correct status
+        this.io.to(sessionId).emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
+          sessionId,
+          environmentType: 'docker',
+          status: 'initializing',
+          isReady: false
+        });
+        
+        // Always try to create/initialize the Docker container for the session
+        // This is safe because createExecutionAdapterForSession will reuse an existing container if it exists
+        this.agentService.createExecutionAdapterForSession(sessionId, { type: 'docker' })
+          .then(() => {
+            // On success, emit environment ready status to all clients in the session
+            serverLogger.info(`Docker container ready for session ${sessionId}`, 'system');
+            
+            this.io.to(sessionId).emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
+              sessionId,
+              environmentType: 'docker',
+              status: 'connected',
+              isReady: true
+            });
+          })
+          .catch((error: unknown) => {
+            // On error, emit error status to all clients in the session
+            serverLogger.error(`Failed to initialize Docker container for session ${sessionId}:`, error);
+            
+            this.io.to(sessionId).emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
+              sessionId,
+              environmentType: 'docker',
+              status: 'error',
+              error: error instanceof Error ? error.message : String(error),
+              isReady: false
+            });
+          });
+      } else {
+        // For non-Docker environments, emit ready immediately
+        socket.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
+          sessionId,
+          environmentType: executionEnvironment,
+          status: 'connected',
+          isReady: true
+        });
+      }
     } catch (error) {
       serverLogger.error(`Error sending init event: ${(error as Error).message}`, error);
     }
   }
+  
+  
+  // Note: Direct emission of status events removed.
+  // Environment status is now emitted directly by the execution adapters via AgentEvents
+  // and received by the setupEnvironmentEventListeners method.
+  
+  /**
+   * Set up listeners for environment status events
+   */
+  private setupEnvironmentEventListeners(): void {
+    // Subscribe to environment status changed events
+    AgentEvents.on(AgentEventType.ENVIRONMENT_STATUS_CHANGED, (statusEvent: EnvironmentStatusEvent) => {
+      serverLogger.info(`Received environment status update: ${statusEvent.environmentType} -> ${statusEvent.status}, ready=${statusEvent.isReady}`);
+      
+      // We don't need to store the execution adapter type anymore, 
+      // as it's included in each status event
+      
+      // Broadcast to all connected clients
+      this.io.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, statusEvent);
+    });
+  }
 
-  /**
-   * Handle tool execution started event
-   */
-  private handleToolExecutionStarted(data: {
-    sessionId: string;
-    tool: { id: string; name: string; executionId: string };
-    args?: Record<string, unknown>;
-    paramSummary?: string;
-    timestamp?: string;
-  }): void {
-    const { sessionId, tool, paramSummary } = data;
-    
-    // Get the full execution state from the tool execution manager
-    const executionId = tool.executionId;
-    const execution = this.agentService.getToolExecution(executionId);
-    
-    if (!execution) {
-      serverLogger.warn(`Tool execution not found: ${executionId}`);
-      // Fall back to the original event format
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, data);
-      return;
-    }
-    
-    // Convert to client format - using Promise.resolve to handle async/non-async implementation
-    Promise.resolve(this.convertExecutionToClientFormat(execution))
-      .then(clientData => {
-        // Add tool to active tools
-        if (!this.activeTools.has(sessionId)) {
-          this.activeTools.set(sessionId, new Map());
-        }
-        
-        // Track the tool in our active tools map
-        this.activeTools.get(sessionId)?.set(tool.id, {
-          tool,
-          startTime: execution.startTime ? new Date(execution.startTime) : new Date(),
-          paramSummary: paramSummary || execution.summary || 'No parameters',
-          args: execution.args || {}
-        });
-        
-        // Add debug logging to see if we have a preview at start time
-        serverLogger.info(`Tool execution started with preview info for ${executionId}:`, {
-          toolId: execution.toolId,
-          toolName: execution.toolName,
-          hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
-          previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined,
-          previewBriefContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
-            (clientData.preview as any).briefContent?.length : undefined,
-          previewFullContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
-            (clientData.preview as any).fullContent?.length : undefined
-        });
-        
-        // Emit both the original event for backward compatibility
-        // and the new simplified event with the client data
-        const enhancedData = {
-          ...data,
-          isActive: true, // Mark as active for UI
-          // Include preview flags in the enhanced data for backward compatibility
-          hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
-          previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined
-        };
-        
-        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, enhancedData);
-      })
-      .catch(error => {
-        serverLogger.error(`Error processing tool execution start for ${executionId}:`, error);
-        // In case of error, emit basic data without preview
-        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_STARTED, data);
-      });
-    // The emit is now handled inside the Promise callback above
-  }
-  
-  /**
-   * Handle tool execution updated event
-   */
-  private async handleToolExecutionUpdated(data: {
-    sessionId: string;
-    tool: { id: string; name: string; executionId: string };
-    result?: unknown;
-  }): Promise<void> {
-    const { sessionId, tool } = data;
-    
-    // Get the full execution state
-    const executionId = tool.executionId;
-    const execution = this.agentService.getToolExecution(executionId);
-    
-    if (!execution) {
-      serverLogger.warn(`Tool execution not found for update: ${executionId}`);
-      // Fall back to the original event format
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, data);
-      return;
-    }
-    
-    try {
-      // Convert to client format - using await to handle async preview generation
-      serverLogger.debug(`Converting execution to client format with awaitable preview generation: ${executionId}`);
-      const clientData = await this.convertExecutionToClientFormat(execution);
-      
-      // Add debug logging to see the preview state in the client data
-      serverLogger.info(`Tool execution updated with preview info for ${executionId}:`, {
-        toolId: execution.toolId,
-        toolName: execution.toolName,
-        hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
-        previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined,
-        previewBriefContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
-          (clientData.preview as any).briefContent?.length : undefined,
-        previewFullContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
-          (clientData.preview as any).fullContent?.length : undefined
-      });
-      
-      // Only emit the WebSocket events once we have the complete data with preview
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, data);
-      
-      // If we have a preview, also send a separate update to ensure clients catch it
-      if (clientData && typeof clientData === 'object' && clientData.hasPreview) {
-        serverLogger.info(`Sending dedicated preview update for ${executionId}`);
-        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-          sessionId,
-          toolExecution: clientData
-        });
-      }
-    } catch (error) {
-      serverLogger.error(`Error handling tool execution update for ${executionId}:`, error);
-      // Emit minimal data in case of error
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION, data);
-    }
-  }
-  
-  /**
-   * Handle tool execution completed event
-   */
-  private async handleToolExecutionCompleted(data: {
-    sessionId: string;
-    tool: { id: string; name: string; executionId?: string };
-    result?: unknown;
-    paramSummary?: string;
-    executionTime?: number;
-    timestamp?: string;
-  }): Promise<void> {
-    const { sessionId, tool, result, paramSummary, executionTime, timestamp } = data;
-    
-    // Remove from active tools
-    const sessionTools = this.activeTools.get(sessionId);
-    if (sessionTools) {
-      sessionTools.delete(tool.id);
-      
-      // If no more active tools for this session, clean up the map entry
-      if (sessionTools.size === 0) {
-        this.activeTools.delete(sessionId);
-      }
-    }
-    
-    // Check if we are using the new format with executionId
-    if (tool.executionId) {
-      const executionId = tool.executionId;
-      const execution = this.agentService.getToolExecution(executionId);
-      
-      if (!execution) {
-        serverLogger.warn(`Tool execution not found for completion: ${executionId}`);
-        // Fall back to the original event format
-        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, data);
-        return;
-      }
-      
-      try {
-        // Convert to client format - use await to properly handle async preview generation
-        serverLogger.debug(`Converting completed execution to client format with awaitable preview: ${executionId}`);
-        const clientData = await this.convertExecutionToClientFormat(execution);
-        
-        // Add debug logging to see the preview state in the client data
-        serverLogger.info(`Tool execution completed with preview info for ${executionId}:`, {
-          toolId: execution.toolId,
-          toolName: execution.toolName,
-          hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
-          previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined,
-          previewBriefContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
-            (clientData.preview as any).briefContent?.length : undefined,
-          previewFullContentLength: clientData && typeof clientData === 'object' && clientData.preview ? 
-            (clientData.preview as any).fullContent?.length : undefined
-        });
-        
-        // Emit completion event with proper preview data
-        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, {
-          ...data,
-          preview: clientData && typeof clientData === 'object' ? clientData.preview : undefined,
-          hasPreview: clientData && typeof clientData === 'object' ? !!clientData.hasPreview : false,
-          previewContentType: clientData && typeof clientData === 'object' ? clientData.previewContentType : undefined
-        });
-        
-        
-        // If we have a preview, also send a dedicated update event
-        if (clientData.hasPreview) {
-          serverLogger.info(`Sending dedicated preview update for completed tool ${executionId}`);
-          this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-            sessionId,
-            toolExecution: clientData
-          });
-        }
-      } catch (error) {
-        serverLogger.error(`Error handling tool execution completion for ${executionId}:`, error);
-        // Emit basic completion event in case of error
-        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, data);
-      }
-    } else {
-      // Use the legacy behavior for backward compatibility with tests
-      // Get tool args from the stored data in AgentService
-      const args = this.agentService.getToolArgs(sessionId, tool.id) || {};
-      
-      // Check if we have a stored preview from a permission request
-      let preview: ToolPreviewData | null = null;
-      
-      // Fall back to generating a new preview if no permission request occurred
-      try {
-        // Use PreviewService to generate the preview
-        serverLogger.debug(`Generating legacy preview for tool ${tool.id} completion...`);
-        const previewPromise = previewService.generatePreview(
-          {
-            id: tool.id,
-            name: tool.name
-          },
-          args,
-          result
-        );
-        
-        // Wait for the promise to resolve
-        preview = await previewPromise;
-        
-        if (preview) {
-          serverLogger.info(`Generated legacy preview for tool ${tool.id}:`, {
-            contentType: preview.contentType,
-            hasFullContent: preview.hasFullContent,
-            briefContentLength: preview.briefContent.length,
-            metadataKeys: Object.keys(preview.metadata || {})
-          });
-        }
-      } catch (error) {
-        serverLogger.error(`Error generating legacy preview for tool ${tool.id}:`, error);
-      }
-      
-      // Forward the event to clients with preview data if available
-      const completionEvent = {
-        sessionId,
-        tool,
-        result,
-        paramSummary,
-        executionTime,
-        timestamp,
-        isActive: false,
-        // Include preview data if available
-        preview,
-        hasPreview: !!preview,
-        previewContentType: preview?.contentType
-      };
-      
-      // Log the event we're sending
-      serverLogger.info(`Sending legacy tool completion event for ${tool.id}:`, {
-        hasPreview: !!preview,
-        previewContentType: preview?.contentType,
-        briefContentLength: preview?.briefContent?.length,
-        hasResult: !!result
-      });
-      
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_COMPLETED, completionEvent);
-    }
-  }
-  
-  /**
-   * Handle tool execution error event
-   */
-  private handleToolExecutionError(data: {
-    sessionId: string;
-    tool: { id: string; name: string; executionId?: string };
-    error?: { message: string; stack?: string; name?: string; };
-    paramSummary?: string;
-    timestamp?: string;
-  }): void {
-    const { sessionId, tool, error, paramSummary, timestamp } = data;
-    
-    // Remove from active tools
-    const sessionTools = this.activeTools.get(sessionId);
-    if (sessionTools) {
-      sessionTools.delete(tool.id);
-      
-      // If no more active tools for this session, clean up the map entry
-      if (sessionTools.size === 0) {
-        this.activeTools.delete(sessionId);
-      }
-    }
-    
-    if (tool.executionId) {
-      // Get the full execution state
-      const executionId = tool.executionId;
-      const execution = this.agentService.getToolExecution(executionId);
-      
-      if (!execution) {
-        serverLogger.warn(`Tool execution not found for error: ${executionId}`);
-        // Fall back to the original event format
-        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ERROR, data);
-        return;
-      }
-      
-      // Convert to client format
-      const clientData = this.convertExecutionToClientFormat(execution);
-      
-      // Emit both formats
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ERROR, data);
-    } else {
-      // For backward compatibility with tests
-      // Create error preview data using the PreviewService
-      // Ensure error has all required properties
-      const errorWithName = error ? {
-        message: error.message || 'Unknown error',
-        name: error.name || 'Error',
-        stack: error.stack
-      } : {
-        message: 'Unknown error',
-        name: 'Error'
-      };
-      
-      const preview = previewService.generateErrorPreview(
-        {
-          id: tool.id,
-          name: tool.name
-        },
-        errorWithName,
-        { paramSummary }
-      );
-      
-      // Forward the event to clients
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ERROR, { 
-        sessionId,
-        tool,
-        error,
-        paramSummary,
-        timestamp,
-        isActive: false,
-        preview
-      });
-    }
-  }
-  
-  /**
-   * Handle tool execution aborted event
-   */
-  private handleToolExecutionAborted(data: {
-    sessionId: string;
-    tool: { id: string; name: string; executionId?: string };
-    timestamp?: string;
-    abortTimestamp?: string;
-  }): void {
-    const { sessionId, tool, timestamp, abortTimestamp } = data;
-    
-    if (tool.executionId) {
-      // Get the full execution state
-      const executionId = tool.executionId;
-      const execution = this.agentService.getToolExecution(executionId);
-      
-      if (!execution) {
-        serverLogger.warn(`Tool execution not found for abort: ${executionId}`);
-        // Fall back to the original event format
-        this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ABORTED, data);
-        return;
-      }
-      
-      // Convert to client format
-      const clientData = this.convertExecutionToClientFormat(execution);
-      
-      // Emit both formats
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ABORTED, data);
-    } else {
-      // For backward compatibility with tests
-      // Forward the event to clients
-      this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_ABORTED, { 
-        sessionId,
-        tool,
-        timestamp,
-        abortTimestamp,
-        isActive: false
-      });
-    }
-  }
-  
   /**
    * Handle permission requested event
    */

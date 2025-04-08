@@ -46,13 +46,20 @@ export class SocketConnectionManager extends EventEmitter {
    * - pendingSession: Session waiting to be joined once connection is established
    * - executionEnvironment: The type of execution environment for this session
    * - e2bSandboxId: Optional sandbox ID for E2B environments
+   * - environmentStatus: Status of the execution environment (initializing, connected, etc.)
+   * - environmentReady: Whether the environment is ready to accept commands
+   * - lastEnvironmentError: Last error message from the environment
    */
   private sessionState = {
     currentSessionId: null as string | null,
     hasJoined: false,
     pendingSession: null as string | null,
     executionEnvironment: null as 'local' | 'docker' | 'e2b' | null,
-    e2bSandboxId: null as string | null
+    e2bSandboxId: null as string | null,
+    // Environment status tracking
+    environmentStatus: null as string | null,
+    environmentReady: false,
+    lastEnvironmentError: null as string | null
   };
   
   private constructor() {
@@ -106,7 +113,7 @@ export class SocketConnectionManager extends EventEmitter {
   }
   
   /**
-   * Set up a listener for environment information events
+   * Set up listeners for environment information and status events
    */
   private setupEnvironmentEventListener(): void {
     if (!this.socket) {
@@ -132,6 +139,164 @@ export class SocketConnectionManager extends EventEmitter {
         console.log(`SocketConnectionManager: Set execution environment to ${data.executionEnvironment}`);
       }
     });
+    
+    // Set up listener for environment status events
+    this.socket.on(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, (data: {
+      sessionId: string;
+      environmentType: 'docker' | 'local' | 'e2b';
+      status: string;
+      isReady: boolean;
+      error?: string;
+    }) => {
+      console.log(`SocketConnectionManager: Received environment status event:`, data);
+      
+      // Check if this event is for our current session or a broadcast event without sessionId
+      const relevantEvent = !data.sessionId || data.sessionId === this.sessionState.currentSessionId;
+      
+      if (relevantEvent) {
+        console.log(`SocketConnectionManager: Environment status for ${data.environmentType} changed to ${data.status}, ready=${data.isReady}`);
+        
+        // Honor the server's isReady flag but ensure 'connected' status also means ready
+        const actuallyReady = data.status === 'connected' ? true : data.isReady;
+        
+        if (data.status === 'connected' && !data.isReady) {
+          console.log('SocketConnectionManager: Server sent connected with isReady=false; setting to true');
+        }
+        
+        // Update session state
+        this.sessionState.environmentStatus = data.status;
+        this.sessionState.environmentReady = actuallyReady;
+        this.sessionState.lastEnvironmentError = data.error || null;
+        
+        // Update environment type if provided and different from current
+        if (data.environmentType) {
+          if (!this.sessionState.executionEnvironment) {
+            console.log(`SocketConnectionManager: Setting initial environment type to ${data.environmentType}`);
+            this.sessionState.executionEnvironment = data.environmentType;
+            
+            // Emit environment_change for this update
+            this.emit('environment_change', {
+              executionEnvironment: data.environmentType,
+              e2bSandboxId: this.sessionState.e2bSandboxId
+            });
+          } else if (this.sessionState.executionEnvironment !== data.environmentType) {
+            console.log(`SocketConnectionManager: Updating environment type from ${this.sessionState.executionEnvironment} to ${data.environmentType}`);
+            this.sessionState.executionEnvironment = data.environmentType;
+            
+            // Emit environment_change for this update
+            this.emit('environment_change', {
+              executionEnvironment: data.environmentType,
+              e2bSandboxId: this.sessionState.e2bSandboxId
+            });
+          }
+        }
+        
+        // Emit event for components to react, with corrected ready state
+        this.emit('environment_status_change', {
+          type: data.environmentType,
+          status: data.status,
+          isReady: actuallyReady,
+          error: data.error
+        });
+        
+        // Handle special status transitions for Docker
+        if (data.environmentType === 'docker') {
+          if (data.status === 'initializing') {
+            console.log('SocketConnectionManager: Docker is initializing, waiting for completion');
+            // Update UI to show Docker is initializing
+            this.emit('connection_state_enhanced', {
+              socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
+              environmentReady: false,
+              environmentType: 'docker',
+              overallStatus: 'environment_connecting',
+              status: 'initializing'
+            });
+          } else if (data.status === 'connecting') {
+            console.log('SocketConnectionManager: Docker is connecting, waiting for completion');
+            // Update UI to show Docker is connecting
+            this.emit('connection_state_enhanced', {
+              socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
+              environmentReady: false,
+              environmentType: 'docker',
+              overallStatus: 'environment_connecting',
+              status: 'connecting'
+            });
+          } else if (data.status === 'connected') {
+            console.log('SocketConnectionManager: Docker connected successfully, environment is ready');
+            // Ensure Docker connected state is broadcast as ready
+            this.emit('connection_state_enhanced', {
+              socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
+              environmentReady: true,
+              environmentType: 'docker',
+              overallStatus: 'connected',
+              status: 'connected'
+            });
+          } else if (data.status === 'error') {
+            console.log(`SocketConnectionManager: Docker error: ${data.error}`);
+            // Update UI to show Docker error
+            this.emit('connection_state_enhanced', {
+              socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
+              environmentReady: false,
+              environmentType: 'docker',
+              overallStatus: 'environment_error',
+              status: 'error',
+              error: data.error
+            });
+          } else if (data.status === 'disconnected') {
+            console.log('SocketConnectionManager: Docker is disconnected');
+            // Update UI to show Docker is disconnected
+            this.emit('connection_state_enhanced', {
+              socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
+              environmentReady: false,
+              environmentType: 'docker',
+              overallStatus: 'environment_disconnected',
+              status: 'disconnected'
+            });
+          }
+        } else {
+          // For non-Docker environments, use simpler status handling
+          if (actuallyReady) {
+            console.log(`SocketConnectionManager: ${data.environmentType} environment is ready`);
+            this.emit('connection_state_enhanced', {
+              socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
+              environmentReady: true,
+              environmentType: data.environmentType,
+              overallStatus: 'connected',
+              status: data.status
+            });
+          } else {
+            console.log(`SocketConnectionManager: ${data.environmentType} environment is not ready`);
+            this.emit('connection_state_enhanced', {
+              socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
+              environmentReady: false,
+              environmentType: data.environmentType,
+              overallStatus: data.status === 'error' ? 'environment_error' : 'environment_connecting',
+              status: data.status,
+              error: data.error
+            });
+          }
+        }
+      } else {
+        console.log(`SocketConnectionManager: Ignoring environment status for different session ${data.sessionId}`);
+      }
+    });
+  }
+  
+  /**
+   * Get current environment status information
+   */
+  public getEnvironmentStatus(): {
+    status: string | null;
+    isReady: boolean;
+    error: string | null;
+    type: 'docker' | 'local' | 'e2b' | null;
+  } {
+    return {
+      status: this.sessionState.environmentStatus,
+      isReady: this.sessionState.environmentReady,
+      error: this.sessionState.lastEnvironmentError,
+      type: this.sessionState.executionEnvironment
+    };
   }
 
   /**
@@ -290,13 +455,24 @@ export class SocketConnectionManager extends EventEmitter {
    * Reconnect to the Socket.io server
    */
   public reconnect(): void {
+    console.log('SocketConnectionManager: Attempting reconnection');
+    
+    // Always close any existing socket to ensure clean reconnection
     if (this.socket) {
-      console.log('SocketConnectionManager: Reconnecting existing socket');
-      this.socket.connect();
+      try {
+        // Don't actually disconnect, just force reconnection
+        console.log('SocketConnectionManager: Forcing reconnection of existing socket');
+        this.socket.connect();
+      } catch (error) {
+        console.error('SocketConnectionManager: Error reconnecting socket:', error);
+      }
     } else {
-      console.log('SocketConnectionManager: No existing socket, connecting new one');
+      console.log('SocketConnectionManager: No existing socket, creating new connection');
       this.connect();
     }
+    
+    // Set status to connecting to provide immediate UI feedback
+    this.setStatus(ConnectionStatus.CONNECTING);
   }
   
   /**
@@ -456,7 +632,10 @@ export class SocketConnectionManager extends EventEmitter {
       hasJoined: false,
       pendingSession: null,
       executionEnvironment: null,
-      e2bSandboxId: null
+      e2bSandboxId: null,
+      environmentStatus: null,
+      environmentReady: false,
+      lastEnvironmentError: null
     };
     
     // Emit session change event

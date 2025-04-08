@@ -25,30 +25,49 @@ function SessionComponent() {
   // State to track if this is a fresh load of an existing session
   const [showNewSessionHint, setShowNewSessionHint] = useState(true);
   
+  // Convert sessionId from possibly undefined to string | null for type safety
+  const safeSessionId = sessionId || null;
+  
   // Check if session exists and handle UI state
   useEffect(() => {
     if (sessionId) {
       console.log('[SessionComponent] Loading session from URL parameter:', sessionId);
       
-      // Check if the user has previously dismissed session prompts today
-      const lastPromptTime = localStorage.getItem('sessionPromptDismissed');
-      const now = new Date().getTime();
-      
-      // Only show prompt if it hasn't been dismissed in the last 24 hours
-      if (!lastPromptTime || (now - parseInt(lastPromptTime)) > 24 * 60 * 60 * 1000) {
-        setShowSessionPrompt(true);
-      }
-      
-      // Try fetching the session to verify it exists - this is just a validation check
-      const testUrl = `/api/sessions/${sessionId}/state/save`;
-      
-      fetch(testUrl, { method: 'POST' })
-        .then(response => response.json())
-        .catch(err => {
-          console.error('[SessionComponent] Error fetching session:', err);
-          // If session doesn't exist, redirect to root to create a new one
-          navigate('/');
-        });
+      // Verify the session ID is valid without showing the prompt
+      import('@/services/apiClient').then(({ default: apiClient }) => {
+        console.log('[SessionComponent] Validating session ID:', sessionId);
+        
+        apiClient.validateSession([sessionId])
+          .then(response => {
+            const validSessionIds = response.data?.validSessionIds || [];
+            
+            if (validSessionIds.includes(sessionId)) {
+              console.log('[SessionComponent] Session ID is valid:', sessionId);
+              // Update session storage to ensure consistency
+              localStorage.setItem('sessionId', sessionId);
+              sessionStorage.setItem('currentSessionId', sessionId);
+              
+              // Trigger a session load event via local storage to ensure timeline refreshes
+              const event = new StorageEvent('storage', {
+                key: 'loadSession',
+                newValue: sessionId
+              });
+              window.dispatchEvent(event);
+              
+              setIsLoadingSession(false);
+            } else {
+              console.warn('[SessionComponent] Session metadata not found:', sessionId);
+              // Don't redirect - still try to use the session but warn
+              // The session might still be in memory on the server but not yet persisted
+              setIsLoadingSession(false);
+            }
+          })
+          .catch(err => {
+            console.error('[SessionComponent] Error validating session:', err);
+            // Don't redirect - still try to use the session
+            setIsLoadingSession(false);
+          });
+      });
     }
   }, [sessionId, navigate]);
   
@@ -112,34 +131,7 @@ function SessionComponent() {
           onUserInput={handleUserInput}
         />
         
-        {/* Session prompt overlay */}
-        {showSessionPrompt && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-lg p-6 max-w-md w-full">
-              <h2 className="text-xl font-semibold text-white mb-4">Continue Previous Session?</h2>
-              <p className="text-gray-300 mb-4">
-                You're continuing from a previous conversation. Would you like to:
-              </p>
-              <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3">
-                <button
-                  onClick={handleNewSession}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
-                >
-                  Start New Session
-                </button>
-                <button
-                  onClick={handleContinueSession}
-                  className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md"
-                >
-                  Continue Session
-                </button>
-              </div>
-              <div className="mt-4 text-xs text-gray-500 text-center">
-                Pro tip: Press {navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}+. to start a new session anytime
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Session prompt overlay removed */}
       </div>
     </>
   );
@@ -154,9 +146,27 @@ function NewSessionComponent() {
     const storedSessionId = localStorage.getItem('sessionId');
     
     if (storedSessionId) {
-      // If we have a stored sessionId but we're at the root URL,
-      // redirect to the session URL to maintain state on refresh
-      navigate(`/sessions/${storedSessionId}`, { replace: true });
+      // Validate this session ID using our new efficient validation endpoint
+      import('@/services/apiClient').then(({ default: apiClient }) => {
+        apiClient.validateSessions([storedSessionId])
+          .then(response => {
+            const validSessionIds = response.data?.validSessionIds || [];
+            
+            if (validSessionIds.includes(storedSessionId)) {
+              // Session is valid, navigate to it
+              navigate(`/sessions/${storedSessionId}`, { replace: true });
+            } else {
+              // Session is invalid, clear it to start fresh
+              console.log('Invalid session found in localStorage, clearing it');
+              localStorage.removeItem('sessionId');
+            }
+          })
+          .catch(error => {
+            console.error('Error validating session:', error);
+            // On validation error, remove the stored session
+            localStorage.removeItem('sessionId');
+          });
+      });
       return;
     }
     
@@ -182,8 +192,11 @@ function NewSessionComponent() {
 function SessionWrapper() {
   const { sessionId } = useParams<{ sessionId: string }>();
   
+  // Convert sessionId from possibly undefined to string | null for type safety
+  const safeSessionId = sessionId || null;
+  
   return (
-    <TimelineProvider sessionId={sessionId}>
+    <TimelineProvider sessionId={safeSessionId}>
       <WebSocketTerminalProvider initialSessionId={sessionId}>
         <ToolPreferencesProvider>
           <Layout>
