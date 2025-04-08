@@ -10,6 +10,7 @@ import { BashPreviewGenerator } from './generators/BashPreviewGenerator';
 import { GlobPreviewGenerator } from './generators/GlobPreviewGenerator';
 import { GrepPreviewGenerator } from './generators/GrepPreviewGenerator';
 import { ThinkPreviewGenerator } from './generators/ThinkPreviewGenerator';
+import { BatchPreviewGenerator } from './generators/BatchPreviewGenerator';
 import { previewService } from './PreviewService';
 
 // Register all generators
@@ -20,6 +21,7 @@ previewGeneratorRegistry.register(new BashPreviewGenerator());
 previewGeneratorRegistry.register(new GlobPreviewGenerator());
 previewGeneratorRegistry.register(new GrepPreviewGenerator());
 previewGeneratorRegistry.register(new ThinkPreviewGenerator());
+previewGeneratorRegistry.register(new BatchPreviewGenerator());
 
 // Export everything for use elsewhere
 export * from './PreviewGenerator';
@@ -36,6 +38,7 @@ export * from './generators/BashPreviewGenerator';
 export * from './generators/GlobPreviewGenerator';
 export * from './generators/GrepPreviewGenerator';
 export * from './generators/ThinkPreviewGenerator';
+export * from './generators/BatchPreviewGenerator';
 
 // Export the registry instance and preview service
 export { previewGeneratorRegistry, previewService };

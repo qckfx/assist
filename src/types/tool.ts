@@ -86,6 +86,10 @@ export interface ToolContext {
     error: (message: string, ...args: unknown[]) => void;
   };
   executionAdapter: ExecutionAdapter;
+  toolRegistry?: {
+    getAllTools: () => Tool[];
+    getTool: (toolId: string) => Tool | undefined;
+  };
   [key: string]: unknown;
 }
 
