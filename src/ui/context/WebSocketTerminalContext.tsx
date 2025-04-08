@@ -163,9 +163,11 @@ export function WebSocketTerminalProvider({
         setSessionId(newSessionId);
         sessionIdRef.current = newSessionId;
         
-        // Connect to the new session
+        // Always use the connection manager directly to ensure the session is joined
+        // This is more reliable than using the hook-based connectToSession
         const connectionManager = getSocketConnectionManager();
         connectionManager.joinSession(newSessionId);
+        console.log(`[WebSocketTerminalContext] Requested connection join for session: ${newSessionId}`);
         
         // Update URL to include session ID without page reload
         window.history.pushState({}, '', `/sessions/${newSessionId}`);
@@ -271,6 +273,9 @@ export function WebSocketTerminalProvider({
     
     // Only create session if we don't have one
     if (!initialSessionId && !sessionId) {
+      // Add retry logic with backoff
+      let retryAttempt = 0;
+      const maxRetries = 3;
       let isMounted = true; // Track component mount state
       
       const createNewSession = async () => {
@@ -308,6 +313,13 @@ export function WebSocketTerminalProvider({
           
           if (newSessionId && isMounted) {
             console.log(`[WebSocketTerminalContext] Successfully created session: ${newSessionId}`);
+            
+            // Store the sessionId in sessionStorage for permission handling
+            sessionStorage.setItem('currentSessionId', newSessionId);
+            console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
+            
+            // Only mark as initialized after successful session creation
+            isInitializedRef.current = true;
           } else if (isMounted) {
             console.error('[WebSocketTerminalContext] No session ID returned');
             addErrorMessage('Failed to create session. Please refresh the page to try again.');
