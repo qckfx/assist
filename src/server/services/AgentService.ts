@@ -38,6 +38,7 @@ import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
 import { serverLogger } from '../logger';
+import { LogCategory } from '../../types/logger';
 import { setSessionAborted, generateExecutionId } from '../../utils/sessionUtils';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { ExecutionAdapter } from '../../types/tool';
