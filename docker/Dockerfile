@@ -19,5 +19,8 @@ ENV PATH="/app/node_modules/.bin:${PATH}"
 # Use bash as the default shell
 SHELL ["/bin/bash", "-c"]
 
+# Configure git to trust workspace directory
+RUN git config --global --add safe.directory /workspace
+
 # Keep container running
 CMD ["tail", "-f", "/dev/null"]
