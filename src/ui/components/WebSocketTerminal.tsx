@@ -40,8 +40,8 @@ export function WebSocketTerminal({
     sessionId
   } = useWebSocketTerminal();
   
-  // Get environment information
-  const { isDocker, isEnvironmentReady, environmentStatus } = useExecutionEnvironment();
+  // Get environment information - but no longer using isEnvironmentReady
+  const { isDocker, environmentStatus } = useExecutionEnvironment();
   
   // Get both state and the typing indicator state directly from TerminalContext
   const { state, clearMessages } = useTerminal();
@@ -58,10 +58,9 @@ export function WebSocketTerminal({
     if (isConnected && !hasConnected) {
       setHasConnected(true);
       
-      // Store the sessionId in sessionStorage for use by other components
+      // Skip storage, using sessionId directly from props
       if (sessionId) {
-        sessionStorage.setItem('currentSessionId', sessionId);
-        console.log('Session ID stored in sessionStorage:', sessionId);
+        console.log('Using session ID:', sessionId);
       }
     }
   }, [isConnected, hasConnected, sessionId]);
@@ -91,15 +90,15 @@ export function WebSocketTerminal({
       return true;
     }
     
-    // For all environments (Docker, local, E2B), only check the environment ready flag
-    // Log the environment ready status for debugging
-    console.log(`WebSocketTerminal: Environment ready check - isEnvironmentReady=${isEnvironmentReady}, connected=${isConnected}, sessionId=${sessionId || 'none'}`);
+    // For all environments, just check connection and session ID
+    // Skip environment ready check since we handle that at session creation time
+    console.log(`WebSocketTerminal: Connection check - connected=${isConnected}, sessionId=${sessionId || 'none'}`);
     
     // Only enable input when:
     // 1. We're connected to WebSocket
-    // 2. We have a valid session ID 
-    // 3. The environment is ready
-    const inputEnabled = isConnected && sessionId && isEnvironmentReady;
+    // 2. We have a valid session ID
+    // No longer checking isEnvironmentReady since environment selection happens before session creation
+    const inputEnabled = isConnected && sessionId;
     
     return !inputEnabled;
   };
@@ -110,8 +109,9 @@ export function WebSocketTerminal({
       return "Input disabled: WebSocket disconnected";
     }
     
-    if (!isEnvironmentReady) {
-      return "Input disabled: Environment not ready";
+    // We no longer check environment readiness since it's handled at session creation
+    if (!sessionId) {
+      return "Input disabled: No active session";
     }
     
     // Generic message for all other cases

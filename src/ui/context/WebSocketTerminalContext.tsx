@@ -25,6 +25,10 @@ interface WebSocketTerminalContextProps {
   // Session management
   sessionId: string | undefined;
   createSession: () => Promise<string | undefined>;
+  createSessionWithEnvironment: (
+    environment: 'docker' | 'local' | 'e2b', 
+    e2bSandboxId?: string
+  ) => Promise<string | undefined>;
   
   // Command handling
   handleCommand: (command: string) => Promise<void>;
@@ -155,9 +159,8 @@ export function WebSocketTerminalProvider({
       if (newSessionId) {
         console.log(`[WebSocketTerminalContext] Session created successfully: ${newSessionId}`);
         
-        // Store only in localStorage - simplifying storage
-        localStorage.setItem('sessionId', newSessionId);
-        console.log(`[WebSocketTerminalContext] Stored session ID in localStorage: ${newSessionId}`);
+        // Skip localStorage storage to allow new sessions to work properly
+        console.log(`[WebSocketTerminalContext] Using sessionId: ${newSessionId}`);
         
         // Update session state
         setSessionId(newSessionId);
@@ -169,8 +172,7 @@ export function WebSocketTerminalProvider({
         connectionManager.joinSession(newSessionId);
         console.log(`[WebSocketTerminalContext] Requested connection join for session: ${newSessionId}`);
         
-        // Update URL to include session ID without page reload
-        window.history.pushState({}, '', `/sessions/${newSessionId}`);
+        // URL updates are now handled by the Terminal component with React Router
         
         return newSessionId;
       } else {
@@ -180,6 +182,64 @@ export function WebSocketTerminalProvider({
     } catch (error) {
       console.error('[WebSocketTerminalContext] Failed to create session:', error);
       addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    } finally {
+      setProcessing(false);
+    }
+  }, [addErrorMessage, setProcessing]);
+  
+  // Create a new session with specific environment settings
+  const createSessionWithEnvironment = useCallback(async (
+    environment: 'docker' | 'local' | 'e2b',
+    e2bSandboxId?: string
+  ) => {
+    try {
+      // Update UI state
+      setProcessing(true);
+      
+      console.log(`[WebSocketTerminalContext] Requesting new session with environment: ${environment}...`);
+      
+      // Create session via API with environment settings
+      const response = await apiClient.startSessionWithEnvironment(environment, e2bSandboxId);
+      console.log('[WebSocketTerminalContext] Session with environment creation response:', response);
+      
+      const sessionData = response.data || response;
+      
+      // Safely access sessionId with type checking
+      const newSessionId = sessionData && 
+        (typeof sessionData === 'object') && 
+        'sessionId' in sessionData && 
+        typeof sessionData.sessionId === 'string' 
+          ? sessionData.sessionId 
+          : undefined;
+          
+      if (newSessionId) {
+        console.log(`[WebSocketTerminalContext] Session with environment created: ${newSessionId}`);
+        
+        // Store only environment settings in localStorage, not sessionId
+        localStorage.setItem('sessionEnvironment', environment);
+        if (e2bSandboxId) {
+          localStorage.setItem('sessionE2BSandboxId', e2bSandboxId);
+        }
+        
+        // Update session state
+        setSessionId(newSessionId);
+        sessionIdRef.current = newSessionId;
+        
+        // Connect the WebSocket
+        const connectionManager = getSocketConnectionManager();
+        connectionManager.joinSession(newSessionId);
+        
+        // URL updates are now handled by the Terminal component with React Router
+        
+        return newSessionId;
+      } else {
+        console.error('[WebSocketTerminalContext] Failed to create session with environment:', response);
+        throw new Error('Failed to create session: Invalid response from server');
+      }
+    } catch (error) {
+      console.error('[WebSocketTerminalContext] Failed to create session with environment:', error);
+      addErrorMessage(`Failed to set up environment: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
     } finally {
       setProcessing(false);
@@ -261,7 +321,7 @@ export function WebSocketTerminalProvider({
     }
   }, [addSystemMessage, addErrorMessage, setProcessing, toolVisualization]);
   
-  // Create a session on mount if none provided - improved approach to prevent race conditions
+  // Check for an existing valid session on mount, but DON'T create a new one automatically
   useEffect(() => {
     // Store the initialization state in a ref to prevent duplicate initializations
     if (isInitializedRef.current) {
@@ -271,69 +331,31 @@ export function WebSocketTerminalProvider({
     // Immediately set initialization flag to prevent multiple session creations
     isInitializedRef.current = true;
     
-    // Only create session if we don't have one
+    // Only check for existing session if we don't have one
     if (!initialSessionId && !sessionId) {
-      // Add retry logic with backoff
-      let retryAttempt = 0;
-      const maxRetries = 3;
       let isMounted = true; // Track component mount state
       
-      const createNewSession = async () => {
+      const checkExistingSession = async () => {
         if (!isMounted) return;
         
         try {
-          console.log('[WebSocketTerminalContext] Creating new session...');
+          console.log('[WebSocketTerminalContext] Checking for existing session...');
           
-          // Check localStorage for a recent valid session first
-          const storedSessionId = localStorage.getItem('sessionId');
-          if (storedSessionId) {
-            console.log(`[WebSocketTerminalContext] Found stored session ID: ${storedSessionId}`);
-            
-            // Validate the session before using it
-            try {
-              const validationResponse = await apiClient.validateSession([storedSessionId]);
-              if (validationResponse.success && validationResponse.data?.validSessionIds?.includes(storedSessionId)) {
-                console.log(`[WebSocketTerminalContext] Stored session ID ${storedSessionId} is valid, reusing`);
-                setSessionId(storedSessionId);
-                sessionIdRef.current = storedSessionId;
-                
-                // Connect to the existing session
-                const connectionManager = getSocketConnectionManager();
-                connectionManager.joinSession(storedSessionId);
-                return;
-              }
-            } catch (error) {
-              console.warn(`[WebSocketTerminalContext] Failed to validate stored session ID: ${storedSessionId}`, error);
-              // Continue with creating a new session
-            }
-          }
+          // Skip localStorage session checking to allow new sessions to work properly
+          // Don't create a new session automatically, let the user select environment first
           
-          // Create a new session if no valid stored session was found
-          const newSessionId = await createSession();
-          
-          if (newSessionId && isMounted) {
-            console.log(`[WebSocketTerminalContext] Successfully created session: ${newSessionId}`);
-            
-            // Store the sessionId in sessionStorage for permission handling
-            sessionStorage.setItem('currentSessionId', newSessionId);
-            console.log(`[WebSocketTerminalContext] Stored session ID in sessionStorage: ${newSessionId}`);
-            
-            // Only mark as initialized after successful session creation
-            isInitializedRef.current = true;
-          } else if (isMounted) {
-            console.error('[WebSocketTerminalContext] No session ID returned');
-            addErrorMessage('Failed to create session. Please refresh the page to try again.');
-          }
+          // Do NOT create a new session automatically
+          // The EnvironmentSelector will be shown by the Terminal component
         } catch (error) {
           if (isMounted) {
-            console.error('[WebSocketTerminalContext] Session creation failed:', error);
-            addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
+            console.error('[WebSocketTerminalContext] Session check failed:', error);
+            addErrorMessage(`Failed to check for existing session: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       };
       
-      // Create a new session immediately
-      createNewSession();
+      // Check for existing session immediately
+      checkExistingSession();
       
       // Cleanup function
       return () => {
@@ -343,7 +365,7 @@ export function WebSocketTerminalProvider({
       // Log we're using provided sessionId
       console.log(`[WebSocketTerminalContext] Using provided session ID: ${initialSessionId || sessionId}`);
     }
-  }, [initialSessionId, sessionId, createSession, addErrorMessage]);
+  }, [initialSessionId, sessionId, addErrorMessage]);
   
   // Build the context value with stable references
   const value: WebSocketTerminalContextProps = {
@@ -351,6 +373,7 @@ export function WebSocketTerminalProvider({
     isConnected,
     sessionId,
     createSession,
+    createSessionWithEnvironment,
     handleCommand,
     isProcessing, // Use the value from TerminalContext
     abortProcessing,

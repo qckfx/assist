@@ -181,7 +181,8 @@ export const createToolRegistry = (): ToolRegistry => {
         
         // Calculate execution time
         const executionTime = Date.now() - startTime;
-        
+       
+        console.log("🟠🟠🟠executeToolWithCallbacks", toolId, args, result, executionTime);
         // Notify complete callbacks
         completeCallbacks.forEach(callback => 
           callback(toolId, args, result, executionTime)

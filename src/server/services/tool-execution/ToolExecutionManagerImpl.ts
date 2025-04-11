@@ -7,7 +7,6 @@ import {
   ToolExecutionEvent,
   PermissionRequestState
 } from '../../../types/tool-execution';
-import { generateExecutionId } from '../../../utils/sessionUtils';
 import { SessionStatePersistence } from '../SessionStatePersistence';
 import { getSessionStatePersistence } from '../sessionPersistenceProvider';
 
@@ -21,7 +20,7 @@ export interface ExecutionCompletedWithPreviewEventData {
   execution: ToolExecutionState;
   preview?: ToolPreviewState;
 }
-import { PreviewManager, ToolPreviewState, PreviewContentType } from '../../../types/preview';
+import { PreviewManager, ToolPreviewState } from '../../../types/preview';
 import { createPreviewManager } from '../PreviewManagerImpl';
 import { previewService } from '../preview';
 import { serverLogger } from '../../logger';
@@ -48,6 +47,22 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   constructor(persistenceService?: SessionStatePersistence) {
     // Use provided persistence service or get singleton instance
     this.persistence = persistenceService || getSessionStatePersistence();
+    
+    // Test events
+    setTimeout(() => {
+      console.log("🔥🔥🔥 Testing event emission");
+      const testEvent = "TEST_EVENT";
+      const testHandler = (data: any) => {
+        console.log(`🔥🔥🔥 Received test event: ${JSON.stringify(data)}`);
+      };
+      
+      this.eventEmitter.on(testEvent, testHandler);
+      console.log(`🔥🔥🔥 Registered handler for ${testEvent}`);
+      console.log(`🔥🔥🔥 Listener count: ${this.eventEmitter.listenerCount(testEvent)}`);
+      
+      this.eventEmitter.emit(testEvent, { test: true, time: new Date().toISOString() });
+      console.log(`🔥🔥🔥 Emitted test event`);
+    }, 3000);
   }
 
   /**
@@ -63,11 +78,13 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     toolId: string, 
     toolName: string, 
     executionId: string,
+    toolUseId: string,
     args: Record<string, unknown>
   ): ToolExecutionState {
     // Use the provided executionId directly
     const execution: ToolExecutionState = {
       id: executionId,
+      toolUseId: toolUseId,
       sessionId,
       toolId,
       toolName,
@@ -156,7 +173,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     if (!execution) {
       throw new Error(`Tool execution not found: ${executionId}`);
     }
-    
+    console.log("🟠🟠🟠generatePreviewForExecution", executionId, execution);
     // Only generate previews for completed executions
     if (execution.status !== ToolExecutionStatus.COMPLETED) {
       serverLogger.debug(`Not generating preview for non-completed execution: ${executionId}`, {
@@ -276,6 +293,11 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
           execution: updatedExecution,
           preview: preview || undefined
         };
+        console.log("🟠🟠🟠completeExecution EMITTING COMPLETED EVENT with data:", eventData);
+        // Add listener count debug
+        const listenerCount = this.eventEmitter.listenerCount(ToolExecutionEvent.COMPLETED);
+        console.log(`🔔🔔🔔 ToolExecutionManager has ${listenerCount} listeners for ${ToolExecutionEvent.COMPLETED}`);
+        
         // Emit completion event with the preview data
         this.emitEvent(ToolExecutionEvent.COMPLETED, eventData);
       })
@@ -585,71 +607,6 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     }
   }
 
-  /**
-   * Save session data to persistence layer
-   * @param sessionId The session ID to save data for
-   */
-  async saveSessionData(sessionId: string): Promise<void> {
-    try {
-      // Load existing session data or create a new one
-      let sessionData = await this.persistence.loadSession(sessionId);
-      const now = new Date().toISOString();
-      
-      if (!sessionData) {
-        // Create a new session data object
-        sessionData = {
-          id: sessionId,
-          name: `Session ${sessionId}`,
-          createdAt: now,
-          updatedAt: now,
-          messages: [],
-          toolExecutions: [],
-          permissionRequests: [],
-          previews: [],
-          sessionState: { conversationHistory: [] }
-        };
-      }
-      
-      // Get current tool executions and permission requests
-      const toolExecutions = this.getExecutionsForSession(sessionId);
-      const permissionRequests = this.getPermissionRequestsForSession(sessionId);
-      
-      // Update the session data
-      sessionData.toolExecutions = toolExecutions;
-      sessionData.permissionRequests = permissionRequests;
-      sessionData.updatedAt = now;
-      
-      // Enhanced logging to debug persistence issues
-      serverLogger.info(`[PERSIST DEBUG] Saving tool execution data for session ${sessionId}`, {
-        sessionId,
-        executionCount: toolExecutions.length,
-        permissionCount: permissionRequests.length,
-        executionIds: toolExecutions.map(e => e.id),
-        executionStatuses: toolExecutions.map(e => e.status)
-      });
-      
-      // Save the updated session data
-      await this.persistence.saveSession(sessionData);
-      
-      // Also save to component-specific file for better reliability
-      serverLogger.info(`[PERSIST DEBUG] Calling persistToolExecutions for session ${sessionId} with ${toolExecutions.length} executions`);
-      await this.persistence.persistToolExecutions(sessionId, toolExecutions);
-      serverLogger.info(`[PERSIST DEBUG] Successfully called persistToolExecutions for session ${sessionId}`);
-      
-      serverLogger.info(`[PERSIST DEBUG] Calling persistPermissionRequests for session ${sessionId} with ${permissionRequests.length} requests`);
-      await this.persistence.persistPermissionRequests(sessionId, permissionRequests);
-      serverLogger.info(`[PERSIST DEBUG] Successfully called persistPermissionRequests for session ${sessionId}`);
-      
-      serverLogger.debug(`Saved tool execution data for session ${sessionId} (${toolExecutions.length} executions, ${permissionRequests.length} permissions)`);
-    } catch (error) {
-      serverLogger.error(`Failed to save tool execution data for session ${sessionId}:`, error);
-      // Log the full error stack to help diagnose the issue
-      if (error instanceof Error) {
-        serverLogger.error(`Error stack: ${error.stack}`);
-      }
-    }
-  }
-  
   /**
    * Helper method to clear session data
    * @private

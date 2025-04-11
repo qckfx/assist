@@ -122,6 +122,22 @@ export const apiClient = {
    */
   startSession: (options?: SessionStartRequest) => 
     apiRequest<{ sessionId: string }>(API_ENDPOINTS.START, 'POST', options),
+    
+  /**
+   * Start a new agent session with specific environment settings
+   */
+  startSessionWithEnvironment: (
+    executionAdapterType: 'docker' | 'local' | 'e2b',
+    e2bSandboxId?: string,
+    sessionId?: string
+  ) => 
+    apiRequest<{ sessionId: string }>(API_ENDPOINTS.START, 'POST', {
+      sessionId, // Include sessionId for reconnection if provided
+      config: {
+        executionAdapterType,
+        e2bSandboxId
+      }
+    }),
   
   /**
    * Send a query to the agent
@@ -157,25 +173,19 @@ export const apiClient = {
    * Resolve a permission request
    */
   resolvePermission: (executionId: string, granted: boolean, providedSessionId?: string) => {
-    // Try to get session ID from different sources
-    // 1. Use provided sessionId if available
-    // 2. Try sessionStorage
-    // 3. Try localStorage (as fallback)
-    const sessionId = providedSessionId || 
-                      sessionStorage.getItem('currentSessionId') || 
-                      localStorage.getItem('sessionId');
+    // Only use the provided sessionId - don't rely on storage
+    const sessionId = providedSessionId;
     
     if (!sessionId) {
-      console.error('No session ID found in any source (provided, sessionStorage, localStorage)');
-      return Promise.reject(new Error('No session ID found'));
+      console.error('No session ID provided for permission resolution');
+      return Promise.reject(new Error('No session ID provided'));
     }
     
     // Log the request for debugging
     console.log('Resolving permission request for execution:', { 
       sessionId, 
       executionId, 
-      granted,
-      source: providedSessionId ? 'provided' : (sessionStorage.getItem('currentSessionId') ? 'sessionStorage' : 'localStorage')
+      granted
     });
     
     // Ensure all fields are correctly formatted

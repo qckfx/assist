@@ -50,6 +50,7 @@ import { WebSocketService } from './WebSocketService';
 import { SessionManager } from './SessionManager';
 import { serverLogger } from '../logger';
 import { AgentService, AgentServiceEvent } from './AgentService';
+import { AgentServiceRegistry } from './AgentServiceRegistry';
 import { previewService } from './preview';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { TimelineStatePersistence } from './TimelineStatePersistence';
@@ -135,7 +136,8 @@ export class TimelineService extends EventEmitter {
   constructor(
     private sessionManager: SessionManager,
     private webSocketService: WebSocketService,
-    private timelinePersistence: TimelineStatePersistence
+    private timelinePersistence: TimelineStatePersistence,
+    private agentServiceRegistry: AgentServiceRegistry
   ) {
     super();
     
@@ -546,31 +548,58 @@ export class TimelineService extends EventEmitter {
   }
   
   /**
-   * Get AgentService from WebSocketService
+   * Get AgentService for a specific session using AgentServiceRegistry
+   * @param sessionId Optional session ID - if not provided, will try to get a default service
    */
-  private getAgentService(): AgentService | null {
+  private getAgentService(sessionId?: string): AgentService | null {
     try {
-      // WebSocketService should have a public 'agentService' property
-      const agentService = (this.webSocketService as unknown as { agentService: AgentService }).agentService;
-      return agentService || null;
+      if (sessionId) {
+        console.log("🟡🟡🟡 TimelineService getting AgentService for session", sessionId);
+        // Use the AgentServiceRegistry to get the appropriate service for this session
+        return this.agentServiceRegistry.getServiceForSession(sessionId);
+      } else {
+        // Fallback to the legacy way of getting an agent service from WebSocketService
+        const agentService = (this.webSocketService as unknown as { agentService: AgentService }).agentService;
+        return agentService || null;
+      }
     } catch (error) {
+      serverLogger.error('Error getting AgentService:', error instanceof Error ? error.message : String(error));
       return null;
     }
   }
   
   /**
    * Get ToolExecutionManager from AgentService
+   * @param sessionId Optional session ID to get a specific ToolExecutionManager
    */
-  private getToolExecutionManager(): ToolExecutionManager | null {
+  private getToolExecutionManager(sessionId?: string): ToolExecutionManager | null {
     try {
-      const agentService = this.getAgentService();
-      if (!agentService) return null;
+      // Get the agent service for the specified session (if provided)
+      const agentService = this.getAgentService(sessionId);
+      if (!agentService) {
+        serverLogger.warn(`Could not get AgentService ${sessionId ? `for session ${sessionId}` : ''}`);
+        return null;
+      }
       
-      // AgentService should have a 'toolExecutionManager' property
-      const toolExecutionManager = (agentService as unknown as { toolExecutionManager: ToolExecutionManager }).toolExecutionManager;
-      return toolExecutionManager || null;
+      // TODO: This is a temporary solution. We should refactor this to:
+      //  1. Make toolExecutionManager a public property of AgentService, or
+      //  2. Add a getToolExecutionManager() method to AgentService, or 
+      //  3. Inject the ToolExecutionManager directly into TimelineService
+      // Currently we're using 'any' cast to access a private property, which is not ideal.
+      const toolExecutionManager = (agentService as any).toolExecutionManager;
+      
+      if (!toolExecutionManager) {
+        serverLogger.error('ToolExecutionManager not found on AgentService', {
+          hasAgentService: !!agentService,
+          sessionId: sessionId || 'unknown',
+          agentServiceKeys: Object.keys(agentService)
+        });
+        return null;
+      }
+      
+      return toolExecutionManager;
     } catch (error) {
-      serverLogger.debug('Could not access ToolExecutionManager:', error instanceof Error ? error.message : String(error));
+      serverLogger.error('Could not access ToolExecutionManager:', error instanceof Error ? error.message : String(error));
       return null;
     }
   }
@@ -731,40 +760,95 @@ export class TimelineService extends EventEmitter {
       serverLogger.warn(`[SESSION_LOADED] SESSION_LOADED event received for ${data.sessionId} but intentionally not processed to prevent infinite loops`);
     });
     
-    // Listen for Tool Execution Manager events (if available)
-    if (toolExecutionManager) {
-      // Listen for preview generation events
-      toolExecutionManager.on(ToolExecEvent.PREVIEW_GENERATED, (data: unknown) => {
-        // Need to type-cast the data to the expected format
-        const typedData = data as PreviewGeneratedEventData;
-        const { execution, preview } = typedData;
-        
-        // Update timeline item with the newly generated preview
-        this.updateTimelineItemPreview(execution.sessionId, execution.id, preview);
-        
-        serverLogger.debug(`TimelineService received PREVIEW_GENERATED event for execution ${execution.id}`);
-      });
-      
-      // Listen for tool execution completed events that include a preview
-      toolExecutionManager.on(ToolExecEvent.COMPLETED, (data: unknown) => {
-        // Need to type-cast the data to the expected format
-        const typedData = data as ExecutionCompletedWithPreviewEventData;
-        const { execution, preview } = typedData;
-        
-        // Find the parent message ID for this execution
-        this.findParentMessageId(execution.sessionId, execution.id)
-          .then(parentMessageId => {
-            // Add the tool execution with its preview to the timeline
-            this.addToolExecutionToTimeline(execution.sessionId, execution, preview, parentMessageId);
-            
-            serverLogger.debug(`TimelineService processed COMPLETED event for execution ${execution.id} with preview: ${!!preview}`);
-          });
-      });
-    } else {
-      serverLogger.warn('TimelineService: Could not access ToolExecutionManager for event subscriptions');
+    // Set up event listeners for all active sessions
+    // This is a more direct approach - get all sessions and listen to their tool execution managers
+    const sessions = this.sessionManager.getAllSessionIds();
+    serverLogger.info(`Setting up ToolExecutionManager event listeners for ${sessions.length} active sessions`);
+    
+    // For each session, set up event listeners for its tool execution manager
+    for (const sessionId of sessions) {
+      this.setupToolExecutionListeners(sessionId);
     }
     
-    serverLogger.info('TimelineService: Event listeners setup complete');
+    // Also listen for session creation to set up listeners for new sessions
+    this.sessionManager.on('session:created', (sessionId: string) => {
+      serverLogger.info(`Setting up event listeners for new session: ${sessionId}`);
+      this.setupToolExecutionListeners(sessionId);
+    });
+    
+    // Legacy fallback - try to get a global tool execution manager
+    const globalToolExecutionManager = this.getToolExecutionManager();
+    if (globalToolExecutionManager) {
+      serverLogger.info("🟠🟠🟠TimelineService also listening for global ToolExecutionManager events");
+      this.setupToolExecutionManagerListeners(globalToolExecutionManager);
+    } else {
+      serverLogger.warn('🟠🟠🟠TimelineService: Could not access global ToolExecutionManager for event subscriptions');
+    }
+    
+    // Log setup complete
+    serverLogger.info('🟠🟠🟠TimelineService: Event listeners setup complete');
+  }
+  
+  /**
+   * Set up event listeners for a specific session's tool execution manager
+   * @param sessionId The session ID to listen for
+   */
+  private setupToolExecutionListeners(sessionId: string): void {
+    // Get the tool execution manager for this session
+    const toolExecutionManager = this.getToolExecutionManager(sessionId);
+    
+    if (toolExecutionManager) {
+      serverLogger.info(`🟠🟠🟠TimelineService listening for ToolExecutionManager events for session ${sessionId}`);
+      this.setupToolExecutionManagerListeners(toolExecutionManager);
+    } else {
+      serverLogger.warn(`Failed to get ToolExecutionManager for session ${sessionId}`);
+    }
+  }
+  
+  /**
+   * Set up event listeners for a specific tool execution manager
+   * @param toolExecutionManager The ToolExecutionManager to listen to
+   */
+  private setupToolExecutionManagerListeners(toolExecutionManager: ToolExecutionManager): void {
+    // Listen for preview generation events
+    toolExecutionManager.on(ToolExecEvent.PREVIEW_GENERATED, (data: unknown) => {
+      // Need to type-cast the data to the expected format
+      const typedData = data as PreviewGeneratedEventData;
+      const { execution, preview } = typedData;
+      
+      // Update timeline item with the newly generated preview
+      this.updateTimelineItemPreview(execution.sessionId, execution.id, preview);
+      
+      serverLogger.debug(`TimelineService received PREVIEW_GENERATED event for execution ${execution.id} (session ${execution.sessionId})`);
+    });
+    
+    // Listen for tool execution completed events that include a preview
+    console.log(`🟡🟡🟡 Setting up listener for ${ToolExecEvent.COMPLETED} on toolExecutionManager`);
+    const completedHandler = (data: unknown) => {
+      console.log("🟢🟢🟢TimelineService received COMPLETED event for execution", data);
+      // Need to type-cast the data to the expected format
+      const typedData = data as ExecutionCompletedWithPreviewEventData;
+      const { execution, preview } = typedData;
+
+      console.log("🟠🟠🟠TimelineService received COMPLETED event for execution", execution, preview);
+      
+      // Rest of handler...
+      this.findParentMessageId(execution.sessionId, execution.id)
+        .then(parentMessageId => {
+          console.log("🟠🟠🟠TimelineService found parent message ID", parentMessageId);
+          // Add the tool execution with its preview to the timeline
+          this.addToolExecutionToTimeline(execution.sessionId, execution, preview, parentMessageId);
+          
+          serverLogger.debug(`TimelineService processed COMPLETED event for execution ${execution.id} with preview: ${!!preview}`);
+        });
+    };
+    
+    // Check the listener count for the COMPLETED event
+    console.log(`Current listener count for ${ToolExecEvent.COMPLETED}: ${(toolExecutionManager as any).eventEmitter.listenerCount(ToolExecEvent.COMPLETED)}`);
+    // Register the handler and log that we've done it
+    toolExecutionManager.on(ToolExecEvent.COMPLETED, completedHandler);
+    console.log(`🟡🟡🟡 Registered handler for ${ToolExecEvent.COMPLETED}, should have 1+ listeners now`);
+    console.log(`🟡🟡🟡 Listener count for ${ToolExecEvent.COMPLETED}: ${(toolExecutionManager as any).eventEmitter.listenerCount(ToolExecEvent.COMPLETED)}`);
   }
 
   /**

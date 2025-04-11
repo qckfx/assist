@@ -620,6 +620,12 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           isAborted: isSessionAborted(sessionId)
         });
         
+        // Emit an event to signal processing is completed - will be captured by WebSocketService
+        AgentEvents.emit(AgentEventType.PROCESSING_COMPLETED, {
+          sessionId,
+          response: responseText
+        });
+        
         return {
           result: {
             toolResults,

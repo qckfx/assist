@@ -87,6 +87,7 @@ const createAgent = (config: AgentConfig): Agent => {
   const agentRunner = async () => {
     let executionAdapter;
     
+    console.log(`🌕🌕🌕Creating agent runner with environment type ${config.environment.type}`);
     // Select the appropriate execution adapter based on environment type
     switch (config.environment.type) {
       case 'local':
@@ -127,7 +128,7 @@ const createAgent = (config: AgentConfig): Agent => {
     logger,
     
     // Helper methods
-    async processQuery(query, sessionState = { conversationHistory: [] }) {
+    async processQuery(query, sessionState = { conversationHistory: [], agentServiceConfig: { apiKey: '', defaultModel: '', permissionMode: 'interactive', allowedTools: [], cachingEnabled: true } }) {
       const runner = await agentRunner();
       return runner.processQuery(query, sessionState);
     },

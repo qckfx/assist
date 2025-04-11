@@ -143,13 +143,11 @@ function summarizeToolUsage(toolResults: ToolResultEntry[]): string {
 const startChat = async (options: { 
   debug?: boolean, 
   model?: string, 
-  e2bSandboxId?: string, 
   quiet?: boolean,
   web?: boolean,
   port?: number,
   dev?: boolean,
-  caching?: boolean,
-  local?: boolean
+  caching?: boolean
 }) => {
   // Create a CLI logger first, so we can use it for errors
   const cliLogger = createLogger({ 
@@ -243,16 +241,15 @@ const startChat = async (options: {
   
   // We already created the logger above
   
-  // Log what environment we're using
-  const envType = options.e2bSandboxId ? 'e2b' : (options.local ? 'local' : 'docker');
-  cliLogger.info(`Using execution environment: ${envType}`, LogCategory.SYSTEM);
+  // Create the agent with default docker environment
+  // Web UI will allow users to select their environment
+  cliLogger.info(`Web UI will allow selecting execution environment`, LogCategory.SYSTEM);
   
   // Create the agent with a prompts-based permission handler
   const agent = createAgent({
     modelProvider,
     environment: { 
-      type: envType, 
-      sandboxId: options.e2bSandboxId || '' 
+      type: 'docker'
     },
     logger: cliLogger,
     permissionUIHandler: {
@@ -276,8 +273,14 @@ const startChat = async (options: {
   let conversationActive = true;
   let sessionState: SessionState = {
     conversationHistory: [],
+    agentServiceConfig: {
+      apiKey: ANTHROPIC_API_KEY || '',
+      defaultModel: options.model,
+      permissionMode: 'interactive',
+      allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
+      cachingEnabled: options.caching !== false // Enable caching by default
+    }
   };
-  
   cliLogger.info('Agent ready. Type your query (or "exit" to quit, "/help" for help):', LogCategory.USER_INTERACTION);
   
   while (conversationActive) {
@@ -327,8 +330,6 @@ const startChat = async (options: {
       cliLogger.info('  -d, --debug       Enable debug logging', LogCategory.USER_INTERACTION);
       cliLogger.info('  -q, --quiet       Minimal output, show only errors and results', LogCategory.USER_INTERACTION);
       cliLogger.info('  -m, --model       Specify the model to use', LogCategory.USER_INTERACTION);
-      cliLogger.info('  -e, --e2bSandboxId       Specify the E2B sandbox ID to use', LogCategory.USER_INTERACTION);
-      cliLogger.info('  --local           Run the agent with local execution (default is Docker)', LogCategory.USER_INTERACTION);
       cliLogger.info('  --web             Enable web UI (default: true)', LogCategory.USER_INTERACTION);
       cliLogger.info('  --no-web          Disable web UI', LogCategory.USER_INTERACTION);
       cliLogger.info('  --port <port>     Port for web UI (default: 3000)', LogCategory.USER_INTERACTION);
@@ -424,6 +425,13 @@ const startChat = async (options: {
           // Update the session state with other values from the result
           sessionState = {
             ...result.sessionState,
+            agentServiceConfig: {
+              apiKey: ANTHROPIC_API_KEY || '',
+              defaultModel: options.model,
+              permissionMode: 'interactive',
+              allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
+              cachingEnabled: options.caching !== false // Enable caching by default
+            },
             conversationHistory: sessionState.conversationHistory, // Keep our updated conversation history
           };
         }
@@ -470,8 +478,7 @@ program
   .option('-d, --debug', 'Enable debug logging')
   .option('-q, --quiet', 'Minimal output, show only errors and results')
   .option('-m, --model <model>', 'Model to use', 'claude-3-7-sonnet-20250219')
-  .option('-e, --e2bSandboxId <e2bSandboxId>', 'E2B sandbox ID to use')
-  .option('--local', 'Run the agent with local execution (default is Docker)')
+  // Environment options removed - now set through the web UI
   .option('--web', 'Enable web UI (default: true)')
   .option('--no-web', 'Disable web UI')
   .option('--port <port>', 'Port for web UI', (value) => parseInt(value, 10))
@@ -485,8 +492,7 @@ program
   .option('-d, --debug', 'Enable debug logging')
   .option('-q, --quiet', 'Minimal output, show only errors and results')
   .option('-m, --model <model>', 'Model to use', 'claude-3-7-sonnet-20250219')
-  .option('-e, --e2bSandboxId <e2bSandboxId>', 'E2B sandbox ID to use')
-  .option('--local', 'Run the agent with local execution (default is Docker)')
+  // Environment options removed - now set through the web UI
   .option('--web', 'Enable web UI (default: true)')
   .option('--no-web', 'Disable web UI')
   .option('--port <port>', 'Port for web UI', (value) => parseInt(value, 10))

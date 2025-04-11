@@ -62,6 +62,9 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
       return {
         ...state,
         isProcessing: action.payload,
+        // Always synchronize typing indicator with processing state
+        // If processing is turned off, also turn off the typing indicator
+        typingIndicator: action.payload ? state.typingIndicator : false,
       };
       
     case 'ADD_TO_HISTORY': {
@@ -121,6 +124,7 @@ function terminalReducer(state: TerminalState, action: TerminalAction): Terminal
       
     // Streaming-related actions
     case 'SET_TYPING_INDICATOR':
+      console.log(`[TerminalContext] SET_TYPING_INDICATOR dispatch: ${action.payload}`);
       return {
         ...state,
         typingIndicator: action.payload,
@@ -228,12 +232,14 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     // Handler for processing started event
     const handleProcessingStarted = ({ _sessionId }: { _sessionId: string }) => {
+      console.log('[TerminalContext] PROCESSING_STARTED received, turning on typing indicator');
       dispatch({ type: 'SET_PROCESSING', payload: true });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: true });
     };
     
     // Handler for processing completed event
     const handleProcessingCompleted = ({ _sessionId, _result }: { _sessionId: string, _result: unknown }) => {
+      console.log(`[TerminalContext] PROCESSING_COMPLETED received, turning off typing indicator`);
       dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
       dispatch({ type: 'CLEAR_STREAM_BUFFER' });
@@ -329,6 +335,12 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     // Handler for session updated event - displays messages from the conversation history
     const handleSessionUpdated = (sessionData: SessionData) => {
       console.log('SESSION_UPDATED event received:', JSON.stringify(sessionData, null, 2));
+      
+      // Check if the typing indicator should be turned off based on session state
+      if (sessionData && 'isProcessing' in sessionData && sessionData.isProcessing === false && state.typingIndicator) {
+        console.log('[TerminalContext] Detected non-processing session but typing indicator is on, turning it off');
+        dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
+      }
       
       // Add debugging to identify session structure
       if (sessionData?.state) {

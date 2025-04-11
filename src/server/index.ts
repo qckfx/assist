@@ -18,6 +18,7 @@ import { WebSocketService } from './services/WebSocketService';
 import { createServer } from 'http';
 import swaggerUi from 'swagger-ui-express';
 import { apiDocumentation } from './docs/api';
+import { AgentServiceRegistry } from './container';
 import { LogCategory } from '../utils/logger';
 // Import preview generators
 import './services/preview';
@@ -317,6 +318,20 @@ export async function startServer(config: ServerConfig): Promise<{
         
         // Stop the session manager
         sessionManager.stop();
+        
+        // Stop the agent service registry
+        try {
+          const container = app.locals.container;
+          const agentServiceRegistry = container?.get(AgentServiceRegistry);
+          if (agentServiceRegistry) {
+            agentServiceRegistry.stop();
+            serverLogger.info('Agent service registry stopped');
+          } else {
+            serverLogger.warn('Agent service registry not found during shutdown');
+          }
+        } catch (error) {
+          serverLogger.warn('Error stopping agent service registry:', error);
+        }
         
         // Close WebSocket connections
         try {

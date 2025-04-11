@@ -5,6 +5,7 @@ import { TerminalMessage } from '@/types/terminal';
 import InputField from '@/components/InputField';
 import ShortcutsPanel from '@/components/ShortcutsPanel';
 import TerminalSettings from '@/components/TerminalSettings';
+import EnvironmentSelector, { ExecutionEnvironment } from './EnvironmentSelector';
 import useKeyboardShortcuts, { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
 import { useTerminal } from '@/context/TerminalContext';
 import { useWebSocketTerminal } from '@/context/WebSocketTerminalContext';
@@ -19,6 +20,7 @@ import { useFastEditModeKeyboardShortcut } from '@/hooks/useFastEditModeKeyboard
 import { FastEditModeIndicator } from '@/components/FastEditModeIndicator';
 import { useToolPreferencesContext } from '@/context/ToolPreferencesContext';
 import { PreviewMode } from '../../../types/preview';
+import { useNavigate } from 'react-router-dom';
 // Import the SessionManager
 import { SessionManager } from '../SessionManagement';
 // Import the API client
@@ -72,6 +74,10 @@ export function Terminal({
   const [showSettings, setShowSettings] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // Environment setup state
+  const [environmentSelected, setEnvironmentSelected] = useState(false);
+  const [showEnvironmentSelector, setShowEnvironmentSelector] = useState(false);
+  
   // Check if we're on a small screen
   const isSmallScreen = useIsSmallScreen();
   
@@ -118,6 +124,8 @@ export function Terminal({
         terminalContext.leaveSession();
       };
     }
+  // Removed wsTerminalContext from dependencies to prevent reconnection loops
+  // when processing status changes
   }, [sessionId, terminalContext.joinSession, terminalContext.leaveSession]);
   
   // Track theme and tool status for internal state management
@@ -177,9 +185,21 @@ export function Terminal({
     if (terminalRef.current) {
       terminalRef.current.focus();
     }
-  }, []);
+    
+    // Show environment selector on first load if no session exists
+    if (!sessionId && !environmentSelected) {
+      setShowEnvironmentSelector(true);
+    }
+  }, [sessionId, environmentSelected]);
 
-  const handleCommand = (command: string) => {
+  const handleCommand = async (command: string) => {
+    // If no session exists and environment selector is not showing, show it first
+    if (!sessionId && !showEnvironmentSelector) {
+      setShowEnvironmentSelector(true);
+      return;
+    }
+    
+    // If session exists, pass the command directly
     onCommand(command);
   };
 
@@ -187,7 +207,45 @@ export function Terminal({
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   
   // Get createSession from WebSocketTerminal context
-  const { createSession } = wsTerminalContext;
+  const { createSession, createSessionWithEnvironment } = wsTerminalContext;
+  
+  // Get the navigation function from React Router
+  const navigate = useNavigate();
+  
+  // Handle environment selection
+  const handleEnvironmentSelect = async (environment: ExecutionEnvironment, e2bSandboxId?: string) => {
+    try {
+      // Show environment setup message
+      setSaveMessage('Setting up environment...');
+      
+      // Create a session with the selected environment
+      const newSessionId = await createSessionWithEnvironment(environment, e2bSandboxId);
+      
+      if (newSessionId) {
+        console.log('Created new session with environment:', environment, newSessionId);
+        
+        // Skip localStorage to avoid interfering with new session creation
+        
+        // Update the UI state
+        setEnvironmentSelected(true);
+        setShowEnvironmentSelector(false);
+        setSaveMessage('Environment ready! Type your question to begin.');
+        
+        // No longer updating URL here to avoid double navigation
+        // URL updates are handled by the App component through React Router
+        
+        // Clear message after delay
+        setTimeout(() => setSaveMessage(null), 3000);
+      } else {
+        setSaveMessage('Failed to set up environment');
+        setTimeout(() => setSaveMessage(null), 3000);
+      }
+    } catch (error) {
+      console.error('Error setting up environment:', error);
+      setSaveMessage('Failed to set up environment');
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+  };
   
   // Create a new session handler
   const handleNewSession = async () => {
@@ -209,25 +267,14 @@ export function Terminal({
         await saveSession();
       }
       
-      // Create a new session
-      const newSessionId = await createSession();
-      if (newSessionId) {
-        console.log('Created new session:', newSessionId);
-        
-        // Store the new session ID and reload
-        localStorage.setItem('sessionId', newSessionId);
-        
-        // Update the toast
-        toast.innerHTML = `
-          <span class="mr-2">✓</span>
-          <span>New session created, redirecting...</span>
-        `;
-        
-        // Brief delay before reloading to let the user see the message
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
-      }
+      // Update URL to root to show environment selection UI
+      window.history.pushState({}, '', '/');
+      
+      // Show the environment selector instead of auto-creating a session
+      setShowEnvironmentSelector(true);
+      
+      // Remove the toast
+      document.body.removeChild(toast);
     } catch (error) {
       console.error('Error creating new session:', error);
       setSaveMessage('Failed to create new session');
@@ -534,18 +581,30 @@ export function Terminal({
       >
         {/* Main scrollable content area */}
         <div className="flex-grow overflow-y-auto">
-          {/* MessageFeed now gets data from TimelineContext and useToolVisualization directly */}
-          <MessageFeed 
-            sessionId={sessionId || null} 
-            className="terminal-message-animation"
-            ariaLabelledBy={ids.output}
-            isDarkTheme={shouldUseDarkTerminal}
-            onNewSession={handleNewSession}
-            showNewSessionMessage={showNewSessionHint && messages.length > 1}
-          />
+          {/* Show environment selector when no session exists or explicitly requested */}
+          {showEnvironmentSelector && (
+            <div className="flex items-center justify-center h-full">
+              <EnvironmentSelector 
+                onSelect={handleEnvironmentSelect}
+                className="w-full max-w-2xl"
+              />
+            </div>
+          )}
+          
+          {/* MessageFeed only shown when not showing environment selector */}
+          {!showEnvironmentSelector && (
+            <MessageFeed 
+              sessionId={sessionId || null} 
+              className="terminal-message-animation"
+              ariaLabelledBy={ids.output}
+              isDarkTheme={shouldUseDarkTerminal}
+              onNewSession={handleNewSession}
+              showNewSessionMessage={showNewSessionHint && messages.length > 1}
+            />
+          )}
           
           {/* Display a connecting message when there are no messages yet and we're not connected */}
-          {!wsTerminalContext.isConnected && !messages.length && (
+          {!wsTerminalContext.isConnected && !messages.length && !showEnvironmentSelector && (
             <div className="flex items-center justify-center p-4 text-gray-500 mt-8">
               <div className="text-center">
                 <div className="animate-pulse mb-2">Connecting to agent session...</div>
@@ -562,7 +621,10 @@ export function Terminal({
             {/* Typing indicator (left-aligned) */}
             <div className="flex-1">
               {showTypingIndicator && terminalContext.typingIndicator && (
-                <TypingIndicator className="mx-4" />
+                <>
+                  <TypingIndicator className="mx-4" />
+                  {console.log("Rendering typing indicator, state:", terminalContext.typingIndicator)}
+                </>
               )}
             </div>
             

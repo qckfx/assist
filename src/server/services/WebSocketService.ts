@@ -234,52 +234,16 @@ export class WebSocketService {
       // Handle join session requests
       socket.on(WebSocketEvent.JOIN_SESSION, async (sessionId: string) => {
         try {
-          // First check in-memory (fast path)
+          // Check if session exists in memory
           if (!this.sessionManager.getAllSessions().some(s => s.id === sessionId)) {
-            // Try to load from persistence
-            const sessionStatePersistence = getSessionStatePersistence();
-            const sessionData = await sessionStatePersistence.loadSession(sessionId);
-            
-            if (!sessionData) {
-              serverLogger.warn(`Session ${sessionId} not found in memory or persistence`);
-              socket.emit(WebSocketEvent.ERROR, {
-                message: `Session ${sessionId} not found`,
-              });
-              return;
-            }
-            
-            
-            // Convert SavedSessionData to Session
-            const session: Session = {
-              id: sessionData.id,
-              createdAt: new Date(sessionData.createdAt),
-              lastActiveAt: new Date(sessionData.updatedAt),
-              state: sessionData.sessionState || { conversationHistory: [] },
-              isProcessing: false,
-              executionAdapterType: sessionData.sessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' | undefined
-            };
-            
-            // Log conversation history status
-            const historyLength = session.state.conversationHistory?.length || 0;
-            serverLogger.debug(
-              `Session ${sessionId} restored with ${historyLength} conversation history messages`,
-              LogCategory.SESSION
-            );
-
-            // Add the session to the session manager
-            this.sessionManager.addSession(session);
-            
-            // Join the session room
-            socket.join(sessionId);
-            
-            // Send the current session state
-            this.io.to(sessionId).emit(WebSocketEvent.SESSION_LOADED, {
-              sessionId,
-              state: session.state
+            serverLogger.warn(`Session ${sessionId} not found in memory for WebSocket connection`);
+            socket.emit(WebSocketEvent.ERROR, {
+              message: `Session ${sessionId} not found. Please create or reconnect to a session first.`,
             });
+            return;
           }
 
-          // Now proceed with join logic
+          // Join the session room
           socket.join(sessionId);
           serverLogger.info(`Client ${socket.id} joined session ${sessionId}`);
 
@@ -288,6 +252,12 @@ export class WebSocketService {
             const session = this.sessionManager.getSession(sessionId);
             socket.emit(WebSocketEvent.SESSION_UPDATED, session);
             serverLogger.debug(`Sent updated session to client ${socket.id}`);
+            
+            // Send the current session state
+            this.io.to(sessionId).emit(WebSocketEvent.SESSION_LOADED, {
+              sessionId,
+              state: session.state
+            });
           } catch (error) {
             // Session might not be available, send error
             serverLogger.error(`Error getting session ${sessionId}:`, error);
@@ -371,7 +341,8 @@ export class WebSocketService {
       socket.on('save_session', async (data, callback) => {
         try {
           const { sessionId } = data;
-          await this.agentService.saveSessionState(sessionId);
+          const session = this.sessionManager.getSession(sessionId);
+          await this.agentService.saveSessionState(sessionId, session.state);
           
           // Update session list
           const sessions = await this.agentService.listPersistedSessions();
@@ -480,6 +451,8 @@ export class WebSocketService {
 
     // Processing completed
     this.agentService.on(AgentServiceEvent.PROCESSING_COMPLETED, ({ sessionId, result }) => {
+      serverLogger.info(`[WebSocketService] Emitting PROCESSING_COMPLETED for session ${sessionId}`);
+      
       this.io.to(sessionId).emit(WebSocketEvent.PROCESSING_COMPLETED, { 
         sessionId,
         result,
@@ -488,6 +461,15 @@ export class WebSocketService {
       // Also send updated session
       const session = this.sessionManager.getSession(sessionId);
       this.io.to(sessionId).emit(WebSocketEvent.SESSION_UPDATED, session);
+      
+      // Double-check that clients receive this by doing a direct broadcast
+      this.io.emit('processing_status_update', {
+        sessionId,
+        isProcessing: false,
+        timestamp: new Date().toISOString()
+      });
+      
+      serverLogger.info(`[WebSocketService] PROCESSING_COMPLETED emitted for session ${sessionId}`);
     });
 
     // Processing error
@@ -642,10 +624,7 @@ export class WebSocketService {
                         // Include the enhanced preview
                         preview: formattedPreview,
                         hasPreview: true,
-                        previewContentType: preview.contentType,
-                        previewBriefContentLength: preview.briefContent?.length,
-                        previewFullContentLength: preview.fullContent?.length,
-                        previewMetadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+                        previewContentType: preview.contentType
                       }
                     });
                     
@@ -673,10 +652,7 @@ export class WebSocketService {
                 // Include both the preview object and the hasPreview flag
                 preview: item.preview,
                 hasPreview: hasPreviewInItem,
-                previewContentType: item.preview?.contentType,
-                previewBriefContentLength: item.preview?.briefContent?.length,
-                previewFullContentLength: item.preview?.fullContent?.length,
-                previewMetadataKeys: item.preview?.metadata ? Object.keys(item.preview.metadata) : []
+                previewContentType: item.preview?.contentType
               }
             });
           } else {
@@ -693,7 +669,11 @@ export class WebSocketService {
             
             this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
               sessionId,
-              toolExecution
+              toolExecution: {
+                ...toolExecution,
+                hasPreview: hasPreview,
+                previewContentType: item.preview?.contentType
+              }
             });
           }
         } catch (error) {
@@ -714,13 +694,19 @@ export class WebSocketService {
                 result: item.toolExecution.result,
                 error: item.toolExecution.error,
                 preview: item.preview,
-                hasPreview: !!item.preview
+                hasPreview: !!item.preview,
+                previewContentType: item.preview?.contentType
               }
             });
           } else {
             this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
               sessionId,
-              toolExecution: item.toolExecution
+              toolExecution: {
+                ...item.toolExecution,
+                preview: item.preview,
+                hasPreview: !!item.preview,
+                previewContentType: item.preview?.contentType
+              }
             });
           }
         }
@@ -757,6 +743,9 @@ export class WebSocketService {
       }
       
       // Get the execution adapter type, defaulting to 'docker' if not specified
+      console.log(`🌕🌕🌕Getting execution environment for session ${sessionId}`);
+      console.log(`🌕🌕🌕Session state:`, session.state.executionAdapterType || 'none ');
+      console.log(`🌕🌕🌕Execution adapter type:`, session.executionAdapterType || 'none');
       const executionEnvironment = session.state.executionAdapterType || 
                                session.executionAdapterType || 
                                'docker';
@@ -808,6 +797,7 @@ export class WebSocketService {
           });
       } else {
         // For non-Docker environments, emit ready immediately
+        console.log(`🌕🌕🌕Sending init event for session ${sessionId} with environment type ${executionEnvironment}`);
         socket.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
           sessionId,
           environmentType: executionEnvironment,
@@ -838,6 +828,19 @@ export class WebSocketService {
       
       // Broadcast to all connected clients
       this.io.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, statusEvent);
+    });
+    
+    // Subscribe to processing completed events from AgentRunner
+    AgentEvents.on(AgentEventType.PROCESSING_COMPLETED, (data: { sessionId: string, response: string }) => {
+      serverLogger.info(`⚠️ Received direct PROCESSING_COMPLETED event from AgentRunner for session ${data.sessionId}`);
+      
+      // Forward the event to clients in this session room
+      this.io.to(data.sessionId).emit(WebSocketEvent.PROCESSING_COMPLETED, { 
+        sessionId: data.sessionId,
+        result: data.response
+      });
+      
+      serverLogger.info(`⚠️ Forwarded PROCESSING_COMPLETED for session ${data.sessionId}`);
     });
   }
 

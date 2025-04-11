@@ -408,8 +408,26 @@ export class SocketConnectionManager extends EventEmitter {
     
     // Debug events in development
     if (process.env.NODE_ENV === 'development') {
+      // Debug all events
       this.socket.onAny((event, ...args) => {
         console.log(`SocketConnectionManager: Event ${event}`, args);
+      });
+      
+      // Specifically debug PROCESSING_COMPLETED events
+      this.socket.on('processing_completed', (data) => {
+        console.log('PROCESSING_COMPLETED EVENT RECEIVED:', data);
+      });
+      
+      // Listen for alternative processing status update event
+      this.socket.on('processing_status_update', (data) => {
+        console.log('PROCESSING_STATUS_UPDATE EVENT RECEIVED:', data);
+        // Emit processing completed to ensure typing indicator is reset
+        if (data.isProcessing === false) {
+          this.emit('processing_completed', { 
+            sessionId: data.sessionId, 
+            isProcessing: false 
+          });
+        }
       });
       
       this.socket.io.on('reconnect', (attempt: number) => {

@@ -6,6 +6,7 @@ import { WebSocketService } from './services/WebSocketService';
 import { SessionManager } from './services/SessionManager';
 import { TimelineService } from './services/TimelineService';
 import { TimelineStatePersistence, createTimelineStatePersistence } from './services/TimelineStatePersistence';
+import { AgentServiceRegistry, createAgentServiceRegistry } from './services/AgentServiceRegistry';
 import { serverLogger } from './logger';
 
 // Create the container
@@ -42,10 +43,18 @@ function registerServices() {
       serverLogger.debug('TimelineStatePersistence registered in container');
     }
     
+    // Register AgentServiceRegistry first
+    if (!container.isBound(AgentServiceRegistry)) {
+      const agentServiceRegistry = createAgentServiceRegistry(singletons.sessionManager);
+      container.bind(AgentServiceRegistry).toConstantValue(agentServiceRegistry);
+      serverLogger.debug('AgentServiceRegistry registered in container');
+    }
+    
     // Register TimelineService as a singleton
     if (!container.isBound(TimelineService)) {
       // Verify dependencies are available
-      if (!container.isBound(SessionManager) || !container.isBound(WebSocketService) || !container.isBound(TimelineStatePersistence)) {
+      if (!container.isBound(SessionManager) || !container.isBound(WebSocketService) || 
+          !container.isBound(TimelineStatePersistence) || !container.isBound(AgentServiceRegistry)) {
         throw new Error('TimelineService dependencies not registered in container');
       }
       
@@ -53,12 +62,13 @@ function registerServices() {
       const sessionManager = container.get(SessionManager);
       const webSocketService = container.get(WebSocketService);
       const timelineStatePersistence = container.get(TimelineStatePersistence);
+      const agentServiceRegistry = container.get(AgentServiceRegistry);
       
-      if (!sessionManager || !webSocketService || !timelineStatePersistence) {
+      if (!sessionManager || !webSocketService || !timelineStatePersistence || !agentServiceRegistry) {
         throw new Error('Failed to resolve TimelineService dependencies from container');
       }
       
-      const timelineService = new TimelineService(sessionManager, webSocketService, timelineStatePersistence);
+      const timelineService = new TimelineService(sessionManager, webSocketService, timelineStatePersistence, agentServiceRegistry);
       container.bind(TimelineService).toConstantValue(timelineService);
       serverLogger.debug('TimelineService registered in container');
     }
@@ -97,4 +107,4 @@ export function initializeContainer(services: {
 }
 
 // Export for direct import
-export { container, TimelineService, TimelineStatePersistence };
+export { container, TimelineService, TimelineStatePersistence, AgentServiceRegistry };
