@@ -1310,6 +1310,7 @@ export class AgentService extends EventEmitter {
                   // Remove the listener to avoid memory leaks
                   const removeListener = this.toolExecutionManager.on(ToolExecutionEvent.PERMISSION_RESOLVED, onPermissionResolved);
                   removeListener();
+                  
                   // Resolve with the permission status
                   resolve(typedData.permission.granted || false);
                 }
@@ -1437,8 +1438,8 @@ export class AgentService extends EventEmitter {
   public resolvePermissionByExecutionId(executionId: string, granted: boolean): boolean {
     try {
       // Directly use the ToolExecutionManager method to resolve permission
-      this.toolExecutionManager.resolvePermissionByExecutionId(executionId, granted);
-      return true;
+      const result = this.toolExecutionManager.resolvePermissionByExecutionId(executionId, granted);
+      return !!result;
     } catch (error) {
       serverLogger.error(`Error resolving permission for execution: ${executionId}`, error);
       return false;

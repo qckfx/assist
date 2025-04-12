@@ -434,9 +434,12 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
       this.failExecution(executionId, new Error('Permission denied'));
     }
 
+    // Get execution for event
+    const execution = this.executions.get(executionId);
+    
     // Emit event
     this.emitEvent(ToolExecutionEvent.PERMISSION_RESOLVED, {
-      execution: this.executions.get(executionId),
+      execution,
       permission: updatedPermission
     });
     

@@ -87,7 +87,11 @@ async function apiRequest<T = unknown, D = unknown>(
     
     // Standardize response format for consistency
     const standardizedResult: ApiResponse<T> = {
-      success: result.success || result.accepted || false,
+      // Consider the response successful when:
+      // 1. It has an explicit success field that's true, OR
+      // 2. It has accepted/resolved field, OR
+      // 3. It doesn't have an explicit success=false field (default to success for HTTP 200-299)
+      success: result.success !== false && (result.success || result.accepted || result.resolved || true),
       data: result.data || result,
       error: result.error
     };

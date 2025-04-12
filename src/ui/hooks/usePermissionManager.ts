@@ -121,6 +121,7 @@ export function usePermissionManager({
     }
     
     try {
+      // Call API to resolve permission
       const response = await apiClient.resolvePermission(executionId, granted, sessionId);
       
       if (!response.success) {

@@ -51,12 +51,8 @@ export async function resolvePermission(req: Request, res: Response, next: NextF
     // Get the agent service for this session
     const agentService = agentServiceRegistry.getServiceForSession(sessionId);
     
-    // Add enhanced logging to diagnose issues
-    
     // Use the new direct method that takes executionId
     const resolved = agentService.resolvePermissionByExecutionId(executionId, granted);
-    
-    // Log the result
     
     if (!resolved) {
       throw new NotFoundError(`Execution ${executionId} not found or permission already resolved`);
@@ -65,6 +61,7 @@ export async function resolvePermission(req: Request, res: Response, next: NextF
     // Log success
     
     res.status(200).json({
+      success: true,
       sessionId,
       executionId,
       granted,
