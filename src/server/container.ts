@@ -43,10 +43,12 @@ function registerServices() {
       serverLogger.debug('TimelineStatePersistence registered in container');
     }
     
-    // Register AgentServiceRegistry first
+    // Register AgentServiceRegistry
     if (!container.isBound(AgentServiceRegistry)) {
-      const agentServiceRegistry = createAgentServiceRegistry(singletons.sessionManager);
-      container.bind(AgentServiceRegistry).toConstantValue(agentServiceRegistry);
+      if (!singletons.agentServiceRegistry) {
+        throw new Error('AgentServiceRegistry instance not provided to container');
+      }
+      container.bind(AgentServiceRegistry).toConstantValue(singletons.agentServiceRegistry);
       serverLogger.debug('AgentServiceRegistry registered in container');
     }
     
@@ -82,6 +84,7 @@ function registerServices() {
 export function initializeContainer(services: {
   webSocketService: WebSocketService;
   sessionManager: SessionManager;
+  agentServiceRegistry: AgentServiceRegistry;
 }) {
   try {
     serverLogger.debug('Initializing container with provided services');
@@ -89,6 +92,7 @@ export function initializeContainer(services: {
     // Store the services in the singletons object
     singletons.webSocketService = services.webSocketService;
     singletons.sessionManager = services.sessionManager;
+    singletons.agentServiceRegistry = services.agentServiceRegistry;
     
     // Register all services
     registerServices();

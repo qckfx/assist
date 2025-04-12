@@ -254,11 +254,16 @@ export async function startServer(config: ServerConfig): Promise<{
           const url = getServerUrl(config);
           serverLogger.info(`Server started at ${url}`);
           
+          // First create the AgentServiceRegistry
+          serverLogger.info('Creating AgentServiceRegistry...');
+          const { createAgentServiceRegistry, AgentServiceRegistry } = require('./services/AgentServiceRegistry');
+          const agentServiceRegistry = createAgentServiceRegistry(sessionManager);
+          
           // Initialize WebSocketService after server is listening
-          const webSocketService = WebSocketService.create(httpServer);
+          const webSocketService = WebSocketService.create(httpServer, agentServiceRegistry);
           // Store the instance in the app for use during shutdown
           app.locals.webSocketService = webSocketService;
-          serverLogger.info('WebSocket service initialized');
+          serverLogger.info('WebSocketService initialized');
           
           serverLogger.info('Initializing dependency injection container...');
           
@@ -275,7 +280,8 @@ export async function startServer(config: ServerConfig): Promise<{
             // Initialize the container with required services
             const containerInstance = initializeContainer({
               webSocketService,
-              sessionManager
+              sessionManager,
+              agentServiceRegistry
             });
             
             // Test the container by trying to resolve the TimelineService
