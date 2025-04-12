@@ -48,6 +48,7 @@ export function WebSocketTerminal({
   const [hasConnected, setHasConnected] = useState(false);
   
   // Add keyboard handler for permission requests
+  // Make sure to pass the current session ID explicitly
   usePermissionKeyboardHandler();
   
   // Add keyboard handler for abort operations

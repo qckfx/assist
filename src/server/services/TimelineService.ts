@@ -12,6 +12,15 @@ import {
   ToolExecutionManager
 } from '../../types/tool-execution';
 
+// Define local version of ToolState enum to match UI's definition
+enum ToolState {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  COMPLETED = 'completed',
+  ERROR = 'error',
+  ABORTED = 'aborted'
+}
+
 /**
  * Helper function to truncate message content for logging
  */
@@ -408,6 +417,19 @@ export class TimelineService extends EventEmitter {
       } : undefined;
       
       // Send the execution update with preview if available
+      console.log(`🔹 TimelineService emitting ${WebSocketEvent.TOOL_EXECUTION_UPDATED} for tool ${toolExecution.id} with preview: ${hasValidPreview}`);
+      
+      // Include the full tool execution result if available
+      // Check if status indicates it's in a state where we should include the result
+      const shouldIncludeResult = 
+        toolExecution.status === ToolExecutionStatus.COMPLETED || 
+        toolExecution.status === ToolExecutionStatus.ERROR || 
+        toolExecution.status === ToolExecutionStatus.ABORTED || 
+        toolExecution.status === ToolExecutionStatus.AWAITING_PERMISSION;
+        
+      const toolExecutionResult = shouldIncludeResult ? toolExecution.result : undefined;
+      
+      // Ensure we're sending all necessary data, including the result
       this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
         sessionId,
         toolExecution: {
@@ -420,6 +442,7 @@ export class TimelineService extends EventEmitter {
           endTime: toolExecution.endTime,
           executionTime: toolExecution.executionTime,
           error: toolExecution.error,
+          result: toolExecutionResult, // Add the tool execution result
           // Include the preview directly in the toolExecution object
           preview: previewToSend,
           // Add these flags to help client-side detection
@@ -454,8 +477,69 @@ export class TimelineService extends EventEmitter {
     // Save to timeline persistence
     await this.timelinePersistence.addTimelineItem(sessionId, timelineItem);
     
-    // Emit events
+    // Emit events to internal timeline listeners
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
+    
+    // Directly emit to WebSocket so the client gets the permission request immediately
+    console.log(`🔹 TimelineService emitting PERMISSION_REQUESTED to WebSocket for permission ${permissionRequest.id} and executionId ${permissionRequest.executionId}`);
+    
+    // Add extra logging about whether permission request is complete
+    console.log(`🔹 Permission request data completeness check: 
+      - has id: ${!!permissionRequest.id}
+      - has toolId: ${!!permissionRequest.toolId}
+      - has toolName: ${!!permissionRequest.toolName}
+      - has executionId: ${!!permissionRequest.executionId}
+      - has args: ${!!permissionRequest.args}
+      - has timestamp: ${!!permissionRequest.requestTime}
+    `);
+    
+    // Log additional debug info
+    serverLogger.info(`Emitting permission request with executionId: ${permissionRequest.executionId}`, {
+      permissionId: permissionRequest.id,
+      toolId: permissionRequest.toolId,
+      executionId: permissionRequest.executionId
+    });
+    
+    this.emitToSession(sessionId, WebSocketEvent.PERMISSION_REQUESTED, {
+      sessionId,
+      // This structure is what the client expects in usePermissionKeyboardHandler
+      // It has executionId at both places to ensure compatibility
+      permission: {
+        id: permissionRequest.id,
+        toolId: permissionRequest.toolId,
+        toolName: permissionRequest.toolName || "Unknown Tool",
+        executionId: permissionRequest.executionId,
+        args: permissionRequest.args,
+        timestamp: permissionRequest.requestTime,
+        preview: preview ? {
+          contentType: preview.contentType,
+          briefContent: preview.briefContent,
+          fullContent: preview.fullContent,
+          metadata: preview.metadata
+        } : undefined
+      },
+      // Also include these top-level fields for UI components
+      executionId: permissionRequest.executionId,
+      toolId: permissionRequest.toolId,
+      toolName: permissionRequest.toolName || "Unknown Tool"
+    });
+    
+    // Additionally emit a tool execution update to ensure the status change is visible to clients
+    // This ensures the tool visualization shows "awaiting-permission" status properly
+    if (permissionRequest.executionId) {
+      // Get the execution from cache if available
+      this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+        sessionId,
+        toolExecution: {
+          id: permissionRequest.executionId,
+          toolId: permissionRequest.toolId,
+          toolName: permissionRequest.toolName || "Unknown Tool",
+          status: "awaiting-permission",
+          args: permissionRequest.args,
+          startTime: permissionRequest.requestTime
+        }
+      });
+    }
     
     // In our new model, permissions updates should come through as tool updates
     // Update the associated tool execution if it exists, but with circuit breaker
@@ -489,14 +573,10 @@ export class TimelineService extends EventEmitter {
         }
       }, 5000);
       
-      // Now get and update the tool execution
-      const toolExecution = this.getAgentService()?.getToolExecution(executionId);
-      
-      if (toolExecution) {
-        // Update the tool execution with the permission state and preview
-        serverLogger.debug(`[Permission] Updating tool execution ${executionId} with permission state`);
-        this.addToolExecutionToTimeline(sessionId, toolExecution, preview);
-      }
+      // In our new event-based approach, we'll receive a separate TOOL_EXECUTION_UPDATED event
+      // when the tool execution is updated with permission state, so we don't need to
+      // fetch the tool execution and update it here.
+      serverLogger.debug(`[Permission] Permission update will trigger separate tool update for execution ${executionId}`);
     }
     
     return timelineItem;
@@ -513,143 +593,43 @@ export class TimelineService extends EventEmitter {
         serverLogger.debug(`[TIMELINE] Timeline object for ${event}:`, JSON.stringify(data, null, 2));
       }
       
-      // Type-safe access to WebSocketService properties
-      // Access the socket.io instance directly
-      const socketIoServer = this.getSocketIOServer();
+      console.log(`🔹 TimelineService emitting ${event} to session ${sessionId} using WebSocketService.emitToSession`);
       
-      if (socketIoServer) {
-        socketIoServer.to(sessionId).emit(event, data);
-      } else {
-        // Fallback method if direct io access is not available
-        const agentService = this.getAgentService();
-        if (agentService) {
-          // If AgentService is accessible, emit the event through it
-          agentService.emit(`timeline:${event}`, { sessionId, ...data });
-        } else {
-          serverLogger.warn(`[emitToSession] Could not emit ${event} to session ${sessionId}: No socket.io or AgentService instance found`);
-        }
-      }
+      // Use the WebSocketService's public method to emit the event
+      this.webSocketService.emitToSession(sessionId, event, data);
     } catch (error) {
       serverLogger.error(`[emitToSession] Error emitting to session ${sessionId}:`, error instanceof Error ? error.message : String(error));
     }
   }
   
-  /**
-   * Get Socket.IO server from WebSocketService
-   */
-  private getSocketIOServer(): SocketIOServer | null {
-    try {
-      // WebSocketService should have a public 'io' property
-      const ioServer = (this.webSocketService as unknown as { io: SocketIOServer }).io;
-      return ioServer || null;
-    } catch (error) {
-      return null;
-    }
-  }
+  // The getSocketIOServer and getAgentService methods have been removed
+  // as they're no longer needed with the new event propagation architecture
   
-  /**
-   * Get AgentService for a specific session using AgentServiceRegistry
-   * @param sessionId Optional session ID - if not provided, will try to get a default service
-   */
-  private getAgentService(sessionId?: string): AgentService | null {
-    try {
-      if (sessionId) {
-        console.log("🟡🟡🟡 TimelineService getting AgentService for session", sessionId);
-        // Use the AgentServiceRegistry to get the appropriate service for this session
-        return this.agentServiceRegistry.getServiceForSession(sessionId);
-      } else {
-        // Fallback to the legacy way of getting an agent service from WebSocketService
-        const agentService = (this.webSocketService as unknown as { agentService: AgentService }).agentService;
-        return agentService || null;
-      }
-    } catch (error) {
-      serverLogger.error('Error getting AgentService:', error instanceof Error ? error.message : String(error));
-      return null;
-    }
-  }
-  
-  /**
-   * Get ToolExecutionManager from AgentService
-   * @param sessionId Optional session ID to get a specific ToolExecutionManager
-   */
-  private getToolExecutionManager(sessionId?: string): ToolExecutionManager | null {
-    try {
-      // Get the agent service for the specified session (if provided)
-      const agentService = this.getAgentService(sessionId);
-      if (!agentService) {
-        serverLogger.warn(`Could not get AgentService ${sessionId ? `for session ${sessionId}` : ''}`);
-        return null;
-      }
-      
-      // TODO: This is a temporary solution. We should refactor this to:
-      //  1. Make toolExecutionManager a public property of AgentService, or
-      //  2. Add a getToolExecutionManager() method to AgentService, or 
-      //  3. Inject the ToolExecutionManager directly into TimelineService
-      // Currently we're using 'any' cast to access a private property, which is not ideal.
-      const toolExecutionManager = (agentService as any).toolExecutionManager;
-      
-      if (!toolExecutionManager) {
-        serverLogger.error('ToolExecutionManager not found on AgentService', {
-          hasAgentService: !!agentService,
-          sessionId: sessionId || 'unknown',
-          agentServiceKeys: Object.keys(agentService)
-        });
-        return null;
-      }
-      
-      return toolExecutionManager;
-    } catch (error) {
-      serverLogger.error('Could not access ToolExecutionManager:', error instanceof Error ? error.message : String(error));
-      return null;
-    }
-  }
+  // The getToolExecutionManager method has been removed as part of the refactoring
+  // to use AgentServiceRegistry for event propagation instead of directly 
+  // accessing ToolExecutionManager instances
 
   /**
    * Set up event listeners for session events
    */
   private setupEventListeners(): void {
-    // Get access to the AgentService which extends EventEmitter
-    const agentService = this.getAgentService();
+    console.log("✅✅✅ Setting up TimelineService event listeners");
     
-    if (!agentService) {
-      serverLogger.error('TimelineService: Could not access AgentService for event subscriptions');
-      return;
-    }
+    // Log event registration for specific events
+    const eventsToMonitor = [
+      AgentServiceEvent.TOOL_EXECUTION_COMPLETED,
+      AgentServiceEvent.PERMISSION_REQUESTED,
+      AgentServiceEvent.PERMISSION_RESOLVED
+    ];
     
-    // Get access to the ToolExecutionManager for preview events
-    const toolExecutionManager = this.getToolExecutionManager();
-    
-    // Listen for message events - custom events not in AgentServiceEvent enum
-    agentService.on(MESSAGE_ADDED, (data: MessageAddedEvent) => {
-      // Use the internal method to add to timeline without emitting events back to agent
-      this.addMessageToTimelineInternal(data.sessionId, data.message)
-        .then(() => {
-          // Emit to WebSocket clients only
-          this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
-            sessionId: data.sessionId,
-            message: data.message
-          });
-        })
-        .catch(err => {
-          serverLogger.error(`Error adding message to timeline from MESSAGE_ADDED: ${err.message}`);
-        });
-    });
-    
-    agentService.on(MESSAGE_UPDATED, (data: MessageAddedEvent) => {
-      // Use the internal method to add to timeline without emitting events back to agent
-      this.addMessageToTimelineInternal(data.sessionId, data.message)
-        .then(() => {
-          // Emit to WebSocket clients only
-          this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_UPDATED, {
-            sessionId: data.sessionId,
-            messageId: data.message.id,
-            content: data.message.content,
-            isComplete: true
-          });
-        })
-        .catch(err => {
-          serverLogger.error(`Error adding updated message to timeline: ${err.message}`);
-        });
+    // Check if the registry has these events registered
+    eventsToMonitor.forEach(eventName => {
+      try {
+        const count = this.agentServiceRegistry.listenerCount(eventName);
+        console.log(`✅✅✅ Before TimelineService setup: Registry has ${count} listeners for ${eventName}`);
+      } catch (err) {
+        console.log(`❌❌❌ Error checking listeners for ${eventName}: ${err}`);
+      }
     });
     
     // Listen for message events from AgentEvents (from AgentRunner)
@@ -697,15 +677,135 @@ export class TimelineService extends EventEmitter {
     
     // Listen for permission request events - use a debounce mechanism to prevent cascading permission events
     const permissionDebounce = new Map<string, number>();
-    const permissionThresholdMs = 1000; // 1 second 
+    const permissionThresholdMs = 1000; // 1 second
     
-    agentService.on(AgentServiceEvent.PERMISSION_REQUESTED, (data: PermissionRequestEvent) => {
-      if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
-        serverLogger.error('[PERMISSION] Missing required data in PERMISSION_REQUESTED event', data);
+    // Subscribe to registry events for tool execution completed
+    this.agentServiceRegistry.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: any) => {
+      console.log(`🔸 TimelineService received TOOL_EXECUTION_COMPLETED from registry for session ${data?.sessionId}`);
+      console.log(`🔸 Data inspection: hasData=${!!data}, hasSessionId=${!!data?.sessionId}, hasExecution=${!!data?.execution}`);
+      
+      if (!data || !data.sessionId || !data.execution) {
+        serverLogger.warn('Received TOOL_EXECUTION_COMPLETED event with missing data', data);
+        console.log('🔴🔴🔴 Tool completion data is incomplete - missing required fields');
         return;
       }
       
-      const permissionId = data.permissionRequest.id;
+      // All the data we need is in the event - no need to query other services
+      const { sessionId, execution, preview } = data;
+      console.log(`🔸 Execution data: id=${execution.id}, status=${execution.status}, hasPreview=${!!preview}`);
+      
+      // First, directly emit to WebSocket to ensure the client gets the update
+      // This is a critical path to ensure tool visualization works
+      try {
+        // Check if we have a valid preview
+        console.log(`🔸 Preview check: hasPreview=${!!preview}, hasContentType=${!!preview?.contentType}, hasBriefContent=${!!preview?.briefContent}`);
+        const hasValidPreview = !!(preview && preview.briefContent);
+        console.log(`🔸 Preview validation result: hasValidPreview=${hasValidPreview}`);
+        
+        // Convert preview to client format if available
+        const previewToSend = hasValidPreview ? {
+          contentType: preview.contentType,
+          briefContent: preview.briefContent,
+          fullContent: preview.fullContent,
+          metadata: preview.metadata ? {...preview.metadata} : undefined,
+          hasActualContent: true
+        } : undefined;
+        console.log(`🔸 previewToSend is ${previewToSend ? 'defined' : 'undefined'}`);
+        if (previewToSend) {
+          console.log(`🔸 previewToSend details: contentType=${previewToSend.contentType}, briefContentLength=${previewToSend.briefContent?.length || 0}`);
+        }
+        
+        // Check if we should include the result based on status
+        const shouldIncludeResult = 
+          execution.status === ToolExecutionStatus.COMPLETED || 
+          execution.status === ToolExecutionStatus.ERROR || 
+          execution.status === ToolExecutionStatus.ABORTED || 
+          execution.status === ToolExecutionStatus.AWAITING_PERMISSION;
+        
+        console.log(`🔸 Result check: status=${execution.status}, shouldIncludeResult=${shouldIncludeResult}, hasResult=${execution.result !== undefined}`);
+        
+        // Get the result only if in the right state
+        const executionResult = shouldIncludeResult ? execution.result : undefined;
+        console.log(`🔸 executionResult is ${executionResult !== undefined ? 'present' : 'undefined'}`);
+        if (executionResult !== undefined) {
+          console.log(`🔸 executionResult type: ${typeof executionResult}`);
+        }
+        
+        // Log for debugging
+        console.log(`⚡⚡⚡ TimelineService DIRECT WebSocket emission for execution ${execution.id} with preview: ${hasValidPreview}`);
+        serverLogger.info(`DIRECT WebSocket emission for execution ${execution.id} with preview: ${hasValidPreview}`);
+        
+        // Directly use the WebSocketService to emit the event
+        console.log(`🔸 About to call webSocketService.emitToSession for session ${sessionId}`);
+        const payload = {
+          sessionId,
+          toolExecution: {
+            id: execution.id,
+            toolId: execution.toolId,
+            toolName: execution.toolName,
+            status: execution.status,
+            args: execution.args,
+            startTime: execution.startTime,
+            endTime: execution.endTime,
+            executionTime: execution.executionTime,
+            error: execution.error,
+            result: executionResult, // Use the conditionally set result
+            // Explicitly include the preview
+            preview: previewToSend,
+            // Add these flags to help client-side detection
+            hasPreview: hasValidPreview,
+            previewContentType: hasValidPreview ? preview.contentType : undefined
+          }
+        };
+        console.log(`🔸 WebSocket payload created with ${Object.keys(payload).length} top-level keys: [${Object.keys(payload).join(', ')}]`);
+        console.log(`🔸 WebSocket toolExecution has ${Object.keys(payload.toolExecution).length} keys: [${Object.keys(payload.toolExecution).join(', ')}]`);
+        
+        try {
+          this.webSocketService.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, payload);
+          console.log(`✅✅✅ Successfully emitted TOOL_EXECUTION_UPDATED to WebSocketService`);
+        } catch (emitError) {
+          console.log(`❌❌❌ ERROR in webSocketService.emitToSession: ${emitError}`);
+          console.error(emitError);
+        }
+      } catch (error) {
+        console.log(`❌❌❌ ERROR in direct WebSocket emission preparation: ${error}`);
+        serverLogger.error(`Error in direct WebSocket emission for tool execution ${execution.id}:`, error);
+      }
+      
+      // Now continue with the usual flow of adding to timeline
+      this.findParentMessageId(sessionId, execution.id)
+        .then(parentMessageId => {
+          // Add the tool execution with its preview to the timeline
+          this.addToolExecutionToTimeline(sessionId, execution, preview, parentMessageId)
+            .then(() => {
+              serverLogger.debug(`TimelineService processed COMPLETED event for execution ${execution.id} with preview: ${!!preview}`);
+            })
+            .catch(error => {
+              serverLogger.error(`Error adding tool execution to timeline for ${execution.id}:`, error);
+            });
+        })
+        .catch(error => {
+          serverLogger.error(`Error finding parent message for tool execution ${execution.id}:`, error);
+        });
+    });
+    
+    // Subscribe to permission events from registry
+    console.log(`✅✅✅ Setting up listener for ${AgentServiceEvent.PERMISSION_REQUESTED}`);
+    
+    this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_REQUESTED, (data: any) => {
+      console.log(`✅✅✅ PERMISSION_REQUESTED handler triggered`);
+      console.log(`🔸 TimelineService received PERMISSION_REQUESTED from registry for session ${data.sessionId}`);
+      console.log(`🔸 Permission data inspection: hasData=${!!data}, hasSessionId=${!!data?.sessionId}, hasPermissionRequest=${!!data?.permissionRequest}, permissionId=${data?.permissionRequest?.id}`);
+      
+      if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
+        serverLogger.error('[PERMISSION] Missing required data in PERMISSION_REQUESTED event', data);
+        console.log(`🔴🔴🔴 Permission request data is incomplete - missing required fields`);
+        return;
+      }
+      
+      // All the data we need is in the event - no need to query other services
+      const { sessionId, permissionRequest, preview } = data;
+      const permissionId = permissionRequest.id;
       const now = Date.now();
       const lastProcessed = permissionDebounce.get(permissionId);
       
@@ -720,19 +820,28 @@ export class TimelineService extends EventEmitter {
       
       // Process the permission request
       serverLogger.debug(`[PERMISSION] Processing permission request ${permissionId}`);
-      this.addPermissionRequestToTimeline(data.sessionId, data.permissionRequest, data.preview);
+      this.addPermissionRequestToTimeline(sessionId, permissionRequest, preview);
       
       // Clean up after a delay
       setTimeout(() => permissionDebounce.delete(permissionId), 2000);
     });
     
-    agentService.on(AgentServiceEvent.PERMISSION_RESOLVED, (data: PermissionRequestEvent) => {
+    console.log(`✅✅✅ Setting up listener for ${AgentServiceEvent.PERMISSION_RESOLVED}`);
+    
+    this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_RESOLVED, (data: any) => {
+      console.log(`✅✅✅ PERMISSION_RESOLVED handler triggered`);
+      console.log(`🔸 TimelineService received PERMISSION_RESOLVED from registry for session ${data.sessionId}`);
+      console.log(`🔸 Permission resolved data inspection: hasData=${!!data}, hasSessionId=${!!data?.sessionId}, hasPermissionRequest=${!!data?.permissionRequest}, permissionId=${data?.permissionRequest?.id}`);
+      
       if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
         serverLogger.error('[PERMISSION] Missing required data in PERMISSION_RESOLVED event', data);
+        console.log(`🔴🔴🔴 Permission resolved data is incomplete - missing required fields`);
         return;
       }
       
-      const permissionId = data.permissionRequest.id;
+      // All the data we need is in the event - no need to query other services
+      const { sessionId, permissionRequest, preview } = data;
+      const permissionId = permissionRequest.id;
       const now = Date.now();
       const lastProcessed = permissionDebounce.get(permissionId);
       
@@ -747,109 +856,99 @@ export class TimelineService extends EventEmitter {
       
       // Process the permission resolution
       serverLogger.debug(`[PERMISSION] Processing permission resolution ${permissionId}`);
-      this.addPermissionRequestToTimeline(data.sessionId, data.permissionRequest, data.preview);
+      
+      // Add to timeline
+      this.addPermissionRequestToTimeline(sessionId, permissionRequest, preview);
+      
+      // Also directly emit to WebSocket so the client gets the resolution immediately
+      console.log(`🔹 TimelineService emitting PERMISSION_RESOLVED to WebSocket for permission ${permissionId} and executionId ${permissionRequest.executionId}`);
+      
+      // This is the expected structure for the client's usePermissionKeyboardHandler
+      // Include additional fields to ensure UI components can handle this properly
+      this.emitToSession(sessionId, WebSocketEvent.PERMISSION_RESOLVED, {
+        sessionId,
+        executionId: permissionRequest.executionId, // This must match what's used in the UI
+        resolution: permissionRequest.granted,
+        // Add these fields to maintain compatibility with all UI components
+        toolId: permissionRequest.toolId,
+        toolName: permissionRequest.toolName || "Unknown Tool",
+        permissionId: permissionRequest.id
+      });
       
       // Clean up after a delay
       setTimeout(() => permissionDebounce.delete(permissionId), 2000);
     });
     
+    // Subscribe to message events from registry
+    this.agentServiceRegistry.on(MESSAGE_ADDED, (data: any) => {
+      console.log(`🔸 TimelineService received MESSAGE_ADDED from registry for session ${data.sessionId}`);
+      
+      if (!data || !data.sessionId || !data.message) {
+        serverLogger.warn('Received MESSAGE_ADDED event with missing data', data);
+        return;
+      }
+      
+      // Use the internal method to add to timeline without emitting events back to agent
+      this.addMessageToTimelineInternal(data.sessionId, data.message)
+        .then(() => {
+          // Emit to WebSocket clients only
+          this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
+            sessionId: data.sessionId,
+            message: data.message
+          });
+        })
+        .catch(err => {
+          serverLogger.error(`Error adding message to timeline from MESSAGE_ADDED: ${err.message}`);
+        });
+    });
+    
+    this.agentServiceRegistry.on(MESSAGE_UPDATED, (data: any) => {
+      console.log(`🔸 TimelineService received MESSAGE_UPDATED from registry for session ${data.sessionId}`);
+      
+      if (!data || !data.sessionId || !data.message) {
+        serverLogger.warn('Received MESSAGE_UPDATED event with missing data', data);
+        return;
+      }
+      
+      // Use the internal method to add to timeline without emitting events back to agent
+      this.addMessageToTimelineInternal(data.sessionId, data.message)
+        .then(() => {
+          // Emit to WebSocket clients only
+          this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_UPDATED, {
+            sessionId: data.sessionId,
+            messageId: data.message.id,
+            content: data.message.content,
+            isComplete: true
+          });
+        })
+        .catch(err => {
+          serverLogger.error(`Error adding updated message to timeline: ${err.message}`);
+        });
+    });
+    
     // Completely disable SESSION_LOADED event handling as a more drastic fix
     // This breaks the event chain that's likely causing infinite loops
-    agentService.on(AgentServiceEvent.SESSION_LOADED, (data: SessionEvent) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.SESSION_LOADED, (data: any) => {
       // Implementation removed to break the event chain
       serverLogger.warn(`[SESSION_LOADED] SESSION_LOADED event received for ${data.sessionId} but intentionally not processed to prevent infinite loops`);
     });
     
-    // Set up event listeners for all active sessions
-    // This is a more direct approach - get all sessions and listen to their tool execution managers
-    const sessions = this.sessionManager.getAllSessionIds();
-    serverLogger.info(`Setting up ToolExecutionManager event listeners for ${sessions.length} active sessions`);
-    
-    // For each session, set up event listeners for its tool execution manager
-    for (const sessionId of sessions) {
-      this.setupToolExecutionListeners(sessionId);
-    }
-    
-    // Also listen for session creation to set up listeners for new sessions
-    this.sessionManager.on('session:created', (sessionId: string) => {
-      serverLogger.info(`Setting up event listeners for new session: ${sessionId}`);
-      this.setupToolExecutionListeners(sessionId);
+    // Log counts after setup
+    eventsToMonitor.forEach(eventName => {
+      try {
+        const count = this.agentServiceRegistry.listenerCount(eventName);
+        console.log(`✅✅✅ After TimelineService setup: Registry has ${count} listeners for ${eventName}`);
+      } catch (err) {
+        console.log(`❌❌❌ Error checking listeners for ${eventName}: ${err}`);
+      }
     });
     
-    // Legacy fallback - try to get a global tool execution manager
-    const globalToolExecutionManager = this.getToolExecutionManager();
-    if (globalToolExecutionManager) {
-      serverLogger.info("🟠🟠🟠TimelineService also listening for global ToolExecutionManager events");
-      this.setupToolExecutionManagerListeners(globalToolExecutionManager);
-    } else {
-      serverLogger.warn('🟠🟠🟠TimelineService: Could not access global ToolExecutionManager for event subscriptions');
-    }
-    
-    // Log setup complete
-    serverLogger.info('🟠🟠🟠TimelineService: Event listeners setup complete');
+    serverLogger.info('🟢🟢🟢 TimelineService: Set up to receive events from AgentServiceRegistry');
   }
   
-  /**
-   * Set up event listeners for a specific session's tool execution manager
-   * @param sessionId The session ID to listen for
-   */
-  private setupToolExecutionListeners(sessionId: string): void {
-    // Get the tool execution manager for this session
-    const toolExecutionManager = this.getToolExecutionManager(sessionId);
-    
-    if (toolExecutionManager) {
-      serverLogger.info(`🟠🟠🟠TimelineService listening for ToolExecutionManager events for session ${sessionId}`);
-      this.setupToolExecutionManagerListeners(toolExecutionManager);
-    } else {
-      serverLogger.warn(`Failed to get ToolExecutionManager for session ${sessionId}`);
-    }
-  }
-  
-  /**
-   * Set up event listeners for a specific tool execution manager
-   * @param toolExecutionManager The ToolExecutionManager to listen to
-   */
-  private setupToolExecutionManagerListeners(toolExecutionManager: ToolExecutionManager): void {
-    // Listen for preview generation events
-    toolExecutionManager.on(ToolExecEvent.PREVIEW_GENERATED, (data: unknown) => {
-      // Need to type-cast the data to the expected format
-      const typedData = data as PreviewGeneratedEventData;
-      const { execution, preview } = typedData;
-      
-      // Update timeline item with the newly generated preview
-      this.updateTimelineItemPreview(execution.sessionId, execution.id, preview);
-      
-      serverLogger.debug(`TimelineService received PREVIEW_GENERATED event for execution ${execution.id} (session ${execution.sessionId})`);
-    });
-    
-    // Listen for tool execution completed events that include a preview
-    console.log(`🟡🟡🟡 Setting up listener for ${ToolExecEvent.COMPLETED} on toolExecutionManager`);
-    const completedHandler = (data: unknown) => {
-      console.log("🟢🟢🟢TimelineService received COMPLETED event for execution", data);
-      // Need to type-cast the data to the expected format
-      const typedData = data as ExecutionCompletedWithPreviewEventData;
-      const { execution, preview } = typedData;
-
-      console.log("🟠🟠🟠TimelineService received COMPLETED event for execution", execution, preview);
-      
-      // Rest of handler...
-      this.findParentMessageId(execution.sessionId, execution.id)
-        .then(parentMessageId => {
-          console.log("🟠🟠🟠TimelineService found parent message ID", parentMessageId);
-          // Add the tool execution with its preview to the timeline
-          this.addToolExecutionToTimeline(execution.sessionId, execution, preview, parentMessageId);
-          
-          serverLogger.debug(`TimelineService processed COMPLETED event for execution ${execution.id} with preview: ${!!preview}`);
-        });
-    };
-    
-    // Check the listener count for the COMPLETED event
-    console.log(`Current listener count for ${ToolExecEvent.COMPLETED}: ${(toolExecutionManager as any).eventEmitter.listenerCount(ToolExecEvent.COMPLETED)}`);
-    // Register the handler and log that we've done it
-    toolExecutionManager.on(ToolExecEvent.COMPLETED, completedHandler);
-    console.log(`🟡🟡🟡 Registered handler for ${ToolExecEvent.COMPLETED}, should have 1+ listeners now`);
-    console.log(`🟡🟡🟡 Listener count for ${ToolExecEvent.COMPLETED}: ${(toolExecutionManager as any).eventEmitter.listenerCount(ToolExecEvent.COMPLETED)}`);
-  }
+  // The setupToolExecutionListeners and setupToolExecutionManagerListeners methods
+  // have been removed as part of the refactoring to use the AgentServiceRegistry
+  // for event propagation instead of directly subscribing to tool execution managers.
 
   /**
    * Find the parent message ID for a tool execution
