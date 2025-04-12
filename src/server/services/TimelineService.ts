@@ -479,56 +479,59 @@ export class TimelineService extends EventEmitter {
     // Emit events to internal timeline listeners
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
     
-    // Directly emit to WebSocket so the client gets the permission request immediately
+    // Check if this is a new permission request or a resolved one
+    const isResolved = !!permissionRequest.resolvedTime;
     
-    // Add extra logging about whether permission request is complete
-    
-    // Log additional debug info
-    serverLogger.info(`Emitting permission request with executionId: ${permissionRequest.executionId}`, {
-      permissionId: permissionRequest.id,
-      toolId: permissionRequest.toolId,
-      executionId: permissionRequest.executionId
-    });
-    
-    this.emitToSession(sessionId, WebSocketEvent.PERMISSION_REQUESTED, {
-      sessionId,
-      // This structure is what the client expects in usePermissionKeyboardHandler
-      // It has executionId at both places to ensure compatibility
-      permission: {
-        id: permissionRequest.id,
+    // Only emit PERMISSION_REQUESTED for new requests, not for resolved ones
+    if (!isResolved) {
+      // Log additional debug info
+      serverLogger.info(`Emitting permission request with executionId: ${permissionRequest.executionId}`, {
+        permissionId: permissionRequest.id,
         toolId: permissionRequest.toolId,
-        toolName: permissionRequest.toolName || "Unknown Tool",
-        executionId: permissionRequest.executionId,
-        args: permissionRequest.args,
-        timestamp: permissionRequest.requestTime,
-        preview: preview ? {
-          contentType: preview.contentType,
-          briefContent: preview.briefContent,
-          fullContent: preview.fullContent,
-          metadata: preview.metadata
-        } : undefined
-      },
-      // Also include these top-level fields for UI components
-      executionId: permissionRequest.executionId,
-      toolId: permissionRequest.toolId,
-      toolName: permissionRequest.toolName || "Unknown Tool"
-    });
-    
-    // Additionally emit a tool execution update to ensure the status change is visible to clients
-    // This ensures the tool visualization shows "awaiting-permission" status properly
-    if (permissionRequest.executionId) {
-      // Get the execution from cache if available
-      this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+        executionId: permissionRequest.executionId
+      });
+      
+      // Directly emit to WebSocket so the client gets the permission request immediately
+      this.emitToSession(sessionId, WebSocketEvent.PERMISSION_REQUESTED, {
         sessionId,
-        toolExecution: {
-          id: permissionRequest.executionId,
+        // This structure is what the client expects in usePermissionKeyboardHandler
+        // It has executionId at both places to ensure compatibility
+        permission: {
+          id: permissionRequest.id,
           toolId: permissionRequest.toolId,
           toolName: permissionRequest.toolName || "Unknown Tool",
-          status: "awaiting-permission",
+          executionId: permissionRequest.executionId,
           args: permissionRequest.args,
-          startTime: permissionRequest.requestTime
-        }
+          timestamp: permissionRequest.requestTime,
+          preview: preview ? {
+            contentType: preview.contentType,
+            briefContent: preview.briefContent,
+            fullContent: preview.fullContent,
+            metadata: preview.metadata
+          } : undefined
+        },
+        // Also include these top-level fields for UI components
+        executionId: permissionRequest.executionId,
+        toolId: permissionRequest.toolId,
+        toolName: permissionRequest.toolName || "Unknown Tool"
       });
+      
+      // Additionally emit a tool execution update to ensure the status change is visible to clients
+      // But ONLY for new permission requests, not resolved ones
+      if (permissionRequest.executionId) {
+        // Get the execution from cache if available
+        this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+          sessionId,
+          toolExecution: {
+            id: permissionRequest.executionId,
+            toolId: permissionRequest.toolId,
+            toolName: permissionRequest.toolName || "Unknown Tool",
+            status: "awaiting-permission",
+            args: permissionRequest.args,
+            startTime: permissionRequest.requestTime
+          }
+        });
+      }
     }
     
     // In our new model, permissions updates should come through as tool updates

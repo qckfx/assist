@@ -647,10 +647,25 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     // Find the permission request for this execution
     const permissionId = this.executionPermissions.get(executionId);
     if (!permissionId) {
+      serverLogger.warn(`No permission request found for execution ID: ${executionId}`);
       return null;
     }
     
+    // Check if permission has already been resolved
+    const existingPermission = this.permissionRequests.get(permissionId);
+    if (!existingPermission) {
+      serverLogger.warn(`Permission request ${permissionId} not found for execution ${executionId}`);
+      return null;
+    }
+    
+    // If already resolved, don't process it again
+    if (existingPermission.resolvedTime) {
+      serverLogger.warn(`Permission request ${permissionId} for execution ${executionId} already resolved at ${existingPermission.resolvedTime}, ignoring duplicate resolution request`);
+      return existingPermission;
+    }
+    
     // Resolve the permission request
+    serverLogger.debug(`Resolving permission request ${permissionId} for execution ${executionId} with granted=${granted}`);
     return this.resolvePermission(permissionId, granted);
   }
 }
