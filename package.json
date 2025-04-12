@@ -1,6 +1,6 @@
 {
   "name": "qckfx",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "A cli-based AI software engineering agent",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
