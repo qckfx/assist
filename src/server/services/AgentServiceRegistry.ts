@@ -1,7 +1,8 @@
 /**
  * AgentService Registry - Manages per-session agent services
  */
-import { AgentService, createAgentService, AgentServiceConfig } from './AgentService';
+import { EventEmitter } from 'events';
+import { AgentService, createAgentService, AgentServiceConfig, AgentServiceEvent } from './AgentService';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../types/logger';
 import { SessionManager } from './SessionManager';
@@ -9,12 +10,13 @@ import { SessionManager } from './SessionManager';
 /**
  * Registry to manage session-specific agent services
  */
-export class AgentServiceRegistry {
+export class AgentServiceRegistry extends EventEmitter {
   private agentServices: Map<string, AgentService> = new Map();
   private sessionManager: SessionManager;
   private cleanupTimer?: NodeJS.Timeout;
 
   constructor(sessionManager: SessionManager) {
+    super();
     this.sessionManager = sessionManager;
     
     // Start periodic cleanup
@@ -34,7 +36,6 @@ export class AgentServiceRegistry {
     let service = this.agentServices.get(sessionId);
     
     if (!service) {
-      console.log("🟡🟡🟡 Creating new AgentService for session", sessionId);
       // Get the session to access its config
       const session = this.sessionManager.getSession(sessionId);
       
@@ -44,9 +45,144 @@ export class AgentServiceRegistry {
       
       // Store in the registry
       this.agentServices.set(sessionId, service);
+      
+      // Set up event forwarding for this service
+      this.setupEventForwarding(service, sessionId);
     }
     
     return service;
+  }
+  
+  /**
+   * Set up event forwarding from an AgentService to the registry
+   * This allows global services to listen to events from all sessions
+   * @param service The AgentService to forward events from
+   * @param sessionId The session ID associated with this service
+   */
+  private setupEventForwarding(service: AgentService, sessionId: string): void {
+    // List of event types to forward
+    const eventTypes = [
+      AgentServiceEvent.TOOL_EXECUTION_STARTED,
+      AgentServiceEvent.TOOL_EXECUTION,
+      AgentServiceEvent.TOOL_EXECUTION_COMPLETED,
+      AgentServiceEvent.TOOL_EXECUTION_ERROR,
+      AgentServiceEvent.TOOL_EXECUTION_ABORTED,
+      AgentServiceEvent.PERMISSION_REQUESTED,
+      AgentServiceEvent.PERMISSION_RESOLVED,
+      AgentServiceEvent.FAST_EDIT_MODE_ENABLED,
+      AgentServiceEvent.FAST_EDIT_MODE_DISABLED,
+      AgentServiceEvent.PROCESSING_STARTED,
+      AgentServiceEvent.PROCESSING_COMPLETED,
+      AgentServiceEvent.PROCESSING_ABORTED,
+      AgentServiceEvent.PROCESSING_ERROR,
+      AgentServiceEvent.MESSAGE_RECEIVED,
+      AgentServiceEvent.MESSAGE_UPDATED,
+      AgentServiceEvent.TIMELINE_ITEM_UPDATED
+    ];
+    
+    // Forward each event type
+    eventTypes.forEach(eventType => {
+      service.on(eventType, (data: any) => {
+        
+        // Special handling for permission events to ensure the structure is consistent
+        if (eventType === AgentServiceEvent.PERMISSION_REQUESTED) {
+          // For permission requested events, expect a specific structure
+          if (typeof data === 'object' && data !== null && (data as any).execution && (data as any).permission) {
+            const typedData = data as {
+              execution: { id: string; toolId: string; toolName: string; sessionId?: string };
+              permission: { id: string; toolId: string; args: Record<string, unknown>; requestTime: string };
+              sessionId?: string;
+            };
+            
+            // Create a proper structure for the permission request event that matches WebSocketService's expectations
+            const formattedEventData = {
+              sessionId: typedData.sessionId || sessionId,
+              execution: {
+                ...typedData.execution,
+                sessionId: typedData.execution.sessionId || sessionId
+              },
+              permissionRequest: {
+                ...typedData.permission,
+                executionId: typedData.execution.id // Critical field for client-side resolution
+              }
+            };
+            
+            this.emit(eventType, formattedEventData);
+            return; // Skip standard emit
+          }
+        } else if (eventType === AgentServiceEvent.PERMISSION_RESOLVED) {
+          // For permission resolved events, expect a specific structure
+          if (typeof data === 'object' && data !== null && (data as any).execution && (data as any).permission) {
+            const typedData = data as {
+              execution: { id: string; toolId: string; toolName: string; sessionId?: string };
+              permission: { id: string; toolId: string; granted: boolean; resolvedTime: string };
+              sessionId?: string;
+            };
+            
+            // Create a proper structure for the permission resolution event
+            const formattedEventData = {
+              sessionId: typedData.sessionId || sessionId,
+              execution: {
+                ...typedData.execution,
+                sessionId: typedData.execution.sessionId || sessionId
+              },
+              permission: {
+                ...typedData.permission,
+                executionId: typedData.execution.id // Critical field for client-side resolution
+              }
+            };
+            
+            this.emit(eventType, formattedEventData);
+            return; // Skip standard emit
+          }
+        }
+        
+        // Standard event handling for non-permission events
+        let eventData: Record<string, unknown>;
+        
+        if (typeof data === 'object' && data !== null) {
+          // Create a typed shallow copy to avoid modifying the original
+          const originalData = data as Record<string, unknown>;
+          eventData = { ...originalData };
+          
+          // Add sessionId if it doesn't exist at the top level
+          if (!eventData.sessionId) {
+            eventData.sessionId = sessionId;
+          }
+          
+          // Add sessionId to nested objects if they exist
+          if (eventData.execution && typeof eventData.execution === 'object') {
+            const execution = eventData.execution as Record<string, unknown>;
+            if (!execution.sessionId) {
+              eventData.execution = { ...execution, sessionId };
+            }
+          }
+          
+          if (eventData.permission && typeof eventData.permission === 'object') {
+            const permission = eventData.permission as Record<string, unknown>;
+            if (!permission.sessionId) {
+              eventData.permission = { ...permission, sessionId };
+            }
+          }
+          
+          if (eventData.permissionRequest && typeof eventData.permissionRequest === 'object') {
+            const permissionRequest = eventData.permissionRequest as Record<string, unknown>;
+            if (!permissionRequest.sessionId) {
+              eventData.permissionRequest = { ...permissionRequest, sessionId };
+            }
+          }
+        } else {
+          // If data isn't an object, wrap it
+          eventData = { data, sessionId };
+        }
+        
+        // Re-emit the event with the same type and correctly structured data
+        this.emit(eventType, eventData);
+      });
+    });
+    
+    // Debug log
+    serverLogger.debug(`Event forwarding set up for session ${sessionId}`, LogCategory.SESSION);
   }
 
   /**

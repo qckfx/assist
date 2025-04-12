@@ -3,7 +3,8 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { getAgentService } from '../services/AgentService';
+import { AgentServiceRegistry } from '../services/AgentServiceRegistry';
+import { container } from '../container';
 import { ValidationError, NotFoundError } from '../utils/errors';
 import { 
   permissionRequestQuerySchema, 
@@ -20,8 +21,10 @@ export async function getPermissionRequests(req: Request, res: Response, next: N
   try {
     const { sessionId } = permissionRequestQuerySchema.parse(req.query);
     
-    // Get the agent service
-    const agentService = getAgentService();
+    // Get the agent service registry
+    const agentServiceRegistry = container.get(AgentServiceRegistry);
+    // Get the agent service for this session
+    const agentService = agentServiceRegistry.getServiceForSession(sessionId);
     
     // Get the permission requests
     const requests = agentService.getPermissionRequests(sessionId);
@@ -43,15 +46,23 @@ export async function resolvePermission(req: Request, res: Response, next: NextF
   try {
     const { sessionId, executionId, granted } = permissionResolutionSchema.parse(req.body);
     
-    // Get the agent service
-    const agentService = getAgentService();
+    // Get the agent service registry
+    const agentServiceRegistry = container.get(AgentServiceRegistry);
+    // Get the agent service for this session
+    const agentService = agentServiceRegistry.getServiceForSession(sessionId);
+    
+    // Add enhanced logging to diagnose issues
     
     // Use the new direct method that takes executionId
     const resolved = agentService.resolvePermissionByExecutionId(executionId, granted);
     
+    // Log the result
+    
     if (!resolved) {
       throw new NotFoundError(`Execution ${executionId} not found or permission already resolved`);
     }
+    
+    // Log success
     
     res.status(200).json({
       sessionId,
@@ -76,8 +87,10 @@ export async function toggleFastEditMode(req: Request, res: Response, next: Next
   try {
     const { sessionId, enabled } = fastEditModeToggleSchema.parse(req.body);
     
-    // Get the agent service
-    const agentService = getAgentService();
+    // Get the agent service registry
+    const agentServiceRegistry = container.get(AgentServiceRegistry);
+    // Get the agent service for this session
+    const agentService = agentServiceRegistry.getServiceForSession(sessionId);
     
     // Toggle fast edit mode
     const success = agentService.toggleFastEditMode(sessionId, enabled);
@@ -108,8 +121,10 @@ export async function getFastEditMode(req: Request, res: Response, next: NextFun
   try {
     const { sessionId } = fastEditModeQuerySchema.parse(req.query);
     
-    // Get the agent service
-    const agentService = getAgentService();
+    // Get the agent service registry
+    const agentServiceRegistry = container.get(AgentServiceRegistry);
+    // Get the agent service for this session
+    const agentService = agentServiceRegistry.getServiceForSession(sessionId);
     
     // Get fast edit mode state
     const enabled = agentService.getFastEditMode(sessionId);

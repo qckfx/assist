@@ -123,7 +123,6 @@ export class SocketConnectionManager extends EventEmitter {
 
     // Set up listener for init event which contains environment info
     this.socket.on(WebSocketEvent.INIT, (data: WebSocketEventMap[WebSocketEvent.INIT]) => {
-      console.log('SocketConnectionManager: Received environment info:', data);
       
       if (data.executionEnvironment) {
         // Update session state with environment information
@@ -136,7 +135,6 @@ export class SocketConnectionManager extends EventEmitter {
           e2bSandboxId: data.e2bSandboxId
         });
         
-        console.log(`SocketConnectionManager: Set execution environment to ${data.executionEnvironment}`);
       }
     });
     
@@ -148,20 +146,15 @@ export class SocketConnectionManager extends EventEmitter {
       isReady: boolean;
       error?: string;
     }) => {
-      console.log(`SocketConnectionManager: Received environment status event:`, data);
       
       // Check if this event is for our current session or a broadcast event without sessionId
       const relevantEvent = !data.sessionId || data.sessionId === this.sessionState.currentSessionId;
       
       if (relevantEvent) {
-        console.log(`SocketConnectionManager: Environment status for ${data.environmentType} changed to ${data.status}, ready=${data.isReady}`);
         
         // Honor the server's isReady flag but ensure 'connected' status also means ready
         const actuallyReady = data.status === 'connected' ? true : data.isReady;
         
-        if (data.status === 'connected' && !data.isReady) {
-          console.log('SocketConnectionManager: Server sent connected with isReady=false; setting to true');
-        }
         
         // Update session state
         this.sessionState.environmentStatus = data.status;
@@ -171,7 +164,6 @@ export class SocketConnectionManager extends EventEmitter {
         // Update environment type if provided and different from current
         if (data.environmentType) {
           if (!this.sessionState.executionEnvironment) {
-            console.log(`SocketConnectionManager: Setting initial environment type to ${data.environmentType}`);
             this.sessionState.executionEnvironment = data.environmentType;
             
             // Emit environment_change for this update
@@ -180,7 +172,6 @@ export class SocketConnectionManager extends EventEmitter {
               e2bSandboxId: this.sessionState.e2bSandboxId
             });
           } else if (this.sessionState.executionEnvironment !== data.environmentType) {
-            console.log(`SocketConnectionManager: Updating environment type from ${this.sessionState.executionEnvironment} to ${data.environmentType}`);
             this.sessionState.executionEnvironment = data.environmentType;
             
             // Emit environment_change for this update
@@ -202,7 +193,6 @@ export class SocketConnectionManager extends EventEmitter {
         // Handle special status transitions for Docker
         if (data.environmentType === 'docker') {
           if (data.status === 'initializing') {
-            console.log('SocketConnectionManager: Docker is initializing, waiting for completion');
             // Update UI to show Docker is initializing
             this.emit('connection_state_enhanced', {
               socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
@@ -212,7 +202,6 @@ export class SocketConnectionManager extends EventEmitter {
               status: 'initializing'
             });
           } else if (data.status === 'connecting') {
-            console.log('SocketConnectionManager: Docker is connecting, waiting for completion');
             // Update UI to show Docker is connecting
             this.emit('connection_state_enhanced', {
               socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
@@ -222,7 +211,6 @@ export class SocketConnectionManager extends EventEmitter {
               status: 'connecting'
             });
           } else if (data.status === 'connected') {
-            console.log('SocketConnectionManager: Docker connected successfully, environment is ready');
             // Ensure Docker connected state is broadcast as ready
             this.emit('connection_state_enhanced', {
               socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
@@ -232,7 +220,6 @@ export class SocketConnectionManager extends EventEmitter {
               status: 'connected'
             });
           } else if (data.status === 'error') {
-            console.log(`SocketConnectionManager: Docker error: ${data.error}`);
             // Update UI to show Docker error
             this.emit('connection_state_enhanced', {
               socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
@@ -243,7 +230,6 @@ export class SocketConnectionManager extends EventEmitter {
               error: data.error
             });
           } else if (data.status === 'disconnected') {
-            console.log('SocketConnectionManager: Docker is disconnected');
             // Update UI to show Docker is disconnected
             this.emit('connection_state_enhanced', {
               socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
@@ -256,7 +242,6 @@ export class SocketConnectionManager extends EventEmitter {
         } else {
           // For non-Docker environments, use simpler status handling
           if (actuallyReady) {
-            console.log(`SocketConnectionManager: ${data.environmentType} environment is ready`);
             this.emit('connection_state_enhanced', {
               socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
               environmentReady: true,
@@ -265,7 +250,6 @@ export class SocketConnectionManager extends EventEmitter {
               status: data.status
             });
           } else {
-            console.log(`SocketConnectionManager: ${data.environmentType} environment is not ready`);
             this.emit('connection_state_enhanced', {
               socketConnected: this.connectionStatus === ConnectionStatus.CONNECTED,
               environmentReady: false,
@@ -277,7 +261,6 @@ export class SocketConnectionManager extends EventEmitter {
           }
         }
       } else {
-        console.log(`SocketConnectionManager: Ignoring environment status for different session ${data.sessionId}`);
       }
     });
   }

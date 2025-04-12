@@ -48,21 +48,6 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     // Use provided persistence service or get singleton instance
     this.persistence = persistenceService || getSessionStatePersistence();
     
-    // Test events
-    setTimeout(() => {
-      console.log("🔥🔥🔥 Testing event emission");
-      const testEvent = "TEST_EVENT";
-      const testHandler = (data: any) => {
-        console.log(`🔥🔥🔥 Received test event: ${JSON.stringify(data)}`);
-      };
-      
-      this.eventEmitter.on(testEvent, testHandler);
-      console.log(`🔥🔥🔥 Registered handler for ${testEvent}`);
-      console.log(`🔥🔥🔥 Listener count: ${this.eventEmitter.listenerCount(testEvent)}`);
-      
-      this.eventEmitter.emit(testEvent, { test: true, time: new Date().toISOString() });
-      console.log(`🔥🔥🔥 Emitted test event`);
-    }, 3000);
   }
 
   /**
@@ -173,7 +158,6 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     if (!execution) {
       throw new Error(`Tool execution not found: ${executionId}`);
     }
-    console.log("🟠🟠🟠generatePreviewForExecution", executionId, execution);
     // Only generate previews for completed executions
     if (execution.status !== ToolExecutionStatus.COMPLETED) {
       serverLogger.debug(`Not generating preview for non-completed execution: ${executionId}`, {
@@ -293,10 +277,6 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
           execution: updatedExecution,
           preview: preview || undefined
         };
-        console.log("🟠🟠🟠completeExecution EMITTING COMPLETED EVENT with data:", eventData);
-        // Add listener count debug
-        const listenerCount = this.eventEmitter.listenerCount(ToolExecutionEvent.COMPLETED);
-        console.log(`🔔🔔🔔 ToolExecutionManager has ${listenerCount} listeners for ${ToolExecutionEvent.COMPLETED}`);
         
         // Emit completion event with the preview data
         this.emitEvent(ToolExecutionEvent.COMPLETED, eventData);

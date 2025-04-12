@@ -765,9 +765,6 @@ export class WebSocketService {
       }
       
       // Get the execution adapter type, defaulting to 'docker' if not specified
-      console.log(`🌕🌕🌕Getting execution environment for session ${sessionId}`);
-      console.log(`🌕🌕🌕Session state:`, session.state.executionAdapterType || 'none ');
-      console.log(`🌕🌕🌕Execution adapter type:`, session.executionAdapterType || 'none');
       const executionEnvironment = session.state.executionAdapterType || 
                                session.executionAdapterType || 
                                'docker';
@@ -820,7 +817,6 @@ export class WebSocketService {
           });
       } else {
         // For non-Docker environments, emit ready immediately
-        console.log(`🌕🌕🌕Sending init event for session ${sessionId} with environment type ${executionEnvironment}`);
         socket.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, {
           sessionId,
           environmentType: executionEnvironment,
@@ -1286,42 +1282,18 @@ export class WebSocketService {
    */
   public emitToSession(sessionId: string, event: string, data: Record<string, unknown>): void {
     try {
-      console.log(`📣 WebSocketService emitting ${event} to session ${sessionId}`);
-      console.log(`📣 WebSocketService.emitToSession ENTRY POINT - event=${event}, sessionId=${sessionId}`);
       
       // Check if we have any clients in this room
       const room = this.io.sockets.adapter.rooms.get(sessionId);
       const clientCount = room ? room.size : 0;
-      console.log(`📣📣 Room ${sessionId} has ${clientCount} connected clients`);
       
-      // Log important data for debugging
-      if (event === WebSocketEvent.TOOL_EXECUTION_UPDATED) {
-        console.log(`📣📣 Received TOOL_EXECUTION_UPDATED in WebSocketService`);
-        const toolExec = data.toolExecution as any;
-        if (toolExec) {
-          console.log(`📣📣 WebSocketService emitting tool execution for ${toolExec.id} status=${toolExec.status} hasPreview=${toolExec.hasPreview}`);
-          
-          if (toolExec.preview) {
-            console.log(`📣📣 Preview data: contentType=${toolExec.preview.contentType}, briefContentLength=${toolExec.preview.briefContent?.length || 0}`);
-          } else {
-            console.log(`📣📣 No preview data included in toolExecution for ${toolExec.id}`);
-          }
-        } else {
-          console.log(`📣📣 WARNING: data.toolExecution is missing in TOOL_EXECUTION_UPDATED event`);
-          console.log(`📣📣 Data keys: ${Object.keys(data).join(', ')}`);
-        }
-      }
       
       // Actually emit the event - this is the core functionality
-      console.log(`📣📣 About to emit event: ${event} to session ${sessionId}`);
       this.io.to(sessionId).emit(event, data);
-      console.log(`📣📣 Successfully emitted event: ${event} to session ${sessionId}`);
       
       // Additional log after emission
       serverLogger.info(`WebSocketService emitted ${event} to session ${sessionId} with ${clientCount} clients`);
     } catch (error) {
-      console.log(`📣❌ ERROR in WebSocketService.emitToSession: ${error}`);
-      console.error(error);
       serverLogger.error(`Error emitting ${event} to session ${sessionId}:`, error);
     }
   }

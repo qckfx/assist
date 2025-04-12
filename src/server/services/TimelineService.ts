@@ -417,7 +417,6 @@ export class TimelineService extends EventEmitter {
       } : undefined;
       
       // Send the execution update with preview if available
-      console.log(`🔹 TimelineService emitting ${WebSocketEvent.TOOL_EXECUTION_UPDATED} for tool ${toolExecution.id} with preview: ${hasValidPreview}`);
       
       // Include the full tool execution result if available
       // Check if status indicates it's in a state where we should include the result
@@ -481,17 +480,8 @@ export class TimelineService extends EventEmitter {
     this.emit(TimelineServiceEvent.ITEM_ADDED, timelineItem);
     
     // Directly emit to WebSocket so the client gets the permission request immediately
-    console.log(`🔹 TimelineService emitting PERMISSION_REQUESTED to WebSocket for permission ${permissionRequest.id} and executionId ${permissionRequest.executionId}`);
     
     // Add extra logging about whether permission request is complete
-    console.log(`🔹 Permission request data completeness check: 
-      - has id: ${!!permissionRequest.id}
-      - has toolId: ${!!permissionRequest.toolId}
-      - has toolName: ${!!permissionRequest.toolName}
-      - has executionId: ${!!permissionRequest.executionId}
-      - has args: ${!!permissionRequest.args}
-      - has timestamp: ${!!permissionRequest.requestTime}
-    `);
     
     // Log additional debug info
     serverLogger.info(`Emitting permission request with executionId: ${permissionRequest.executionId}`, {
@@ -593,7 +583,6 @@ export class TimelineService extends EventEmitter {
         serverLogger.debug(`[TIMELINE] Timeline object for ${event}:`, JSON.stringify(data, null, 2));
       }
       
-      console.log(`🔹 TimelineService emitting ${event} to session ${sessionId} using WebSocketService.emitToSession`);
       
       // Use the WebSocketService's public method to emit the event
       this.webSocketService.emitToSession(sessionId, event, data);
@@ -613,7 +602,6 @@ export class TimelineService extends EventEmitter {
    * Set up event listeners for session events
    */
   private setupEventListeners(): void {
-    console.log("✅✅✅ Setting up TimelineService event listeners");
     
     // Log event registration for specific events
     const eventsToMonitor = [
@@ -622,15 +610,6 @@ export class TimelineService extends EventEmitter {
       AgentServiceEvent.PERMISSION_RESOLVED
     ];
     
-    // Check if the registry has these events registered
-    eventsToMonitor.forEach(eventName => {
-      try {
-        const count = this.agentServiceRegistry.listenerCount(eventName);
-        console.log(`✅✅✅ Before TimelineService setup: Registry has ${count} listeners for ${eventName}`);
-      } catch (err) {
-        console.log(`❌❌❌ Error checking listeners for ${eventName}: ${err}`);
-      }
-    });
     
     // Listen for message events from AgentEvents (from AgentRunner)
     // This is a one-way flow: Agent -> Timeline -> UI WebSocket
@@ -681,26 +660,20 @@ export class TimelineService extends EventEmitter {
     
     // Subscribe to registry events for tool execution completed
     this.agentServiceRegistry.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: any) => {
-      console.log(`🔸 TimelineService received TOOL_EXECUTION_COMPLETED from registry for session ${data?.sessionId}`);
-      console.log(`🔸 Data inspection: hasData=${!!data}, hasSessionId=${!!data?.sessionId}, hasExecution=${!!data?.execution}`);
       
       if (!data || !data.sessionId || !data.execution) {
         serverLogger.warn('Received TOOL_EXECUTION_COMPLETED event with missing data', data);
-        console.log('🔴🔴🔴 Tool completion data is incomplete - missing required fields');
         return;
       }
       
       // All the data we need is in the event - no need to query other services
       const { sessionId, execution, preview } = data;
-      console.log(`🔸 Execution data: id=${execution.id}, status=${execution.status}, hasPreview=${!!preview}`);
       
       // First, directly emit to WebSocket to ensure the client gets the update
       // This is a critical path to ensure tool visualization works
       try {
         // Check if we have a valid preview
-        console.log(`🔸 Preview check: hasPreview=${!!preview}, hasContentType=${!!preview?.contentType}, hasBriefContent=${!!preview?.briefContent}`);
         const hasValidPreview = !!(preview && preview.briefContent);
-        console.log(`🔸 Preview validation result: hasValidPreview=${hasValidPreview}`);
         
         // Convert preview to client format if available
         const previewToSend = hasValidPreview ? {
@@ -710,10 +683,6 @@ export class TimelineService extends EventEmitter {
           metadata: preview.metadata ? {...preview.metadata} : undefined,
           hasActualContent: true
         } : undefined;
-        console.log(`🔸 previewToSend is ${previewToSend ? 'defined' : 'undefined'}`);
-        if (previewToSend) {
-          console.log(`🔸 previewToSend details: contentType=${previewToSend.contentType}, briefContentLength=${previewToSend.briefContent?.length || 0}`);
-        }
         
         // Check if we should include the result based on status
         const shouldIncludeResult = 
@@ -722,21 +691,13 @@ export class TimelineService extends EventEmitter {
           execution.status === ToolExecutionStatus.ABORTED || 
           execution.status === ToolExecutionStatus.AWAITING_PERMISSION;
         
-        console.log(`🔸 Result check: status=${execution.status}, shouldIncludeResult=${shouldIncludeResult}, hasResult=${execution.result !== undefined}`);
-        
         // Get the result only if in the right state
         const executionResult = shouldIncludeResult ? execution.result : undefined;
-        console.log(`🔸 executionResult is ${executionResult !== undefined ? 'present' : 'undefined'}`);
-        if (executionResult !== undefined) {
-          console.log(`🔸 executionResult type: ${typeof executionResult}`);
-        }
         
         // Log for debugging
-        console.log(`⚡⚡⚡ TimelineService DIRECT WebSocket emission for execution ${execution.id} with preview: ${hasValidPreview}`);
         serverLogger.info(`DIRECT WebSocket emission for execution ${execution.id} with preview: ${hasValidPreview}`);
         
         // Directly use the WebSocketService to emit the event
-        console.log(`🔸 About to call webSocketService.emitToSession for session ${sessionId}`);
         const payload = {
           sessionId,
           toolExecution: {
@@ -757,18 +718,13 @@ export class TimelineService extends EventEmitter {
             previewContentType: hasValidPreview ? preview.contentType : undefined
           }
         };
-        console.log(`🔸 WebSocket payload created with ${Object.keys(payload).length} top-level keys: [${Object.keys(payload).join(', ')}]`);
-        console.log(`🔸 WebSocket toolExecution has ${Object.keys(payload.toolExecution).length} keys: [${Object.keys(payload.toolExecution).join(', ')}]`);
         
         try {
           this.webSocketService.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, payload);
-          console.log(`✅✅✅ Successfully emitted TOOL_EXECUTION_UPDATED to WebSocketService`);
         } catch (emitError) {
-          console.log(`❌❌❌ ERROR in webSocketService.emitToSession: ${emitError}`);
-          console.error(emitError);
+          serverLogger.error(`Error emitting TOOL_EXECUTION_UPDATED:`, emitError);
         }
       } catch (error) {
-        console.log(`❌❌❌ ERROR in direct WebSocket emission preparation: ${error}`);
         serverLogger.error(`Error in direct WebSocket emission for tool execution ${execution.id}:`, error);
       }
       
@@ -790,16 +746,11 @@ export class TimelineService extends EventEmitter {
     });
     
     // Subscribe to permission events from registry
-    console.log(`✅✅✅ Setting up listener for ${AgentServiceEvent.PERMISSION_REQUESTED}`);
     
     this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_REQUESTED, (data: any) => {
-      console.log(`✅✅✅ PERMISSION_REQUESTED handler triggered`);
-      console.log(`🔸 TimelineService received PERMISSION_REQUESTED from registry for session ${data.sessionId}`);
-      console.log(`🔸 Permission data inspection: hasData=${!!data}, hasSessionId=${!!data?.sessionId}, hasPermissionRequest=${!!data?.permissionRequest}, permissionId=${data?.permissionRequest?.id}`);
       
       if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
         serverLogger.error('[PERMISSION] Missing required data in PERMISSION_REQUESTED event', data);
-        console.log(`🔴🔴🔴 Permission request data is incomplete - missing required fields`);
         return;
       }
       
@@ -826,16 +777,11 @@ export class TimelineService extends EventEmitter {
       setTimeout(() => permissionDebounce.delete(permissionId), 2000);
     });
     
-    console.log(`✅✅✅ Setting up listener for ${AgentServiceEvent.PERMISSION_RESOLVED}`);
     
     this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_RESOLVED, (data: any) => {
-      console.log(`✅✅✅ PERMISSION_RESOLVED handler triggered`);
-      console.log(`🔸 TimelineService received PERMISSION_RESOLVED from registry for session ${data.sessionId}`);
-      console.log(`🔸 Permission resolved data inspection: hasData=${!!data}, hasSessionId=${!!data?.sessionId}, hasPermissionRequest=${!!data?.permissionRequest}, permissionId=${data?.permissionRequest?.id}`);
       
       if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
         serverLogger.error('[PERMISSION] Missing required data in PERMISSION_RESOLVED event', data);
-        console.log(`🔴🔴🔴 Permission resolved data is incomplete - missing required fields`);
         return;
       }
       
@@ -861,8 +807,7 @@ export class TimelineService extends EventEmitter {
       this.addPermissionRequestToTimeline(sessionId, permissionRequest, preview);
       
       // Also directly emit to WebSocket so the client gets the resolution immediately
-      console.log(`🔹 TimelineService emitting PERMISSION_RESOLVED to WebSocket for permission ${permissionId} and executionId ${permissionRequest.executionId}`);
-      
+        
       // This is the expected structure for the client's usePermissionKeyboardHandler
       // Include additional fields to ensure UI components can handle this properly
       this.emitToSession(sessionId, WebSocketEvent.PERMISSION_RESOLVED, {
@@ -881,7 +826,6 @@ export class TimelineService extends EventEmitter {
     
     // Subscribe to message events from registry
     this.agentServiceRegistry.on(MESSAGE_ADDED, (data: any) => {
-      console.log(`🔸 TimelineService received MESSAGE_ADDED from registry for session ${data.sessionId}`);
       
       if (!data || !data.sessionId || !data.message) {
         serverLogger.warn('Received MESSAGE_ADDED event with missing data', data);
@@ -903,7 +847,6 @@ export class TimelineService extends EventEmitter {
     });
     
     this.agentServiceRegistry.on(MESSAGE_UPDATED, (data: any) => {
-      console.log(`🔸 TimelineService received MESSAGE_UPDATED from registry for session ${data.sessionId}`);
       
       if (!data || !data.sessionId || !data.message) {
         serverLogger.warn('Received MESSAGE_UPDATED event with missing data', data);
@@ -933,15 +876,6 @@ export class TimelineService extends EventEmitter {
       serverLogger.warn(`[SESSION_LOADED] SESSION_LOADED event received for ${data.sessionId} but intentionally not processed to prevent infinite loops`);
     });
     
-    // Log counts after setup
-    eventsToMonitor.forEach(eventName => {
-      try {
-        const count = this.agentServiceRegistry.listenerCount(eventName);
-        console.log(`✅✅✅ After TimelineService setup: Registry has ${count} listeners for ${eventName}`);
-      } catch (err) {
-        console.log(`❌❌❌ Error checking listeners for ${eventName}: ${err}`);
-      }
-    });
     
     serverLogger.info('🟢🟢🟢 TimelineService: Set up to receive events from AgentServiceRegistry');
   }
