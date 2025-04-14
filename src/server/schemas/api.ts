@@ -8,6 +8,8 @@ import { TimelineItemType } from '../../types/timeline';
  * Schema for session start request
  */
 export const startSessionSchema = z.object({
+  // Optional session ID to reconnect to a persistent session
+  sessionId: z.string().uuid().optional(),
   // Optional schema for any config params
   config: z
     .object({

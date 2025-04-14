@@ -43,9 +43,8 @@ function SessionComponent() {
             
             if (validSessionIds.includes(sessionId)) {
               console.log('[SessionComponent] Session ID is valid:', sessionId);
-              // Update session storage to ensure consistency
-              localStorage.setItem('sessionId', sessionId);
-              sessionStorage.setItem('currentSessionId', sessionId);
+              // Skip storage, rely solely on URL for session identification
+              console.log('[SessionComponent] Using session from URL:', sessionId);
               
               // Trigger a session load event via local storage to ensure timeline refreshes
               const event = new StorageEvent('storage', {
@@ -79,10 +78,7 @@ function SessionComponent() {
       // Record prompt dismissal time
       localStorage.setItem('sessionPromptDismissed', new Date().getTime().toString());
       
-      // Remove the current session ID from localStorage
-      localStorage.removeItem('sessionId');
-      
-      // Navigate to the root route to create a new session
+      // Navigate to the root route to show environment selection UI
       navigate('/');
     } catch (error) {
       console.error('[SessionComponent] Error creating new session:', error);
@@ -118,7 +114,7 @@ function SessionComponent() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-black px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3">
               <span className="inline-block animate-spin text-blue-400 text-xl">⟳</span>
-              <span className="text-gray-200">Resuming previous session...</span>
+              <span className="text-gray-200">Starting session...</span>
             </div>
           </div>
         )}
@@ -142,36 +138,9 @@ function NewSessionComponent() {
   const navigate = useNavigate();
   
   useEffect(() => {
-    // Check if we already have a session ID in localStorage
-    const storedSessionId = localStorage.getItem('sessionId');
-    
-    if (storedSessionId) {
-      // Validate this session ID using our new efficient validation endpoint
-      import('@/services/apiClient').then(({ default: apiClient }) => {
-        apiClient.validateSessions([storedSessionId])
-          .then(response => {
-            const validSessionIds = response.data?.validSessionIds || [];
-            
-            if (validSessionIds.includes(storedSessionId)) {
-              // Session is valid, navigate to it
-              navigate(`/sessions/${storedSessionId}`, { replace: true });
-            } else {
-              // Session is invalid, clear it to start fresh
-              console.log('Invalid session found in localStorage, clearing it');
-              localStorage.removeItem('sessionId');
-            }
-          })
-          .catch(error => {
-            console.error('Error validating session:', error);
-            // On validation error, remove the stored session
-            localStorage.removeItem('sessionId');
-          });
-      });
-      return;
-    }
-    
-    // Otherwise, clear any existing session ID to start fresh
-    localStorage.removeItem('sessionId');
+    // We no longer use localStorage for sessionId management
+    // This ensures new sessions work properly
+    console.log('[NewSessionComponent] Ready to create new session');
   }, [navigate]);
   
   return (

@@ -70,7 +70,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
     async getToolCall(
       query: string, 
       toolDescriptions: ToolDescription[], 
-      sessionState: SessionState = { conversationHistory: [] }
+      sessionState: SessionState 
     ): Promise<ToolCallResponse> {
       console.log('⚠️ MODEL_CLIENT getToolCall called with:', {
         queryLength: query ? query.length : 0,
@@ -209,7 +209,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
     async generateResponse(
       query: string, 
       toolDescriptions: ToolDescription[], 
-      sessionState: SessionState = { conversationHistory: [] },
+      sessionState: SessionState,
       options?: { tool_choice?: { type: string } }
     ): Promise<Anthropic.Messages.Message> {
       // Format tools for Claude

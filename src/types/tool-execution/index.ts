@@ -210,6 +210,7 @@ export interface ToolExecutionManager {
     toolId: string, 
     toolName: string, 
     executionId: string,
+    toolUseId: string,
     args: Record<string, unknown>
   ): ToolExecutionState;
   

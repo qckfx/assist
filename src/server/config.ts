@@ -10,6 +10,8 @@ interface ServerConfig {
   host: string;
   /** Whether to run in development mode with extra logging */
   development: boolean;
+  /** The environment type to use for the agent */
+  agentEnvironment: 'local' | 'docker' | 'e2b';
 }
 
 /**
@@ -20,6 +22,7 @@ const defaultConfig: ServerConfig = {
   port: 3000,
   host: 'localhost',
   development: process.env.NODE_ENV === 'development',
+  agentEnvironment: 'docker',
 };
 
 /**
@@ -29,12 +32,14 @@ export function createServerConfig(options: {
   web?: boolean;
   port?: number;
   development?: boolean;
+  agentEnvironment?: 'local' | 'docker' | 'e2b';
 }): ServerConfig {
   return {
     enabled: options.web !== undefined ? options.web : (process.env.QCKFX_DISABLE_WEB !== 'true'),
     port: options.port ?? (parseInt(process.env.QCKFX_PORT ?? '', 10) || defaultConfig.port),
     host: process.env.QCKFX_HOST ?? defaultConfig.host,
     development: options.development ?? process.env.NODE_ENV === 'development' ?? defaultConfig.development,
+    agentEnvironment: options.agentEnvironment ?? defaultConfig.agentEnvironment,
   };
 }
 

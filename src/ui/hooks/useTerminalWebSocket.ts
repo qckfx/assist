@@ -29,6 +29,14 @@ export function useTerminalWebSocket(sessionId?: string) {
   // Get the singleton connection manager (outside React render cycle)
   const connectionManager = getSocketConnectionManager();
   
+  // Ensure connection is established immediately on component mount
+  useEffect(() => {
+    if (!connectionManager.isConnected()) {
+      console.log('[useTerminalWebSocket] Connecting to WebSocket server on component mount');
+      connectionManager.connect();
+    }
+  }, []);
+  
   // Use the base WebSocket hook for connection status
   const { 
     connectionStatus, 
@@ -43,21 +51,40 @@ export function useTerminalWebSocket(sessionId?: string) {
   const sessionState = connectionManager.getSessionState();
   const hasJoined = sessionState.hasJoined && sessionState.currentSessionId === sessionId;
   
-  // Simplified session connection logic - connect directly when sessionId is available
+  // Simpler session connection logic - after ensuring WebSocket connection is established
   useEffect(() => {
     // Skip if no session ID provided
     if (!sessionId) return;
     
-    console.log(`[useTerminalWebSocket] Connecting to session: ${sessionId}`);
+    // We've added a separate effect to ensure WebSocket connection is established on mount
+    // Now we can simplify this effect to just handle session joining
     
-    // Connect directly to the session
-    connectionManager.joinSession(sessionId);
+    // IMPORTANT: Check if we're already connected to this session to avoid loops
+    const currentState = connectionManager.getSessionState();
+    if (currentState.currentSessionId === sessionId && currentState.hasJoined) {
+      console.log(`[useTerminalWebSocket] Already connected to session: ${sessionId}, skipping duplicate join`);
+      return;
+    }
     
-    // Update tracking
-    previousSessionIdRef.current = sessionId;
-    hasRequestedJoinRef.current = true;
+    // Add a slight delay to ensure the connection is fully established
+    // This is more reliable than event-based approach in this case
+    const timer = setTimeout(() => {
+      console.log(`[useTerminalWebSocket] Now joining session: ${sessionId}`);
+      
+      // Try to join the session
+      if (connectionManager.isConnected()) {
+        connectionManager.joinSession(sessionId);
+        
+        // Update tracking refs
+        previousSessionIdRef.current = sessionId;
+        hasRequestedJoinRef.current = true;
+      } else {
+        console.warn(`[useTerminalWebSocket] Cannot join session ${sessionId}: WebSocket not connected`);
+      }
+    }, 100); // Small delay for reliable connection
     
-    // No cleanup function - connection persists after unmount
+    // Clear the timer if the component unmounts or sessionId changes
+    return () => clearTimeout(timer);
   }, [sessionId]);
   
   // Listen for session events from the connection manager

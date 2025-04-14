@@ -57,6 +57,8 @@ export function useStreamingMessages({
       setCurrentBuffer([]);
       setIsStreaming(false);
       dispatch({ type: 'SET_STREAMING', payload: false });
+      // Also clear the typing indicator
+      dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
     });
     
     // Handle aborted processing
@@ -65,6 +67,8 @@ export function useStreamingMessages({
       setCurrentBuffer([]);
       setIsStreaming(false);
       dispatch({ type: 'SET_STREAMING', payload: false });
+      // Also clear the typing indicator
+      dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
     });
     
     // Handle processing errors
@@ -73,6 +77,8 @@ export function useStreamingMessages({
       setCurrentBuffer([]);
       setIsStreaming(false);
       dispatch({ type: 'SET_STREAMING', payload: false });
+      // Also clear the typing indicator
+      dispatch({ type: 'SET_TYPING_INDICATOR', payload: false });
     });
     
     // Handle streaming content

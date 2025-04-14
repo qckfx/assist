@@ -18,6 +18,7 @@ import { WebSocketService } from './services/WebSocketService';
 import { createServer } from 'http';
 import swaggerUi from 'swagger-ui-express';
 import { apiDocumentation } from './docs/api';
+import { AgentServiceRegistry } from './container';
 import { LogCategory } from '../utils/logger';
 // Import preview generators
 import './services/preview';
@@ -253,11 +254,16 @@ export async function startServer(config: ServerConfig): Promise<{
           const url = getServerUrl(config);
           serverLogger.info(`Server started at ${url}`);
           
+          // First create the AgentServiceRegistry
+          serverLogger.info('Creating AgentServiceRegistry...');
+          const { createAgentServiceRegistry, AgentServiceRegistry } = require('./services/AgentServiceRegistry');
+          const agentServiceRegistry = createAgentServiceRegistry(sessionManager);
+          
           // Initialize WebSocketService after server is listening
-          const webSocketService = WebSocketService.create(httpServer);
+          const webSocketService = WebSocketService.create(httpServer, agentServiceRegistry);
           // Store the instance in the app for use during shutdown
           app.locals.webSocketService = webSocketService;
-          serverLogger.info('WebSocket service initialized');
+          serverLogger.info('WebSocketService initialized');
           
           serverLogger.info('Initializing dependency injection container...');
           
@@ -274,7 +280,8 @@ export async function startServer(config: ServerConfig): Promise<{
             // Initialize the container with required services
             const containerInstance = initializeContainer({
               webSocketService,
-              sessionManager
+              sessionManager,
+              agentServiceRegistry
             });
             
             // Test the container by trying to resolve the TimelineService
@@ -317,6 +324,20 @@ export async function startServer(config: ServerConfig): Promise<{
         
         // Stop the session manager
         sessionManager.stop();
+        
+        // Stop the agent service registry
+        try {
+          const container = app.locals.container;
+          const agentServiceRegistry = container?.get(AgentServiceRegistry);
+          if (agentServiceRegistry) {
+            agentServiceRegistry.stop();
+            serverLogger.info('Agent service registry stopped');
+          } else {
+            serverLogger.warn('Agent service registry not found during shutdown');
+          }
+        } catch (error) {
+          serverLogger.warn('Error stopping agent service registry:', error);
+        }
         
         // Close WebSocket connections
         try {

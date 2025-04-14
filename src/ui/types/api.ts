@@ -24,9 +24,14 @@ export interface ApiResponse<T = unknown> {
 }
 
 export interface SessionStartRequest {
+  sessionId?: string;  // Optional session ID for reconnecting to existing sessions
   modelOptions?: {
     model?: string;
     temperature?: number;
+  };
+  config?: {
+    executionAdapterType?: 'docker' | 'local' | 'e2b';
+    e2bSandboxId?: string;
   };
 }
 

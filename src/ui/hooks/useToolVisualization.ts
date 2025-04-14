@@ -139,9 +139,26 @@ export function useToolVisualization(): UseToolVisualizationResult {
   
   // Active tools are those that are running or awaiting permission
   const activeTools = useMemo((): ToolVisualizationItem[] => {
-    return toolExecutions.filter(t => 
+    // Add detailed debug logging to understand tool status
+    console.log('Tool execution statuses:', toolExecutions.map(t => ({
+      id: t.id,
+      toolName: t.toolName,
+      status: t.status,
+      startTime: t.startTime,
+      endTime: t.endTime
+    })));
+    
+    const filteredTools = toolExecutions.filter(t => 
       t.status === 'running' || t.status === 'awaiting-permission'
     );
+    
+    console.log('Active tools after filtering:', filteredTools.map(t => ({
+      id: t.id,
+      toolName: t.toolName,
+      status: t.status
+    })));
+    
+    return filteredTools;
   }, [toolExecutions]);
   
   // Recent tools are completed, error, or aborted, sorted by end time

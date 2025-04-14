@@ -37,11 +37,9 @@ export function usePermissionManager({
       
       console.log('[usePermissionManager] Permission request received:', data);
       
-      // If we have a valid session ID from the event, store it
+      // Log the session ID but don't store it
       if (eventSessionId && typeof eventSessionId === 'string') {
-        // Store this session ID in sessionStorage for permission resolution
-        sessionStorage.setItem('currentSessionId', eventSessionId);
-        console.log('[usePermissionManager] Stored session ID in sessionStorage:', eventSessionId);
+        console.log('[usePermissionManager] Using session ID:', eventSessionId);
       }
       
       // Check if this tool should be auto-approved
@@ -115,19 +113,16 @@ export function usePermissionManager({
     executionId: string,
     granted: boolean
   ): Promise<boolean> => {
-    // If sessionId is not provided as a prop, try to get it from sessionStorage
+    // Require sessionId to be provided as a prop
     if (!sessionId) {
-      // Try to get from sessionStorage
-      const storedSessionId = sessionStorage.getItem('currentSessionId');
-      if (!storedSessionId) {
-        console.error('No active session ID provided or found in storage');
-        // Don't show error message to user to minimize system messages
-        return false;
-      }
+      console.error('No active session ID provided as prop');
+      // Don't show error message to user to minimize system messages
+      return false;
     }
     
     try {
-      const response = await apiClient.resolvePermission(executionId, granted);
+      // Call API to resolve permission
+      const response = await apiClient.resolvePermission(executionId, granted, sessionId);
       
       if (!response.success) {
         // Just log to console, don't show error message to user

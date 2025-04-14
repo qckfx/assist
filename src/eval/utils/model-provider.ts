@@ -38,7 +38,14 @@ class AnthropicProviderAdapter implements ModelProvider {
         systemMessage: options.systemPrompt || "You are an expert AI evaluator and judge.",
         temperature: options.temperature || 0.1, // Lower temperature for more consistent judging
         sessionState: {
-          conversationHistory: [userMessage]
+          conversationHistory: [userMessage],
+          agentServiceConfig: {
+            apiKey: process.env.ANTHROPIC_API_KEY!,
+            defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
+            permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',
+            allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
+            cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
+          }
         }
       });
 

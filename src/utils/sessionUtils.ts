@@ -16,7 +16,8 @@ export const AgentEvents = new EventEmitter();
  */
 export enum AgentEventType {
   ABORT_SESSION = 'abort_session',
-  ENVIRONMENT_STATUS_CHANGED = 'environment_status_changed'
+  ENVIRONMENT_STATUS_CHANGED = 'environment_status_changed',
+  PROCESSING_COMPLETED = 'processing_completed'
 }
 
 /**

@@ -151,44 +151,6 @@ export class PreviewManagerImpl implements PreviewManager {
   }
   
   /**
-   * Save all previews for a session
-   * @param sessionId Session identifier
-   */
-  async saveSessionData(sessionId: string): Promise<void> {
-    try {
-      // Load existing session data or create a new one
-      let sessionData = await this.persistence.loadSession(sessionId);
-      const now = new Date().toISOString();
-      
-      if (!sessionData) {
-        // Create a new session data object
-        sessionData = {
-          id: sessionId,
-          name: `Session ${sessionId}`,
-          createdAt: now,
-          updatedAt: now,
-          messages: [],
-          toolExecutions: [],
-          permissionRequests: [],
-          previews: [],
-          sessionState: { conversationHistory: [] }
-        };
-      }
-      
-      // Update the previews
-      sessionData.previews = this.getPreviewsForSession(sessionId);
-      sessionData.updatedAt = now;
-      
-      // Save the updated session data
-      await this.persistence.saveSession(sessionData);
-      
-      serverLogger.debug(`Saved ${sessionData.previews.length} previews for session ${sessionId}`);
-    } catch (error) {
-      serverLogger.error(`Failed to save previews for session ${sessionId}:`, error);
-    }
-  }
-  
-  /**
    * Load previews for a session
    * @param sessionId Session identifier
    */

@@ -208,12 +208,7 @@ export function Message({
           aria-hidden="true"
         >
           {(() => {
-            // Add debugging for timestamp
-            console.log('Timestamp in Message component:', {
-              timestamp,
-              type: typeof timestamp,
-              value: timestamp
-            });
+            // Remove debug logging for timestamps
             
             const now = new Date();
             // Handle timestamp as number (milliseconds since epoch)

@@ -104,7 +104,6 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       return;
     }
 
-    console.log('Emitting environment status:', status, this.lastEmittedStatus);
     // Update last emitted status
     this.lastEmittedStatus = status;
     
@@ -492,7 +491,6 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
           const { exitCode: replaceExists } = await this.executeCommand(`[ -f "${replaceFile}" ]`);
           
           if (origExists !== 0 || searchExists !== 0 || replaceExists !== 0) {
-            console.log(`[DEBUG] File existence check failed: original=${origExists === 0}, search=${searchExists === 0}, replace=${replaceExists === 0}`);
             throw new Error("One or more required files do not exist");
           }
           
@@ -500,7 +498,6 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
           const { exitCode: writeCheck, stderr: writeCheckErr } = await this.executeCommand(`touch "${containerPath}.writecheck" && rm "${containerPath}.writecheck"`);
           
           if (writeCheck !== 0) {
-            console.log(`[DEBUG] Write permission check failed for ${containerPath}: ${writeCheckErr}`);
             throw new Error(`No write permission for file: ${containerPath}`);
           }
           
@@ -513,17 +510,9 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
           scriptError = result.stderr;
           scriptExitCode = result.exitCode;
           
-          // Extended logging
-          console.log(`[DEBUG] Binary replacement script exit code: ${scriptExitCode}`);
-          console.log(`[DEBUG] Binary replacement script output: ${scriptOutput}`);
-          
-          if (scriptError) {
-            console.log(`[DEBUG] Binary replacement script error: ${scriptError}`);
-          }
           
           // Verify the output file exists after script execution
-          const { exitCode: outputExists, stdout: outputExistsOut } = await this.executeCommand(`[ -f "${newFile}" ] && echo "Output file exists" || echo "Output file missing"`);
-          console.log(`[DEBUG] Output file check: ${outputExistsOut} (exit code: ${outputExists})`);
+          const { exitCode: outputExists } = await this.executeCommand(`[ -f "${newFile}" ] && echo "Output file exists" || echo "Output file missing"`);
         } catch (execError) {
           console.error(`[ERROR] Failed to execute binary-replace.sh: ${(execError as Error).message}`);
           // We'll set error message but continue to handle it in the next section
@@ -574,7 +563,6 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
         // Verify the file was created and has content
         const { exitCode: newFileExists } = await this.executeCommand(`[ -f "${newFile}" ] && [ -s "${newFile}" ]`);
         if (newFileExists !== 0) {
-          console.log(`[DEBUG] Binary replacement failed - new file not created or empty`);
           
           // Clean up temporary files
           await this.executeCommand(`rm -rf "${tempDir}"`);
@@ -607,9 +595,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       
       // Log results of re-reading the file
       if (newFileResult.success) {
-        console.log(`[DEBUG] Re-read file after binary-safe edit - ${newFileResult.content.length} characters`);
       } else {
-        console.log(`[DEBUG] Failed to re-read file after binary-safe edit: ${newFileResult.error}`);
       }
       
       // Format path for display

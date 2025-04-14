@@ -1,6 +1,8 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { AgentService, AgentServiceEvent, getAgentService } from './AgentService';
+import { AgentService, AgentServiceEvent } from './AgentService';
+import { AgentServiceRegistry } from './AgentServiceRegistry';
+import { container } from '../container';
 import { SessionManager, sessionManager, Session } from './SessionManager';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../types/logger';
@@ -41,8 +43,8 @@ interface ActiveToolExecution {
  */
 export class WebSocketService {
   private io: SocketIOServer;
-  private agentService: AgentService;
   private sessionManager: SessionManager;
+  private agentServiceRegistry: AgentServiceRegistry;
   
   // Map of sessionId -> Map of toolId -> active tool execution
   private activeTools: Map<string, Map<string, ActiveToolExecution>> = new Map();
@@ -50,7 +52,7 @@ export class WebSocketService {
   // Map to store permission previews by execution ID
   private permissionPreviews: Map<string, ToolPreviewData> = new Map();
 
-  constructor(server: HTTPServer) {
+  constructor(server: HTTPServer, agentServiceRegistry: AgentServiceRegistry) {
     // Set up debug mode before initializing socket.io
     if (process.env.NODE_ENV === 'development') {
       process.env.DEBUG = 'socket.io:*,engine.io:*';
@@ -82,7 +84,8 @@ export class WebSocketService {
       serverLogger.debug('Setting up verbose Socket.IO logging for development');
     }
 
-    this.agentService = getAgentService();
+    // Store the agent service registry
+    this.agentServiceRegistry = agentServiceRegistry;
     this.sessionManager = sessionManager;
 
     this.setupSocketHandlers();
@@ -99,15 +102,16 @@ export class WebSocketService {
    * @param server HTTP server instance
    * @returns A new WebSocketService instance
    */
-  public static create(server: HTTPServer): WebSocketService {
-    return new WebSocketService(server);
+  public static create(server: HTTPServer, agentServiceRegistry: AgentServiceRegistry): WebSocketService {
+    return new WebSocketService(server, agentServiceRegistry);
   }
   
   /**
    * Get pending permission requests for a session
    */
   public getPendingPermissions(sessionId: string) {
-    return this.agentService.getPermissionRequests(sessionId);
+    const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
+    return agentService.getPermissionRequests(sessionId);
   }
   
   /**
@@ -234,52 +238,16 @@ export class WebSocketService {
       // Handle join session requests
       socket.on(WebSocketEvent.JOIN_SESSION, async (sessionId: string) => {
         try {
-          // First check in-memory (fast path)
+          // Check if session exists in memory
           if (!this.sessionManager.getAllSessions().some(s => s.id === sessionId)) {
-            // Try to load from persistence
-            const sessionStatePersistence = getSessionStatePersistence();
-            const sessionData = await sessionStatePersistence.loadSession(sessionId);
-            
-            if (!sessionData) {
-              serverLogger.warn(`Session ${sessionId} not found in memory or persistence`);
-              socket.emit(WebSocketEvent.ERROR, {
-                message: `Session ${sessionId} not found`,
-              });
-              return;
-            }
-            
-            
-            // Convert SavedSessionData to Session
-            const session: Session = {
-              id: sessionData.id,
-              createdAt: new Date(sessionData.createdAt),
-              lastActiveAt: new Date(sessionData.updatedAt),
-              state: sessionData.sessionState || { conversationHistory: [] },
-              isProcessing: false,
-              executionAdapterType: sessionData.sessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' | undefined
-            };
-            
-            // Log conversation history status
-            const historyLength = session.state.conversationHistory?.length || 0;
-            serverLogger.debug(
-              `Session ${sessionId} restored with ${historyLength} conversation history messages`,
-              LogCategory.SESSION
-            );
-
-            // Add the session to the session manager
-            this.sessionManager.addSession(session);
-            
-            // Join the session room
-            socket.join(sessionId);
-            
-            // Send the current session state
-            this.io.to(sessionId).emit(WebSocketEvent.SESSION_LOADED, {
-              sessionId,
-              state: session.state
+            serverLogger.warn(`Session ${sessionId} not found in memory for WebSocket connection`);
+            socket.emit(WebSocketEvent.ERROR, {
+              message: `Session ${sessionId} not found. Please create or reconnect to a session first.`,
             });
+            return;
           }
 
-          // Now proceed with join logic
+          // Join the session room
           socket.join(sessionId);
           serverLogger.info(`Client ${socket.id} joined session ${sessionId}`);
 
@@ -288,6 +256,12 @@ export class WebSocketService {
             const session = this.sessionManager.getSession(sessionId);
             socket.emit(WebSocketEvent.SESSION_UPDATED, session);
             serverLogger.debug(`Sent updated session to client ${socket.id}`);
+            
+            // Send the current session state
+            this.io.to(sessionId).emit(WebSocketEvent.SESSION_LOADED, {
+              sessionId,
+              state: session.state
+            });
           } catch (error) {
             // Session might not be available, send error
             serverLogger.error(`Error getting session ${sessionId}:`, error);
@@ -301,7 +275,9 @@ export class WebSocketService {
           this.sendInitEvent(socket);
 
           // If there are pending permission requests, send them
-          const pendingPermissions = this.agentService.getPermissionRequests(sessionId);
+          // Use the instance property instead of container.get
+          const agentServiceForSession = this.agentServiceRegistry.getServiceForSession(sessionId);
+          const pendingPermissions = agentServiceForSession.getPermissionRequests(sessionId);
           if (pendingPermissions.length > 0) {
             serverLogger.debug(`Sending ${pendingPermissions.length} pending permissions to client ${socket.id}`);
             socket.emit(WebSocketEvent.PERMISSION_REQUESTED, {
@@ -332,7 +308,9 @@ export class WebSocketService {
           
           // Send list of persisted sessions
           try {
-            this.agentService.listPersistedSessions().then(sessions => {
+            // Use the instance property instead of container.get
+            const agentServiceForSession = this.agentServiceRegistry.getServiceForSession(sessionId);
+            agentServiceForSession.listPersistedSessions().then(sessions => {
               socket.emit(WebSocketEvent.SESSION_LIST_UPDATED, { sessions });
             }).catch(error => {
               serverLogger.error('Error sending persisted sessions list:', error);
@@ -371,10 +349,14 @@ export class WebSocketService {
       socket.on('save_session', async (data, callback) => {
         try {
           const { sessionId } = data;
-          await this.agentService.saveSessionState(sessionId);
+          const session = this.sessionManager.getSession(sessionId);
+          
+          // Get the agent service for this session
+          const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
+          await agentService.saveSessionState(sessionId, session.state);
           
           // Update session list
-          const sessions = await this.agentService.listPersistedSessions();
+          const sessions = await agentService.listPersistedSessions();
           this.broadcastEvent(WebSocketEvent.SESSION_LIST_UPDATED, { sessions });
           
           if (callback) callback({ success: true });
@@ -387,10 +369,13 @@ export class WebSocketService {
       socket.on('delete_session', async (data, callback) => {
         try {
           const { sessionId } = data;
-          const success = await this.agentService.deletePersistedSession(sessionId);
+          
+          // Get the agent service for this session
+          const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
+          const success = await agentService.deletePersistedSession(sessionId);
           
           // Update session list
-          const sessions = await this.agentService.listPersistedSessions();
+          const sessions = await agentService.listPersistedSessions();
           this.broadcastEvent(WebSocketEvent.SESSION_LIST_UPDATED, { sessions });
           
           if (callback) callback({ success });
@@ -402,7 +387,11 @@ export class WebSocketService {
       // Session list request
       socket.on('list_sessions', async (data, callback) => {
         try {
-          const sessions = await this.agentService.listPersistedSessions();
+          // Use a default session (first active session) to list all sessions
+          // This is a global operation, so any session's agent service should work
+          const firstSessionId = Array.from(this.sessionManager.getAllSessionIds())[0] || 'default';
+          const agentService = this.agentServiceRegistry.getServiceForSession(firstSessionId);
+          const sessions = await agentService.listPersistedSessions();
           
           if (callback) callback({ success: true, sessions });
           
@@ -454,12 +443,12 @@ export class WebSocketService {
    * Setup listeners for AgentService events
    */
   private setupSessionEventForwarding(): void {
-    // Forward session events
-    this.agentService.on(AgentServiceEvent.SESSION_SAVED, (data) => {
+    // Forward session events from the registry instead of a single agent service
+    this.agentServiceRegistry.on(AgentServiceEvent.SESSION_SAVED, (data) => {
       this.broadcastEvent(WebSocketEvent.SESSION_SAVED, data);
     });
     
-    this.agentService.on(AgentServiceEvent.SESSION_DELETED, (data) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.SESSION_DELETED, (data) => {
       this.broadcastEvent(WebSocketEvent.SESSION_DELETED, data);
     });
   }
@@ -473,13 +462,15 @@ export class WebSocketService {
 
   private setupAgentEventListeners(): void {
     // Processing started - only send the processing event
-    this.agentService.on(AgentServiceEvent.PROCESSING_STARTED, ({ sessionId }) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.PROCESSING_STARTED, ({ sessionId }) => {
       this.io.to(sessionId).emit(WebSocketEvent.PROCESSING_STARTED, { sessionId });
       // No need to send session update here since it doesn't contain new information yet
     });
 
     // Processing completed
-    this.agentService.on(AgentServiceEvent.PROCESSING_COMPLETED, ({ sessionId, result }) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.PROCESSING_COMPLETED, ({ sessionId, result }) => {
+      serverLogger.info(`[WebSocketService] Emitting PROCESSING_COMPLETED for session ${sessionId}`);
+      
       this.io.to(sessionId).emit(WebSocketEvent.PROCESSING_COMPLETED, { 
         sessionId,
         result,
@@ -488,10 +479,19 @@ export class WebSocketService {
       // Also send updated session
       const session = this.sessionManager.getSession(sessionId);
       this.io.to(sessionId).emit(WebSocketEvent.SESSION_UPDATED, session);
+      
+      // Double-check that clients receive this by doing a direct broadcast
+      this.io.emit('processing_status_update', {
+        sessionId,
+        isProcessing: false,
+        timestamp: new Date().toISOString()
+      });
+      
+      serverLogger.info(`[WebSocketService] PROCESSING_COMPLETED emitted for session ${sessionId}`);
     });
 
     // Processing error
-    this.agentService.on(AgentServiceEvent.PROCESSING_ERROR, ({ sessionId, error }) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.PROCESSING_ERROR, ({ sessionId, error }) => {
       this.io.to(sessionId).emit(WebSocketEvent.PROCESSING_ERROR, { 
         sessionId,
         error: {
@@ -504,7 +504,7 @@ export class WebSocketService {
     });
 
     // Processing aborted
-    this.agentService.on(AgentServiceEvent.PROCESSING_ABORTED, ({ sessionId }) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.PROCESSING_ABORTED, ({ sessionId }) => {
       this.io.to(sessionId).emit(WebSocketEvent.PROCESSING_ABORTED, { sessionId });
       // No need to send session update on abort as there's no new conversation data
     });
@@ -517,13 +517,13 @@ export class WebSocketService {
     // Tool execution events are now fully handled via TIMELINE_ITEM_UPDATED
     
     // Permission requested
-    this.agentService.on(AgentServiceEvent.PERMISSION_REQUESTED, this.handlePermissionRequested.bind(this));
+    this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_REQUESTED, this.handlePermissionRequested.bind(this));
     
     // Permission resolved
-    this.agentService.on(AgentServiceEvent.PERMISSION_RESOLVED, this.handlePermissionResolved.bind(this));
+    this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_RESOLVED, this.handlePermissionResolved.bind(this));
     
     // Fast Edit Mode enabled
-    this.agentService.on(AgentServiceEvent.FAST_EDIT_MODE_ENABLED, ({ sessionId }) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.FAST_EDIT_MODE_ENABLED, ({ sessionId }) => {
       this.io.to(sessionId).emit(WebSocketEvent.FAST_EDIT_MODE_ENABLED, { 
         sessionId,
         enabled: true,
@@ -533,7 +533,7 @@ export class WebSocketService {
     });
     
     // Fast Edit Mode disabled
-    this.agentService.on(AgentServiceEvent.FAST_EDIT_MODE_DISABLED, ({ sessionId }) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.FAST_EDIT_MODE_DISABLED, ({ sessionId }) => {
       this.io.to(sessionId).emit(WebSocketEvent.FAST_EDIT_MODE_DISABLED, { 
         sessionId,
         enabled: false,
@@ -545,7 +545,7 @@ export class WebSocketService {
     // No permission timeout handler - permission requests wait indefinitely
     
     // Message event handlers
-    this.agentService.on(AgentServiceEvent.MESSAGE_RECEIVED, (data) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.MESSAGE_RECEIVED, (data) => {
       const { sessionId, message } = data;
       this.io.to(sessionId).emit(WebSocketEvent.MESSAGE_RECEIVED, {
         sessionId,
@@ -554,7 +554,7 @@ export class WebSocketService {
       serverLogger.debug(`Message received event emitted for session ${sessionId}`);
     });
     
-    this.agentService.on(AgentServiceEvent.MESSAGE_UPDATED, (data) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.MESSAGE_UPDATED, (data) => {
       const { sessionId, messageId, content, isComplete } = data;
       this.io.to(sessionId).emit(WebSocketEvent.MESSAGE_UPDATED, {
         sessionId,
@@ -566,7 +566,7 @@ export class WebSocketService {
     });
     
     // Timeline item events
-    this.agentService.on(AgentServiceEvent.TIMELINE_ITEM_UPDATED, async (data) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.TIMELINE_ITEM_UPDATED, async (data) => {
       const { sessionId, item, isUpdate } = data;
       // Emit the appropriate event based on the timeline item type
       if (item.type === 'message') {
@@ -606,8 +606,12 @@ export class WebSocketService {
             if (item.toolExecution.status === 'completed') {
               const executionId = item.id;
               
+              // Extract the sessionId from the executionId
+              const execSessionId = executionId.split(':')[0] || sessionId;
+              // Get the agent service for this session
+              const agentService = this.agentServiceRegistry.getServiceForSession(execSessionId);
               // Try to get the execution from agent service
-              const execution = this.agentService.getToolExecution(executionId);
+              const execution = agentService.getToolExecution(executionId);
               
               if (execution && execution.result) {
                 // Get or generate the preview - using the async method
@@ -642,10 +646,7 @@ export class WebSocketService {
                         // Include the enhanced preview
                         preview: formattedPreview,
                         hasPreview: true,
-                        previewContentType: preview.contentType,
-                        previewBriefContentLength: preview.briefContent?.length,
-                        previewFullContentLength: preview.fullContent?.length,
-                        previewMetadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+                        previewContentType: preview.contentType
                       }
                     });
                     
@@ -673,10 +674,7 @@ export class WebSocketService {
                 // Include both the preview object and the hasPreview flag
                 preview: item.preview,
                 hasPreview: hasPreviewInItem,
-                previewContentType: item.preview?.contentType,
-                previewBriefContentLength: item.preview?.briefContent?.length,
-                previewFullContentLength: item.preview?.fullContent?.length,
-                previewMetadataKeys: item.preview?.metadata ? Object.keys(item.preview.metadata) : []
+                previewContentType: item.preview?.contentType
               }
             });
           } else {
@@ -693,7 +691,11 @@ export class WebSocketService {
             
             this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
               sessionId,
-              toolExecution
+              toolExecution: {
+                ...toolExecution,
+                hasPreview: hasPreview,
+                previewContentType: item.preview?.contentType
+              }
             });
           }
         } catch (error) {
@@ -714,13 +716,19 @@ export class WebSocketService {
                 result: item.toolExecution.result,
                 error: item.toolExecution.error,
                 preview: item.preview,
-                hasPreview: !!item.preview
+                hasPreview: !!item.preview,
+                previewContentType: item.preview?.contentType
               }
             });
           } else {
             this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_RECEIVED, {
               sessionId,
-              toolExecution: item.toolExecution
+              toolExecution: {
+                ...item.toolExecution,
+                preview: item.preview,
+                hasPreview: !!item.preview,
+                previewContentType: item.preview?.contentType
+              }
             });
           }
         }
@@ -782,7 +790,8 @@ export class WebSocketService {
         
         // Always try to create/initialize the Docker container for the session
         // This is safe because createExecutionAdapterForSession will reuse an existing container if it exists
-        this.agentService.createExecutionAdapterForSession(sessionId, { type: 'docker' })
+        const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
+        agentService.createExecutionAdapterForSession(sessionId, { type: 'docker' })
           .then(() => {
             // On success, emit environment ready status to all clients in the session
             serverLogger.info(`Docker container ready for session ${sessionId}`, 'system');
@@ -839,6 +848,19 @@ export class WebSocketService {
       // Broadcast to all connected clients
       this.io.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, statusEvent);
     });
+    
+    // Subscribe to processing completed events from AgentRunner
+    AgentEvents.on(AgentEventType.PROCESSING_COMPLETED, (data: { sessionId: string, response: string }) => {
+      serverLogger.info(`⚠️ Received direct PROCESSING_COMPLETED event from AgentRunner for session ${data.sessionId}`);
+      
+      // Forward the event to clients in this session room
+      this.io.to(data.sessionId).emit(WebSocketEvent.PROCESSING_COMPLETED, { 
+        sessionId: data.sessionId,
+        result: data.response
+      });
+      
+      serverLogger.info(`⚠️ Forwarded PROCESSING_COMPLETED for session ${data.sessionId}`);
+    });
   }
 
   /**
@@ -846,35 +868,73 @@ export class WebSocketService {
    */
   private handlePermissionRequested(data: {
     sessionId: string;
-    permissionId: string;
-    toolId: string;
-    toolName?: string;
-    executionId: string; // Required field
-    args?: Record<string, unknown>;
-    timestamp?: string;
+    execution: { id: string; toolId: string; toolName: string; }; 
+    permissionRequest: { id: string; toolId: string; args: Record<string, unknown>; requestTime: string; };
   }): void {
-    const { sessionId, executionId } = data;
+    const { sessionId, execution, permissionRequest } = data;
+    
+    if (!execution || !execution.id || !permissionRequest) {
+      serverLogger.warn(`Invalid permission request data:`, data);
+      return;
+    }
+
+    const executionId = execution.id;
+    
+    // Get the agent service for this session
+    const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
     
     // Get the full execution state
-    const execution = this.agentService.getToolExecution(executionId);
+    const fullExecution = agentService.getToolExecution(executionId);
     
-    if (!execution) {
+    if (!fullExecution) {
       serverLogger.warn(`Tool execution not found for permission request: ${executionId}`);
       return;
     }
     
-    // Convert to client format
-    const clientData = this.convertExecutionToClientFormat(execution);
+    // Add enhanced logging to diagnose issues
+    console.log(`🔥 Sending PERMISSION_REQUESTED for execution ${executionId} in session ${sessionId}`);
+    console.log(`🔥 Data being sent:`, {
+      sessionId,
+      toolId: permissionRequest.toolId,
+      toolName: execution.toolName,
+      executionId: executionId,
+      permissionId: permissionRequest.id
+    });
     
-    // Send permission requested event with the execution ID
+    // Send permission requested event with the execution ID in the format client expects
     this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, {
       sessionId,
       permission: {
-        ...data,
-        executionId: executionId
-      }
+        id: permissionRequest.id,
+        toolId: permissionRequest.toolId,
+        toolName: execution.toolName,
+        args: permissionRequest.args,
+        timestamp: permissionRequest.requestTime,
+        executionId: executionId // This is the critical field for client-side permission resolution
+      },
+      // Also include these top-level fields for UI components that expect them
+      executionId: executionId,
+      toolId: permissionRequest.toolId,
+      toolName: execution.toolName
     });
     
+    // Also emit a tool execution update to ensure the status is properly set to "awaiting-permission"
+    // This ensures tools will appear in the activeTools array in useToolVisualization
+    console.log(`🔥 Also sending TOOL_EXECUTION_UPDATED for execution ${executionId} with status "awaiting-permission"`);
+    
+    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+      sessionId,
+      toolExecution: {
+        id: executionId,
+        toolId: permissionRequest.toolId,
+        toolName: execution.toolName,
+        status: "awaiting-permission",
+        args: permissionRequest.args,
+        startTime: permissionRequest.requestTime,
+        // Include the permission details to ensure UI components have all necessary information
+        permissionId: permissionRequest.id
+      }
+    });
   }
   
   /**
@@ -882,32 +942,60 @@ export class WebSocketService {
    */
   private handlePermissionResolved(data: {
     sessionId: string;
-    permissionId: string;
-    toolId: string;
-    executionId: string; // Required field
-    granted: boolean;
-    timestamp?: string;
+    execution: { id: string; toolId: string; toolName: string; }; 
+    permission: { id: string; toolId: string; granted: boolean; resolvedTime: string; };
   }): void {
-    const { sessionId, executionId, granted } = data;
+    const { sessionId, execution, permission } = data;
+    
+    if (!execution || !execution.id || !permission) {
+      serverLogger.warn(`Invalid permission resolution data:`, data);
+      return;
+    }
+    
+    const executionId = execution.id;
+    const granted = permission.granted;
+    
+    // Get the agent service for this session
+    const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
     
     // Get the full execution state
-    const execution = this.agentService.getToolExecution(executionId);
+    const fullExecution = agentService.getToolExecution(executionId);
     
-    if (!execution) {
+    if (!fullExecution) {
       serverLogger.warn(`Tool execution not found for permission resolution: ${executionId}`);
       return;
     }
     
-    // Convert to client format
-    const clientData = this.convertExecutionToClientFormat(execution);
-    
     // Emit consistent events using executionId
+    // Add enhanced logging to diagnose issues
+    console.log(`🔥 Sending PERMISSION_RESOLVED for execution ${executionId} in session ${sessionId}, granted: ${granted}`);
+    
     this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, {
       sessionId,
       executionId,
-      resolution: granted
+      resolution: granted,
+      // Add these fields to maintain compatibility with all UI components
+      toolId: permission.toolId,
+      toolName: execution.toolName,
+      permissionId: permission.id
     });
     
+    // Also emit a tool execution update to ensure the status is updated based on the permission resolution
+    // When permission is granted, the status returns to "running"; otherwise it should be "aborted"
+    const newStatus = granted ? "running" : "aborted";
+    console.log(`🔥 Also sending TOOL_EXECUTION_UPDATED for execution ${executionId} with status "${newStatus}" after permission resolution`);
+    
+    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+      sessionId,
+      toolExecution: {
+        id: executionId,
+        toolId: permission.toolId,
+        toolName: execution.toolName,
+        status: newStatus,
+        // Include the permission resolution to ensure UI components have all necessary information
+        permissionResolution: granted
+      }
+    });
   }
   
   /**
@@ -1124,8 +1212,18 @@ export class WebSocketService {
    */
   private async getPreviewForExecution(executionId: string): Promise<ToolPreviewState | null> {
     try {
+      // Extract the sessionId from the executionId (format should be "sessionId:executionUuid")
+      const sessionId = executionId.split(':')[0];
+      if (!sessionId) {
+        serverLogger.error(`Cannot extract sessionId from executionId: ${executionId}`);
+        return null;
+      }
+      
+      // Get the agent service for this session
+      const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
+      
       // First check if preview already exists
-      const preview = this.agentService.getPreviewForExecution(executionId);
+      const preview = agentService.getPreviewForExecution(executionId);
       
       if (preview) {
         serverLogger.debug(`Found existing preview for execution ${executionId}`, {
@@ -1140,14 +1238,14 @@ export class WebSocketService {
       serverLogger.debug(`No preview found for execution ${executionId}, requesting generation from ToolExecutionManager`);
       
       // Get the execution
-      const execution = this.agentService.getToolExecution(executionId);
+      const execution = agentService.getToolExecution(executionId);
       if (!execution) {
         serverLogger.error(`Cannot generate preview - execution ${executionId} not found`);
         return null;
       }
       
       // Get the tool execution manager
-      const toolExecutionManager = this.agentService.getToolExecutionManager();
+      const toolExecutionManager = agentService.getToolExecutionManager();
       if (!toolExecutionManager) {
         serverLogger.error(`Cannot get tool execution manager to generate preview for ${executionId}`);
         return null;
@@ -1175,6 +1273,28 @@ export class WebSocketService {
     } catch (error) {
       serverLogger.error(`Error getting/generating preview for execution ${executionId}:`, error);
       return null;
+    }
+  }
+  
+  /**
+   * Emit an event to all clients in a session
+   * Used by other services like TimelineService to send events to clients
+   */
+  public emitToSession(sessionId: string, event: string, data: Record<string, unknown>): void {
+    try {
+      
+      // Check if we have any clients in this room
+      const room = this.io.sockets.adapter.rooms.get(sessionId);
+      const clientCount = room ? room.size : 0;
+      
+      
+      // Actually emit the event - this is the core functionality
+      this.io.to(sessionId).emit(event, data);
+      
+      // Additional log after emission
+      serverLogger.info(`WebSocketService emitted ${event} to session ${sessionId} with ${clientCount} clients`);
+    } catch (error) {
+      serverLogger.error(`Error emitting ${event} to session ${sessionId}:`, error);
     }
   }
 }

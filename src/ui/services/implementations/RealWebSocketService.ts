@@ -213,6 +213,20 @@ export class RealWebSocketService extends EventEmitter implements IWebSocketServ
         attempt 
       });
     });
+    
+    // Listen for alternative processing status update event
+    this.socket.on('processing_status_update', (data: { sessionId: string, isProcessing: boolean }) => {
+      console.log('Received processing_status_update event:', data);
+      
+      // If processing is false, emit a processing_completed event as a backup
+      if (data.isProcessing === false) {
+        console.log(`Emitting backup PROCESSING_COMPLETED for session ${data.sessionId}`);
+        this.emit(WebSocketEvent.PROCESSING_COMPLETED, {
+          sessionId: data.sessionId,
+          result: null
+        });
+      }
+    });
 
     // Agent events
     this.socket.on(WebSocketEvent.PROCESSING_STARTED, (data: WebSocketEventMap[WebSocketEvent.PROCESSING_STARTED]) => {

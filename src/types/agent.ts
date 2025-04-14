@@ -6,7 +6,7 @@ import { ModelClient } from './model';
 import { PermissionManager } from './permission';
 import { ToolRegistry } from './registry';
 import { ExecutionAdapter } from './tool';
-
+import { SessionState } from './model';
 export interface AgentRunnerConfig {
   modelClient: ModelClient;
   toolRegistry: ToolRegistry;
@@ -35,7 +35,7 @@ export interface ProcessQueryResult {
     iterations: number;
   };
   response?: string;
-  sessionState: Record<string, unknown>;
+  sessionState: SessionState;
   done: boolean;
   error?: string;
   /** Whether the operation was aborted */

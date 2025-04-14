@@ -7,6 +7,7 @@ import { ToolDescription, ToolRegistry } from './registry';
 import { PromptManager } from '../core/PromptManager';
 import { Logger } from '../utils/logger';
 import { ExecutionAdapter } from './tool';
+import { AgentServiceConfig } from '../server/services/AgentService';
 
 export interface ToolCall {
   toolId: string;
@@ -73,6 +74,8 @@ export interface SessionState {
   e2bSandboxId?: string;
   /** Execution adapter instance */
   executionAdapter?: ExecutionAdapter;
+  /** Agent service configuration */
+  agentServiceConfig: AgentServiceConfig;
   [key: string]: unknown;
 }
 

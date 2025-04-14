@@ -6,6 +6,7 @@ import { SessionState } from '../../types/model';
 import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
+import { AgentServiceConfig } from './AgentService';
 
 /**
  * Session information
@@ -22,7 +23,11 @@ export interface Session {
   /** Whether the session is currently processing a query */
   isProcessing: boolean;
   /** The type of execution adapter used for this session */
-  executionAdapterType?: 'local' | 'docker' | 'e2b';
+  executionAdapterType: 'local' | 'docker' | 'e2b';
+  /** E2B sandbox ID (only applicable when executionAdapterType is 'e2b') */
+  e2bSandboxId?: string;
+  /** Agent service configuration for this session */
+  agentServiceConfig: AgentServiceConfig;
 }
 
 /**
@@ -56,6 +61,7 @@ export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   private config: Required<SessionManagerConfig>;
   private cleanupInterval?: NodeJS.Timeout;
+  private eventListeners: Map<string, Array<(...args: any[]) => void>> = new Map();
 
   constructor(config: SessionManagerConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -67,8 +73,13 @@ export class SessionManager {
 
   /**
    * Create a new session
+   * @param config Optional configuration for the session
    */
-  public createSession(): Session {
+  public createSession(config?: {
+    executionAdapterType?: 'local' | 'docker' | 'e2b';
+    e2bSandboxId?: string;
+    agentServiceConfig?: AgentServiceConfig;
+  }): Session {
     // Check if we've reached the maximum number of sessions
     if (this.sessions.size >= this.config.maxSessions) {
       // Find the oldest session
@@ -87,13 +98,28 @@ export class SessionManager {
       }
     }
     
-    // Create a new session
+    // Get default agent service config
+    const defaultAgentServiceConfig: AgentServiceConfig = {
+      apiKey: process.env.ANTHROPIC_API_KEY || '',
+      defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
+      permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',
+      allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
+      cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
+    };
+    
+    // Create a new session with proper state 
     const session: Session = {
       id: uuidv4(),
       createdAt: new Date(),
       lastActiveAt: new Date(),
-      state: { conversationHistory: [] },
+      state: { 
+        conversationHistory: [],
+        agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig
+      },
       isProcessing: false,
+      executionAdapterType: config?.executionAdapterType || 'docker',
+      e2bSandboxId: config?.e2bSandboxId,
+      agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
     };
     
     this.sessions.set(session.id, session);
@@ -173,6 +199,9 @@ export class SessionManager {
     
     this.sessions.delete(sessionId);
     serverLogger.info(`Deleted session ${sessionId}`, LogCategory.SESSION);
+    
+    // Emit session:removed event to notify listeners
+    this.emit('session:removed', sessionId);
   }
 
   /**
@@ -180,6 +209,13 @@ export class SessionManager {
    */
   public getAllSessions(): Session[] {
     return Array.from(this.sessions.values());
+  }
+  
+  /**
+   * Get all session IDs
+   */
+  public getAllSessionIds(): string[] {
+    return Array.from(this.sessions.keys());
   }
 
   /**
@@ -227,6 +263,47 @@ export class SessionManager {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;
     }
+  }
+
+  /**
+   * Register an event listener
+   * @param event Event name
+   * @param listener Event listener function
+   */
+  public on(event: string, listener: (...args: any[]) => void): void {
+    const listeners = this.eventListeners.get(event) || [];
+    listeners.push(listener);
+    this.eventListeners.set(event, listeners);
+  }
+
+  /**
+   * Remove an event listener
+   * @param event Event name
+   * @param listener Event listener function
+   */
+  public off(event: string, listener: (...args: any[]) => void): void {
+    const listeners = this.eventListeners.get(event) || [];
+    const index = listeners.indexOf(listener);
+    if (index !== -1) {
+      listeners.splice(index, 1);
+      this.eventListeners.set(event, listeners);
+    }
+  }
+
+  /**
+   * Emit an event
+   * @param event Event name
+   * @param args Event arguments
+   */
+  private emit(event: string, ...args: any[]): void {
+    const listeners = this.eventListeners.get(event) || [];
+    listeners.forEach(listener => {
+      try {
+        listener(...args);
+      } catch (error) {
+        serverLogger.error(`Error in event listener for ${event}:`, error);
+      }
+    });
   }
 }
 

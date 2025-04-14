@@ -135,6 +135,13 @@ export default function useSessionManager() {
         try {
           console.log('Falling back to REST API for saving session');
           
+          // Check if sessionId is null before proceeding
+          if (!sessionId) {
+            console.error('Cannot save session: sessionId is null');
+            resolve(false);
+            return;
+          }
+          
           // Use the apiClient to save session
           const response = await apiClient.saveSession(sessionId);
           console.log('REST API save response:', response);
@@ -216,22 +223,37 @@ export default function useSessionManager() {
     }
   };
   
-  // Load a session - now navigates to the session URL instead of reloading
-  const loadSession = useCallback((sessionId: string) => {
+  // Load a session - calls the API to reconnect to the existing session
+  const loadSession = useCallback(async (sessionId: string) => {
     console.log('Loading session:', sessionId);
     
-    // Set the session ID in local storage for backup/fallback
-    localStorage.setItem('sessionId', sessionId);
-    console.log('Stored session ID in localStorage:', sessionId);
-    
-    // Also store in sessionStorage to maintain consistency
-    sessionStorage.setItem('currentSessionId', sessionId);
-    console.log('Stored session ID in sessionStorage:', sessionId);
-    
-    // Navigate to the session URL
-    window.location.href = `/sessions/${sessionId}`;
-    
-    return Promise.resolve(true);
+    try {
+      // Call API to reconnect to the existing session
+      const response = await apiClient.startSession({ sessionId });
+      
+      if (response.success) {
+        console.log('Successfully reconnected to session:', sessionId);
+        
+        // Set the session ID in local storage for backup/fallback
+        localStorage.setItem('sessionId', sessionId);
+        console.log('Stored session ID in localStorage:', sessionId);
+        
+        // Also store in sessionStorage to maintain consistency
+        sessionStorage.setItem('currentSessionId', sessionId);
+        console.log('Stored session ID in sessionStorage:', sessionId);
+        
+        // Navigate to the session URL
+        window.location.href = `/sessions/${sessionId}`;
+        
+        return true;
+      } else {
+        console.error('Failed to reconnect to session:', sessionId);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error reconnecting to session:', error);
+      return false;
+    }
   }, []);
   
   // Refresh session list
@@ -265,7 +287,7 @@ export default function useSessionManager() {
       const response = await apiClient.listSessions();
       console.log('Sessions from API client:', response);
       
-      if (response.success && response.data.sessions) {
+      if (response.success && response.data && 'sessions' in response.data) {
         setSessions(response.data.sessions);
       } else {
         // If the API doesn't return sessions, just set empty array

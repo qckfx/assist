@@ -1,142 +1,114 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useToolVisualization } from './useToolVisualization';
 import apiClient from '../services/apiClient';
-import { useWebSocket } from './useWebSocket';
+import { useWebSocketTerminal } from '../context/WebSocketTerminalContext';
+import { usePermissionManager } from './usePermissionManager';
 
 /**
  * Hook for handling keyboard events for permission requests
  */
 export function usePermissionKeyboardHandler() {
   const { activeTools } = useToolVisualization();
-  const { isConnected } = useWebSocket();
-  
-  // Debug websocket connection
-  console.log('WebSocket connection status:', { 
-    isConnected
+  const { isConnected, sessionId, resolvePermission: wsResolvePermission } = useWebSocketTerminal();
+  // Get pending permissions directly from usePermissionManager
+  const { pendingPermissions, hasPendingPermissions } = usePermissionManager({ 
+    // Pass the current session ID 
+    sessionId
   });
   
-  // The active tools are already provided by useToolVisualization
-  console.log('Active tools:', activeTools.map(t => ({ 
-    id: t.id, 
-    toolName: t.toolName, 
-    status: t.status
-  })));
+  // Track if we're currently processing a permission
+  const isProcessingPermissionRef = useRef(false);
   
-  const pendingPermissions = activeTools
-    .filter(tool => {
-      const isPending = tool.status === 'awaiting-permission';
-      console.log(`Tool ${tool.id} (${tool.toolName}) permission check:`, { 
-        status: tool.status, 
-        isPending 
-      });
-      return isPending;
-    })
-    .map(tool => ({
-      executionId: tool.id,
-      toolId: tool.tool,
-      toolName: tool.toolName
-    }));
-  
-  // Resolve permission on the server - use apiClient instead of socket.emit
-  const resolvePermission = useCallback(async (executionId: string, granted: boolean) => {
-    try {
-      console.log('Using apiClient to resolve permission for execution:', { executionId, granted });
-      const response = await apiClient.resolvePermission(executionId, granted);
-      return response.success;
-    } catch (error) {
-      console.error('Error resolving permission via apiClient:', error);
-      return false;
-    }
-  }, []);
-
-  // Handle keyboard events for permission requests
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (!pendingPermissions.length) return;
-      
-      // Prevent default behavior for y/n keys in this context
-      if (event.key.toLowerCase() === 'y' || event.key.length === 1) {
-        event.preventDefault();
-      }
-      
-      console.log('🔑 Keyboard event with pending permissions:', { 
-        key: event.key, 
-        pendingCount: pendingPermissions.length,
-        pendingPermissions: pendingPermissions.map(p => ({ executionId: p.executionId, toolId: p.toolId }))
-      });
-      
-      // Get the first pending permission
-      const permission = pendingPermissions[0];
-      
-      // If 'y' is pressed, grant permission
-      if (event.key.toLowerCase() === 'y') {
-        console.log('🔑 Granting permission for execution', permission.executionId);
-        
-        // Display visual feedback that the key was pressed
-        const permissionElement = document.querySelector(`[data-testid="permission-banner"]`);
-        if (permissionElement) {
-          permissionElement.classList.add('bg-green-200', 'dark:bg-green-900');
-          permissionElement.textContent = 'Permission granted - processing...';
-        }
-        
-        resolvePermission(permission.executionId, true)
-          .then((success) => {
-            console.log(`🔑 Permission granted for ${permission.toolId}, success: ${success}`);
-          })
-          .catch(err => {
-            console.error('🔑 Error in permission grant:', err);
-            // Revert visual feedback if there was an error
-            if (permissionElement) {
-              permissionElement.classList.remove('bg-green-200', 'dark:bg-green-900');
-              permissionElement.textContent = 'Permission Required - Type \'y\' to allow';
-            }
-          });
-      } 
-      // For any other key, deny permission
-      else if (event.key.length === 1) { // Only handle printable characters
-        console.log('🔑 Denying permission for execution', permission.executionId);
-        
-        // Display visual feedback that the key was pressed
-        const permissionElement = document.querySelector(`[data-testid="permission-banner"]`);
-        if (permissionElement) {
-          permissionElement.classList.add('bg-red-200', 'dark:bg-red-900');
-          permissionElement.textContent = 'Permission denied - canceling...';
-        }
-        
-        resolvePermission(permission.executionId, false)
-          .then((success) => {
-            console.log(`🔑 Permission denied for ${permission.toolId}, success: ${success}`);
-          })
-          .catch(err => {
-            console.error('🔑 Error in permission denial:', err);
-            // Revert visual feedback if there was an error
-            if (permissionElement) {
-              permissionElement.classList.remove('bg-red-200', 'dark:bg-red-900');
-              permissionElement.textContent = 'Permission Required - Type \'y\' to allow';
-            }
-          });
-      }
-    },
-    [pendingPermissions, resolvePermission]
-  );
-
-  // Set up the key event listener
+  // Set up the key event listener for when permissions are pending
   useEffect(() => {
-    // Only add listener if there are pending permissions
-    if (pendingPermissions.length > 0) {
-      console.log('🔑 Adding keyboard handler for permissions', { 
-        pendingCount: pendingPermissions.length
-      });
-      
-      // Use capture phase to ensure our handler runs before others
-      window.addEventListener('keydown', handleKeyDown, true);
-      
-      return () => {
-        console.log('🔑 Removing keyboard handler for permissions');
-        window.removeEventListener('keydown', handleKeyDown, true);
-      };
+    // Only add listener if we have pending permissions and aren't already processing one
+    if (pendingPermissions.length === 0 || isProcessingPermissionRef.current) {
+      return; // Don't set up listener if no permissions pending or already processing
     }
-  }, [pendingPermissions, handleKeyDown]);
+    
+    // Create key handler function
+    const keyHandler = (e: KeyboardEvent) => {
+      // Ignore keypresses if we're processing or no longer have pending permissions
+      if (isProcessingPermissionRef.current || pendingPermissions.length === 0) {
+        return;
+      }
+      
+      // Only process keypress if we have pending permissions
+      if (pendingPermissions.length > 0) {
+        // Only check for 'y' or single characters
+        if (e.key.toLowerCase() === 'y' || e.key.length === 1) {
+          e.preventDefault();
+          
+          // Get the first pending permission
+          const permission = pendingPermissions[0];
+          
+          // Mark as processing to prevent further event handling
+          isProcessingPermissionRef.current = true;
+          
+          // Remove the event listener immediately to prevent capturing further keypresses
+          window.removeEventListener('keydown', keyHandler, true);
+          
+          // If 'y' is pressed, grant permission
+          if (e.key.toLowerCase() === 'y') {
+            // Display visual feedback that the key was pressed
+            const permissionElement = document.querySelector('[data-testid="permission-banner"]');
+            if (permissionElement) {
+              permissionElement.classList.add('bg-green-200', 'dark:bg-green-900');
+              permissionElement.textContent = 'Permission granted - processing...';
+            }
+            
+            wsResolvePermission(permission.executionId, true)
+              .then(() => {
+                // Reset processing flag after completion
+                isProcessingPermissionRef.current = false;
+              })
+              .catch(err => {
+                console.error('Error in permission grant:', err);
+                // Revert visual feedback if there was an error
+                if (permissionElement) {
+                  permissionElement.classList.remove('bg-green-200', 'dark:bg-green-900');
+                  permissionElement.textContent = 'Permission Required - Type \'y\' to allow';
+                }
+                // Reset processing flag after error
+                isProcessingPermissionRef.current = false;
+              });
+          } 
+          // For any other key, deny permission
+          else if (e.key.length === 1) {
+            // Display visual feedback that the key was pressed
+            const permissionElement = document.querySelector('[data-testid="permission-banner"]');
+            if (permissionElement) {
+              permissionElement.classList.add('bg-red-200', 'dark:bg-red-900');
+              permissionElement.textContent = 'Permission denied - canceling...';
+            }
+            
+            wsResolvePermission(permission.executionId, false)
+              .then(() => {
+                // Reset processing flag after completion
+                isProcessingPermissionRef.current = false;
+              })
+              .catch(err => {
+                console.error('Error in permission denial:', err);
+                // Revert visual feedback if there was an error
+                if (permissionElement) {
+                  permissionElement.classList.remove('bg-red-200', 'dark:bg-red-900');
+                  permissionElement.textContent = 'Permission Required - Type \'y\' to allow';
+                }
+                // Reset processing flag after error
+                isProcessingPermissionRef.current = false;
+              });
+          }
+        }
+      }
+    };
+    
+    // Use capture phase to ensure our handler runs before others
+    window.addEventListener('keydown', keyHandler, true);
+    
+    return () => {
+      window.removeEventListener('keydown', keyHandler, true);
+    };
+  }, [pendingPermissions, hasPendingPermissions, wsResolvePermission]);
 
   return {
     hasPendingPermissions: pendingPermissions.length > 0,
