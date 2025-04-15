@@ -384,4 +384,35 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
       } as LSToolErrorResult;
     }
   }
+
+  /**
+   * Generates a structured directory map for the specified path
+   * @param rootPath The root directory to map
+   * @param maxDepth Maximum depth to traverse (default: 10)
+   * @returns A formatted directory structure as a string
+   */
+  async generateDirectoryMap(rootPath: string, maxDepth: number = 10): Promise<string> {
+    try {
+      console.log(`E2BExecutionAdapter: Generating directory map for ${rootPath} with max depth ${maxDepth}`);
+      
+      // Run the directory-mapper.sh script in the E2B environment
+      const scriptPath = `/usr/local/bin/directory-mapper.sh`;
+      const result = await this.executeCommand(`${scriptPath} "${rootPath}" ${maxDepth}`);
+      
+      if (result.exitCode !== 0) {
+        throw new Error(`Failed to generate directory structure: ${result.stderr}`);
+      }
+      
+      return result.stdout;
+    } catch (error) {
+      console.error(`E2BExecutionAdapter: Error generating directory map: ${(error as Error).message}`);
+      
+      // Return a basic fallback structure on error
+      return `<context name="directoryStructure">Below is a snapshot of this project's file structure at the start of the conversation. This snapshot will NOT update during the conversation. It skips over .gitignore patterns.
+
+- ${rootPath}/
+  - (Error mapping directory structure)
+</context>`;
+    }
+  }
 }

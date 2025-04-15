@@ -85,8 +85,8 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       // Format tools for Claude
       const claudeTools = this.formatToolsForClaude(toolDescriptions);
       
-      // Get system message and temperature from the prompt manager
-      const systemMessage = promptManager.getSystemPrompt(sessionState);
+      // Get system messages and temperature from the prompt manager
+      const systemMessages = promptManager.getSystemPrompts(sessionState);
       const temperature = promptManager.getTemperature(sessionState);
       
       // Prepare the request for AnthropicProvider
@@ -95,7 +95,9 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         tools: claudeTools,
         tool_choice: { type: "auto" },
         encourageToolUse: true,
-        systemMessage: systemMessage,
+        systemMessages: systemMessages,
+        // Include systemMessage for backward compatibility
+        systemMessage: systemMessages[0],
         temperature: temperature,
         // Pass the conversation history in a way AnthropicProvider can use
         sessionState
@@ -215,14 +217,16 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       // Format tools for Claude
       const claudeTools = this.formatToolsForClaude(toolDescriptions);
       
-      // Get system message and temperature from the prompt manager
-      const systemMessage = promptManager.getSystemPrompt(sessionState);
+      // Get system messages and temperature from the prompt manager
+      const systemMessages = promptManager.getSystemPrompts(sessionState);
       const temperature = promptManager.getTemperature(sessionState);
       
       const prompt: ModelProviderRequest = {
         tools: claudeTools,
         sessionState,
-        systemMessage,
+        systemMessages,
+        // Include systemMessage for backward compatibility
+        systemMessage: systemMessages[0],
         temperature
       };
       

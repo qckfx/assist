@@ -61,4 +61,14 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
       count: 1
     };
   }
+
+  async generateDirectoryMap(rootPath: string, maxDepth: number = 10): Promise<string> {
+    return `<context name="directoryStructure">Below is a snapshot of this project's file structure at the start of the conversation. This snapshot will NOT update during the conversation. It skips over .gitignore patterns.
+
+- ${rootPath}/
+  - mockDir/
+    - mockFile.txt
+  - mockFile2.txt
+</context>`;
+  }
 }

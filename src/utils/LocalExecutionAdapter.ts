@@ -485,4 +485,49 @@ export class LocalExecutionAdapter implements ExecutionAdapter {
       } as LSToolErrorResult;
     }
   }
+
+  /**
+   * Generates a structured directory map for the specified path
+   * @param rootPath The root directory to map
+   * @param maxDepth Maximum depth to traverse (default: 10)
+   * @returns A formatted directory structure as a string
+   */
+  async generateDirectoryMap(rootPath: string, maxDepth: number = 10): Promise<string> {
+    try {
+      console.log(`LocalExecutionAdapter: Generating directory map for ${rootPath} with max depth ${maxDepth}`);
+      
+      // Use the shell script from our scripts directory
+      const scriptPath = path.resolve(process.cwd(), 'scripts', 'directory-mapper.sh');
+      
+      // Make sure the script exists and is executable
+      try {
+        await fs.promises.access(scriptPath, fs.constants.X_OK);
+      } catch (error) {
+        // If not executable, try to make it executable
+        try {
+          await fs.promises.chmod(scriptPath, 0o755);
+        } catch (chmodError) {
+          throw new Error(`Script exists but is not executable and could not be made executable: ${scriptPath}`);
+        }
+      }
+      
+      // Execute the script
+      const { stdout, stderr, exitCode } = await this.executeCommand(`"${scriptPath}" "${rootPath}" ${maxDepth}`);
+      
+      if (exitCode !== 0) {
+        throw new Error(`Failed to generate directory structure: ${stderr}`);
+      }
+      
+      return stdout;
+    } catch (error) {
+      console.error(`LocalExecutionAdapter: Error generating directory map: ${(error as Error).message}`);
+      
+      // Return a basic fallback structure on error
+      return `<context name="directoryStructure">Below is a snapshot of this project's file structure at the start of the conversation. This snapshot will NOT update during the conversation. It skips over .gitignore patterns.
+
+- ${rootPath}/
+  - (Error mapping directory structure)
+</context>`;
+    }
+  }
 }

@@ -27,6 +27,7 @@ export interface AgentConfig {
   permissionUIHandler?: {
     requestPermission: (toolId: string, args: Record<string, unknown>) => Promise<boolean>;
   };
+  promptManager?: import('../core/PromptManager').PromptManager;
 }
 
 export interface Agent {
