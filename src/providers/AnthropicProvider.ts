@@ -303,10 +303,13 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         // If there are additional system messages (beyond the first),
         // add them as assistant role messages at the beginning of the conversation
         if (prompt.systemMessages.length > 1) {
-          const additionalSystemMessages = prompt.systemMessages.slice(1).map(msg => {
+          const additionalSystemMessages = prompt.systemMessages.slice(1).map((msg, index) => {
+            // We only want to add cache_control to the directory structure message (index 0 of the additional messages)
+            const addCacheControlToThisMessage = shouldUseCache && index === 0;
+            
             const systemMsg: Anthropic.Messages.MessageParam = {
               role: 'assistant', // Using 'assistant' role instead of 'system'
-              content: shouldUseCache ? [{
+              content: addCacheControlToThisMessage ? [{
                 type: 'text',
                 text: msg,
                 cache_control: { type: 'ephemeral' }

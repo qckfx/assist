@@ -6,6 +6,7 @@ import { GlobOptions } from "fs";
 import { FileEditToolResult } from "../tools/FileEditTool";
 import { FileReadToolResult } from "../tools/FileReadTool";
 import { LSToolResult } from "../tools/LSTool";
+import { GitRepositoryInfo } from "./session";
 
 /**
  * Categories for tools to classify their purpose and permission requirements
@@ -41,6 +42,12 @@ export interface ExecutionAdapter {
    * @returns A formatted directory structure as a string in context tag format
    */
   generateDirectoryMap: (rootPath: string, maxDepth?: number) => Promise<string>;
+  
+  /**
+   * Retrieves git repository information for the current directory
+   * @returns Git repository information or null if not a git repository
+   */
+  getGitRepositoryInfo: () => Promise<GitRepositoryInfo | null>;
 }
 
 export interface ParameterSchema {

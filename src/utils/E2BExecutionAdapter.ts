@@ -7,6 +7,7 @@ import path from 'path';
 import { GlobOptions } from 'fs';
 import { LogCategory } from './logger';
 import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from './sessionUtils';
+import { GitRepositoryInfo } from '../types/session';
 
 export class E2BExecutionAdapter implements ExecutionAdapter {
   private sandbox: Sandbox;
@@ -413,6 +414,106 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
 - ${rootPath}/
   - (Error mapping directory structure)
 </context>`;
+    }
+  }
+  
+  /**
+   * Retrieves git repository information for the current directory in the E2B sandbox
+   * @returns Git repository information or null if not a git repository
+   */
+  async getGitRepositoryInfo(): Promise<GitRepositoryInfo | null> {
+    try {
+      // Get the default working directory in E2B (typically /home/user or similar)
+      const workingDir = '/home/user';
+      
+      // Check if the directory is a git repository
+      const isGitRepo = await this.executeCommand(`cd "${workingDir}" && git rev-parse --is-inside-work-tree 2>/dev/null || echo false`);
+      if (isGitRepo.exitCode !== 0 || isGitRepo.stdout.trim() !== 'true') {
+        this.logger?.debug('E2B sandbox directory is not a git repository', LogCategory.SYSTEM);
+        return null;
+      }
+      
+      // Get current branch
+      const currentBranch = await this.executeCommand(`cd "${workingDir}" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown`);
+      
+      // Get default branch by checking the remote
+      let defaultBranch = '';
+      try {
+        // First try getting the default branch from remote
+        const remoteCheck = await this.executeCommand(`cd "${workingDir}" && git remote show origin 2>/dev/null | grep 'HEAD branch' | cut -d ':' -f 2 | xargs`);
+        defaultBranch = remoteCheck.stdout.trim();
+      } catch (error) {
+        this.logger?.debug('Error getting default branch from remote in E2B sandbox', LogCategory.SYSTEM);
+      }
+      
+      // If we couldn't get the default branch from remote, try common defaults
+      if (!defaultBranch) {
+        // Try main, master, and trunk in order
+        for (const branch of ['main', 'master', 'trunk']) {
+          const branchCheck = await this.executeCommand(`cd "${workingDir}" && git show-ref --verify --quiet refs/heads/${branch} 2>/dev/null && echo ${branch} || echo ''`);
+          if (branchCheck.stdout.trim()) {
+            defaultBranch = branchCheck.stdout.trim();
+            break;
+          }
+        }
+      }
+      
+      // If still no default branch, just use the current branch
+      if (!defaultBranch) {
+        defaultBranch = currentBranch.stdout.trim() || 'main';
+      }
+      
+      // Get status to check if repository is clean
+      const status = await this.executeCommand(`cd "${workingDir}" && git status --porcelain`);
+      const isClean = status.stdout.trim() === '';
+      
+      // If clean, we can return a simpler structure
+      if (isClean) {
+        // Get recent commits (5 most recent)
+        const recentCommits = await this.executeCommand(`cd "${workingDir}" && git log -5 --pretty=format:'%h %s'`);
+        
+        return {
+          isGitRepository: true,
+          currentBranch: currentBranch.stdout.trim(),
+          defaultBranch,
+          status: { type: 'clean' },
+          recentCommits: recentCommits.stdout.split('\n').filter(Boolean)
+        };
+      } else {
+        // Repository is dirty, get detailed status
+        
+        // Get files that are modified but unstaged
+        const modifiedFiles = await this.executeCommand(`cd "${workingDir}" && git diff --name-only`);
+        
+        // Get files that are staged
+        const stagedFiles = await this.executeCommand(`cd "${workingDir}" && git diff --name-only --staged`);
+        
+        // Get untracked files
+        const untrackedFiles = await this.executeCommand(`cd "${workingDir}" && git ls-files --others --exclude-standard`);
+        
+        // Get deleted files
+        const deletedFiles = await this.executeCommand(`cd "${workingDir}" && git ls-files --deleted`);
+        
+        // Get recent commits (5 most recent)
+        const recentCommits = await this.executeCommand(`cd "${workingDir}" && git log -5 --pretty=format:'%h %s'`);
+        
+        return {
+          isGitRepository: true,
+          currentBranch: currentBranch.stdout.trim(),
+          defaultBranch,
+          status: {
+            type: 'dirty',
+            modifiedFiles: modifiedFiles.stdout.split('\n').filter(Boolean),
+            stagedFiles: stagedFiles.stdout.split('\n').filter(Boolean),
+            untrackedFiles: untrackedFiles.stdout.split('\n').filter(Boolean),
+            deletedFiles: deletedFiles.stdout.split('\n').filter(Boolean)
+          },
+          recentCommits: recentCommits.stdout.split('\n').filter(Boolean)
+        };
+      }
+    } catch (error) {
+      this.logger?.error('Error retrieving git repository information from E2B sandbox:', error, LogCategory.SYSTEM);
+      return null;
     }
   }
 }
