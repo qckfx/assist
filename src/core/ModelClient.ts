@@ -77,7 +77,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         query: query ? query.substring(0, 50) + (query.length > 50 ? '...' : '') : 'none',
         toolCount: toolDescriptions.length,
         sessionId: sessionState.id || 'unknown',
-        historyLength: sessionState.conversationHistory?.length || 0,
+        historyLength: sessionState.contextWindow?.messages.length || 0,
         lastResult: !!sessionState.lastResult,
         hasToolError: !!sessionState.lastToolError
       });
@@ -106,7 +106,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       console.log('⚠️ MODEL_CLIENT sending request to modelProvider with:', {
         hasQuery: !!query, 
         toolCount: claudeTools.length,
-        historyLength: sessionState.conversationHistory?.length || 0,
+        historyLength: sessionState.contextWindow?.messages.length || 0,
         sessionId: sessionState.id || 'unknown'
       });
       
@@ -149,7 +149,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         });
         
         // Add the assistant's tool use response to the conversation history only if not aborted
-        if (sessionState.conversationHistory && toolUse && !isSessionAborted(getSessionId(sessionState))) {
+        if (sessionState.contextWindow && toolUse && !isSessionAborted(getSessionId(sessionState))) {
           const toolUseMessage: Anthropic.Messages.MessageParam = {
             role: "assistant",
             content: [
@@ -162,14 +162,14 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
             ]
           };
           
-          sessionState.conversationHistory.push(toolUseMessage);
-          console.log('⚠️ MODEL_CLIENT added tool use to conversation history:', {
+          sessionState.contextWindow.messages.push(toolUseMessage);
+          console.log('⚠️ MODEL_CLIENT added tool use to context window:', {
             toolName: toolUse.name,
-            historyLength: sessionState.conversationHistory.length
+            historyLength: sessionState.contextWindow.messages.length
           });
         } else {
-          console.log('⚠️ MODEL_CLIENT did not add tool use to conversation history:', {
-            hasHistory: !!sessionState.conversationHistory,
+          console.log('⚠️ MODEL_CLIENT did not add tool use to context window:', {
+            hasContextWindow: !!sessionState.contextWindow,
             hasToolUse: !!toolUse,
             isAborted: isSessionAborted(getSessionId(sessionState))
           });

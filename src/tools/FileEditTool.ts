@@ -99,6 +99,17 @@ export const createFileEditTool = (): Tool => {
       const replaceCode = args.replaceCode as string;
       const encoding = args.encoding as string || 'utf8';
       
+      // Check if the file has been read first
+      if (context.sessionState?.contextWindow && 
+          !context.sessionState.contextWindow.hasReadFile(filePath)) {
+        context.logger?.warn(`Attempt to edit file ${filePath} without reading it first`);
+        return {
+          success: false,
+          path: filePath,
+          error: `File must be read before editing. Please use FileReadTool first to read the file.`
+        };
+      }
+      
       // Check if we're running in a sandbox (E2B)
       const isSandbox = !!process.env.SANDBOX_ROOT;
       

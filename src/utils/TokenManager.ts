@@ -308,6 +308,9 @@ const manageConversationSize = (
     sessionState.historyTrimmed = true;
     const actualTokensRemoved = oldTotalTokens - newTotalTokens;
     logger?.debug(`Removed ${removedCount} messages, freed up ${actualTokensRemoved} tokens`, LogCategory.MODEL);
+    
+    // TODO: When context is trimmed/squashed, we should clear file tracking in contextWindow
+    // since the files are no longer present in the context and should be re-read before editing
   }
 };
 
