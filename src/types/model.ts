@@ -8,6 +8,7 @@ import { PromptManager } from '../core/PromptManager';
 import { Logger } from '../utils/logger';
 import { ExecutionAdapter } from './tool';
 import { AgentServiceConfig } from '../server/services/AgentService';
+import { ContextWindow } from './contextWindow';
 
 export interface ToolCall {
   toolId: string;
@@ -52,7 +53,9 @@ export interface CacheMetricsTracking {
 }
 
 export interface SessionState {
-  conversationHistory: Anthropic.Messages.MessageParam[];
+  /** Conversation context with file tracking */
+  contextWindow: ContextWindow;
+  
   lastToolError?: {
     toolId: string;
     error: string;
