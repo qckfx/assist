@@ -1,5 +1,15 @@
 /**
- * PromptManager - Manages system prompts
+ * PromptManager - Manages system prompts for the agent
+ * 
+ * This module is responsible for creating and managing the system prompts that control
+ * the agent's behavior. It supports multiple system messages including:
+ * 1. The base prompt (general instructions)
+ * 2. Directory structure context (repository layout)
+ * 3. Error context (for handling tool errors)
+ * 4. Tool limit warnings
+ * 
+ * The new architecture uses multiple separate system messages, which provides advantages
+ * for caching and prompt organization.
  */
 
 import { SessionState } from '../types/model';
@@ -12,8 +22,16 @@ export interface PromptManager {
    * Returns a system prompt based on the current session state
    * @param sessionState Current session state
    * @returns A system prompt string
+   * @deprecated Use getSystemPrompts() instead for multi-prompt support
    */
   getSystemPrompt(sessionState?: SessionState): string;
+  
+  /**
+   * Returns an array of system prompts based on the current session state
+   * @param sessionState Current session state
+   * @returns An array of system prompt strings
+   */
+  getSystemPrompts(sessionState?: SessionState): string[];
   
   /**
    * Returns the temperature setting based on the current session state
@@ -21,6 +39,12 @@ export interface PromptManager {
    * @returns A temperature value between 0 and 1
    */
   getTemperature(sessionState?: SessionState): number;
+  
+  /**
+   * Sets the directory structure prompt
+   * @param directoryStructure Directory structure string or null to clear
+   */
+  setDirectoryStructurePrompt(directoryStructure: string | null): void;
 }
 
 // Default system prompt used for all interactions
@@ -33,6 +57,7 @@ const DEFAULT_SYSTEM_PROMPT = "You are a precise, efficient AI assistant that he
 export class BasicPromptManager implements PromptManager {
   private readonly basePrompt: string;
   private readonly defaultTemperature: number;
+  private directoryStructurePrompt: string | null = null;
   
   /**
    * Create a prompt manager with a fixed base prompt
@@ -44,27 +69,53 @@ export class BasicPromptManager implements PromptManager {
     this.defaultTemperature = defaultTemperature;
   }
   
+  /**
+   * @deprecated Use getSystemPrompts() instead for multi-prompt support
+   */
   getSystemPrompt(sessionState?: SessionState): string {
-    let prompt = this.basePrompt;
+    // For backward compatibility, combine all prompts into one string
+    return this.getSystemPrompts(sessionState).join('\n\n');
+  }
+  
+  /**
+   * Returns all system prompts as an array
+   * Organizes system messages for optimal caching:
+   * 1. Base prompt (most stable, most cacheable)
+   * 2. Directory structure (stable within a repository)
+   * 3. Error context (changes per iteration)
+   * 4. Tool limit warning (only added when needed)
+   */
+  getSystemPrompts(sessionState?: SessionState): string[] {
+    // Start with the most stable prompts
+    const prompts = [this.basePrompt];
     
-    // Enhance the prompt with error context if available
-    if (sessionState?.lastToolError) {
-      prompt += ` In your last tool call to ${sessionState.lastToolError.toolId}, ` +
-               `you encountered this error: "${sessionState.lastToolError.error}". ` +
-               "Please correct your approach accordingly.";
+    // Add directory structure prompt if available (relatively stable)
+    if (this.directoryStructurePrompt) {
+      prompts.push(this.directoryStructurePrompt);
     }
     
-    // Add tool limit reached context if applicable
+    // Add error context as a separate message if available (changes frequently)
+    if (sessionState?.lastToolError) {
+      const errorContext = `In your last tool call to ${sessionState.lastToolError.toolId}, ` +
+        `you encountered this error: "${sessionState.lastToolError.error}". ` +
+        "Please correct your approach accordingly.";
+      
+      prompts.push(errorContext);
+    }
+    
+    // Add tool limit reached context as the last message if applicable (most dynamic)
     if (sessionState?.toolLimitReached) {
-      prompt += `\n\nYou have reached the maximum limit of tool operations for this session.
+      const toolLimitMessage = `You have reached the maximum limit of tool operations for this session.
 
 Please summarize what you've accomplished so far and what remains to be done. 
 Check in with the user on how they'd like to proceed. The user can continue with a new message.
 
 DO NOT suggest using more tools - you have reached your limit for this interaction.`;
+      
+      prompts.push(toolLimitMessage);
     }
     
-    return prompt;
+    return prompts;
   }
   
   getTemperature(_sessionState?: SessionState): number {
@@ -73,6 +124,10 @@ DO NOT suggest using more tools - you have reached your limit for this interacti
     // For example, use a higher temperature for creative tasks
     // or a lower temperature for precise reasoning
     return this.defaultTemperature;
+  }
+  
+  setDirectoryStructurePrompt(directoryStructure: string | null): void {
+    this.directoryStructurePrompt = directoryStructure;
   }
 }
 

@@ -8,6 +8,7 @@ import {
   createAgent,
   createAnthropicProvider,
   createLogger,
+  createPromptManager,
   LogLevel,
 } from '../../index';
 import { Agent } from '../../types/main';
@@ -39,6 +40,9 @@ import { LogCategory } from '../../types/logger';
 import { setSessionAborted, generateExecutionId } from '../../utils/sessionUtils';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { ExecutionAdapter } from '../../types/tool';
+
+// Default system prompt for the agent
+const DEFAULT_SYSTEM_PROMPT = "You are a precise, efficient AI assistant that helps users with software development tasks.";
 
 /**
  * Events emitted by the agent service
@@ -1241,6 +1245,9 @@ export class AgentService extends EventEmitter {
         },
       });
 
+      // Create a prompt manager
+      const promptManager = createPromptManager(DEFAULT_SYSTEM_PROMPT);
+
       // Get the execution adapter type and sandbox ID for this session
       const executionAdapterType = this.getExecutionAdapterType(sessionId) || 'local';
       const e2bSandboxId = this.getE2BSandboxId(sessionId);
@@ -1260,9 +1267,49 @@ export class AgentService extends EventEmitter {
         environment = { type: 'local' as const };
       }
       
+      // Get execution adapter to generate directory structure
+      let executionAdapter: ExecutionAdapter;
+      
+      if (session.state.executionAdapter) {
+        executionAdapter = session.state.executionAdapter;
+      } else {
+        const adapterResult = await createExecutionAdapter({
+          type: executionAdapterType,
+          logger
+        });
+        executionAdapter = adapterResult.adapter;
+      }
+      
+      // Generate directory structure map only if it hasn't been generated for this session yet
+      if (!session.state.directoryStructureGenerated) {
+        try {
+          // Get the current working directory using the execution adapter
+          const cwdResult = await executionAdapter.executeCommand('pwd');
+          const cwd = cwdResult.stdout.trim() || process.cwd();
+          
+          console.log(`AgentService: Generating directory structure for ${cwd} in ${executionAdapterType} environment`);
+          
+          // Use the execution adapter's generateDirectoryMap method directly
+          const directoryStructure = await executionAdapter.generateDirectoryMap(cwd, 10);
+          
+          // Set the directory structure in the prompt manager
+          promptManager.setDirectoryStructurePrompt(directoryStructure);
+          
+          // Mark that we've generated directory structure for this session
+          session.state.directoryStructureGenerated = true;
+          
+          console.log('AgentService: Directory structure map successfully generated and set in prompt manager');
+        } catch (error) {
+          console.warn(`AgentService: Failed to generate directory structure map: ${(error as Error).message}`);
+        }
+      } else {
+        console.log('AgentService: Using existing directory structure map for this session');
+      }
+      
       // Create the agent with permission handling based on configuration
       this.agent = createAgent({
         modelProvider,
+        promptManager, // Pass the configured prompt manager
         environment,
         logger,
         permissionUIHandler: {

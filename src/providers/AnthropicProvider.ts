@@ -214,13 +214,11 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         const toolWithCache = modifiedTools[lastToolIndex] as ToolWithCache;
         toolWithCache.cache_control = { type: "ephemeral" };
         
-        logger?.debug('Added cache_control to the last tool', LogCategory.MODEL, { 
-          toolName: toolWithCache.name 
-        });
+        console.log(`AnthropicProvider: Added cache_control to the last tool: ${toolWithCache.name}`);
       }
       
       // Format system message with cache_control if caching is enabled
-      let systemContent: string | SystemWithCache = prompt.systemMessage;
+      let systemContent: string | SystemWithCache = prompt.systemMessage || '';
       if (shouldUseCache && prompt.systemMessage) {
         // Convert system message to array of content blocks for caching
         systemContent = [
@@ -231,7 +229,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
           }
         ];
         
-        logger?.debug('Added cache_control to system message', LogCategory.MODEL);
+        console.log('AnthropicProvider: Added cache_control to system message');
       }
       
       // Add cache_control to the last message in conversation history if available
@@ -255,10 +253,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
               const contentWithCache = content[lastContentIndex] as ContentBlockWithCache;
               contentWithCache.cache_control = { type: "ephemeral" };
               
-              logger?.debug('Added cache_control to last user message', LogCategory.MODEL, { 
-                messageIndex: i, 
-                contentType: content[lastContentIndex].type
-              });
+              console.log(`AnthropicProvider: Added cache_control to last user message at index ${i} with type ${content[lastContentIndex].type}`);
             } else if (typeof content === 'string') {
               // If content is a string, convert to content block array with cache_control
               modifiedMessages[i].content = [{
@@ -267,9 +262,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
                 cache_control: { type: "ephemeral" }
               }];
               
-              logger?.debug('Converted string content to block with cache_control in last user message', LogCategory.MODEL, { 
-                messageIndex: i
-              });
+              console.log(`AnthropicProvider: Converted string content to block with cache_control in last user message at index ${i}`);
             }
             break;
           }
@@ -285,12 +278,51 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         temperature: prompt.temperature
       };
       
-      // Set system parameter based on whether caching is enabled
-      if (shouldUseCache && Array.isArray(systemContent)) {
-        // For cached requests, system must be an array of content blocks
+      // Handle system messages based on new multi-message support
+      if (prompt.systemMessages && prompt.systemMessages.length > 0) {
+        // If systemMessages array is provided and has content, use that
+        // For Claude API compatibility, only use the first system message
+        // in the standard system parameter, and include the rest in the messages array
+        
+        // Make sure we have at least one system message
+        if (prompt.systemMessages[0]) {
+          // Set the first one as the official system message
+          if (shouldUseCache) {
+            // For cached requests, use an array of content blocks
+            (apiParams as unknown as { system: Array<{type: string; text: string; cache_control?: {type: string}}> }).system = [{
+              type: 'text',
+              text: prompt.systemMessages[0],
+              cache_control: { type: 'ephemeral' }
+            }];
+          } else {
+            // For non-cached requests, use a simple string
+            apiParams.system = prompt.systemMessages[0];
+          }
+        }
+        
+        // If there are additional system messages (beyond the first),
+        // add them as assistant role messages at the beginning of the conversation
+        if (prompt.systemMessages.length > 1) {
+          const additionalSystemMessages = prompt.systemMessages.slice(1).map(msg => {
+            const systemMsg: Anthropic.Messages.MessageParam = {
+              role: 'assistant', // Using 'assistant' role instead of 'system'
+              content: shouldUseCache ? [{
+                type: 'text',
+                text: msg,
+                cache_control: { type: 'ephemeral' }
+              }] : msg
+            };
+            return systemMsg;
+          });
+          
+          // Add the additional system messages at the beginning of the messages array
+          apiParams.messages = [...additionalSystemMessages, ...apiParams.messages];
+        }
+      } else if (shouldUseCache && Array.isArray(systemContent)) {
+        // For cached requests with older style, system must be an array of content blocks
         (apiParams as unknown as { system: Array<{type: string; text: string; cache_control?: {type: string}}> }).system = systemContent;
       } else {
-        // For non-cached requests, system is a simple string
+        // For non-cached requests with older style, system is a simple string
         apiParams.system = prompt.systemMessage;
       }
       

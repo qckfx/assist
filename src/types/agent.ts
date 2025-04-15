@@ -12,6 +12,7 @@ export interface AgentRunnerConfig {
   toolRegistry: ToolRegistry;
   permissionManager: PermissionManager;
   executionAdapter: ExecutionAdapter;
+  promptManager?: import('../core/PromptManager').PromptManager;
   logger?: {
     debug: (message: string, ...args: unknown[]) => void;
     info: (message: string, ...args: unknown[]) => void;

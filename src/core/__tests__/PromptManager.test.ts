@@ -56,6 +56,95 @@ describe('PromptManager', () => {
       
       expect(temperature).toBe(customTemperature);
     });
+
+    // New tests for multi-prompt support
+    describe('getSystemPrompts', () => {
+      it('should return array with just base prompt by default', () => {
+        const promptManager = new BasicPromptManager();
+        const prompts = promptManager.getSystemPrompts();
+        
+        expect(Array.isArray(prompts)).toBe(true);
+        expect(prompts.length).toBe(1);
+        expect(prompts[0].length).toBeGreaterThan(0);
+      });
+
+      it('should include directory structure when set', () => {
+        const promptManager = new BasicPromptManager();
+        const directoryStructure = '<context name="directoryStructure">Test directory structure</context>';
+        
+        // Set the directory structure
+        promptManager.setDirectoryStructurePrompt(directoryStructure);
+        
+        // Get the prompts and verify
+        const prompts = promptManager.getSystemPrompts();
+        expect(prompts.length).toBe(2);
+        expect(prompts[1]).toBe(directoryStructure);
+      });
+
+      it('should add error context as a separate prompt', () => {
+        const promptManager = new BasicPromptManager();
+        // First add directory structure
+        const directoryStructure = '<context name="directoryStructure">Test directory structure</context>';
+        promptManager.setDirectoryStructurePrompt(directoryStructure);
+        
+        // Create error context
+        const sessionState: SessionState = {
+          conversationHistory: [],
+          lastToolError: {
+            toolId: 'TestTool',
+            error: 'Test error message',
+            args: {}
+          }
+        };
+        
+        // Get prompts with error
+        const prompts = promptManager.getSystemPrompts(sessionState);
+        
+        // Verify order and content
+        expect(prompts.length).toBe(3);
+        expect(prompts[1]).toBe(directoryStructure);
+        expect(prompts[2]).toContain('TestTool');
+        expect(prompts[2]).toContain('Test error message');
+      });
+
+      it('should add tool limit warning as last prompt', () => {
+        const promptManager = new BasicPromptManager();
+        // Create session with error and tool limit
+        const sessionState: SessionState = {
+          conversationHistory: [],
+          lastToolError: {
+            toolId: 'TestTool',
+            error: 'Test error message',
+            args: {}
+          },
+          toolLimitReached: true
+        };
+        
+        // Get prompts with all contexts
+        const prompts = promptManager.getSystemPrompts(sessionState);
+        
+        // Verify order and content
+        expect(prompts.length).toBe(3);
+        expect(prompts[1]).toContain('TestTool');
+        expect(prompts[2]).toContain('You have reached the maximum limit');
+      });
+
+      it('should clear directory structure when set to null', () => {
+        const promptManager = new BasicPromptManager();
+        // First add directory structure
+        const directoryStructure = '<context name="directoryStructure">Test directory structure</context>';
+        promptManager.setDirectoryStructurePrompt(directoryStructure);
+        
+        // Verify it's added
+        expect(promptManager.getSystemPrompts().length).toBe(2);
+        
+        // Now clear it
+        promptManager.setDirectoryStructurePrompt(null);
+        
+        // Verify it's removed
+        expect(promptManager.getSystemPrompts().length).toBe(1);
+      });
+    });
   });
   
   describe('createDefaultPromptManager', () => {

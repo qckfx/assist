@@ -84,7 +84,8 @@ export interface ModelProviderRequest {
   tools?: unknown[];
   tool_choice?: { type: string };
   encourageToolUse?: boolean;
-  systemMessage: string;
+  systemMessage?: string; // Kept for backward compatibility
+  systemMessages?: string[]; // New array-based system messages
   temperature: number;
   toolErrorContext?: {
     toolId: string;
