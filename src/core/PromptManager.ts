@@ -45,6 +45,12 @@ export interface PromptManager {
    * @param directoryStructure Directory structure string or null to clear
    */
   setDirectoryStructurePrompt(directoryStructure: string | null): void;
+  
+  /**
+   * Sets the git state prompt
+   * @param gitState Git state string or null to clear
+   */
+  setGitStatePrompt(gitState: string | null): void;
 }
 
 // Default system prompt used for all interactions
@@ -58,6 +64,7 @@ export class BasicPromptManager implements PromptManager {
   private readonly basePrompt: string;
   private readonly defaultTemperature: number;
   private directoryStructurePrompt: string | null = null;
+  private gitStatePrompt: string | null = null;
   
   /**
    * Create a prompt manager with a fixed base prompt
@@ -82,8 +89,9 @@ export class BasicPromptManager implements PromptManager {
    * Organizes system messages for optimal caching:
    * 1. Base prompt (most stable, most cacheable)
    * 2. Directory structure (stable within a repository)
-   * 3. Error context (changes per iteration)
-   * 4. Tool limit warning (only added when needed)
+   * 3. Git state (updated per iteration)
+   * 4. Error context (changes per iteration)
+   * 5. Tool limit warning (only added when needed)
    */
   getSystemPrompts(sessionState?: SessionState): string[] {
     // Start with the most stable prompts
@@ -92,6 +100,11 @@ export class BasicPromptManager implements PromptManager {
     // Add directory structure prompt if available (relatively stable)
     if (this.directoryStructurePrompt) {
       prompts.push(this.directoryStructurePrompt);
+    }
+    
+    // Add git state prompt if available (updated per iteration)
+    if (this.gitStatePrompt) {
+      prompts.push(this.gitStatePrompt);
     }
     
     // Add error context as a separate message if available (changes frequently)
@@ -128,6 +141,14 @@ DO NOT suggest using more tools - you have reached your limit for this interacti
   
   setDirectoryStructurePrompt(directoryStructure: string | null): void {
     this.directoryStructurePrompt = directoryStructure;
+  }
+  
+  /**
+   * Sets the git state prompt
+   * @param gitState Git state information string or null to clear
+   */
+  setGitStatePrompt(gitState: string | null): void {
+    this.gitStatePrompt = gitState;
   }
 }
 

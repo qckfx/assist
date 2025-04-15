@@ -14,7 +14,13 @@ import { LogCategory, createLogger, LogLevel } from '../utils/logger';
 import Anthropic from '@anthropic-ai/sdk';
 import { MESSAGE_ADDED } from '../server/services/TimelineService';
 
-import { isSessionAborted, clearSessionAborted, AgentEvents, AgentEventType } from '../utils/sessionUtils';
+import { 
+  isSessionAborted, 
+  clearSessionAborted, 
+  AgentEvents, 
+  AgentEventType,
+  formatGitInfoAsContextPrompt 
+} from '../utils/sessionUtils';
 
 /**
  * Creates a standard response for aborted operations
@@ -212,6 +218,20 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           logger.debug(`Iteration ${iterations}/${maxIterations}`, LogCategory.SYSTEM);
           
           try {
+            // Update git repository information before asking the model
+            try {
+              const gitInfo = await executionAdapter.getGitRepositoryInfo();
+              const gitPrompt = formatGitInfoAsContextPrompt(gitInfo);
+              
+              // Update the prompt manager with current git state
+              if (config.promptManager && gitPrompt) {
+                logger.debug('Updating git state prompt', LogCategory.SYSTEM);
+                config.promptManager.setGitStatePrompt(gitPrompt);
+              }
+            } catch (gitError) {
+              logger.warn('Failed to update git repository information', gitError, LogCategory.SYSTEM);
+            }
+            
             // 1. Ask the model what to do next
             logger.debug('Getting tool call from model', LogCategory.MODEL);
             

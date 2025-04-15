@@ -5,6 +5,7 @@ import { ExecutionAdapter } from '../../types/tool';
 import { LSToolErrorResult, LSToolSuccessResult } from '../../tools/LSTool';
 import { FileReadToolErrorResult, FileReadToolSuccessResult } from '../../tools/FileReadTool';
 import { FileEditToolErrorResult, FileEditToolSuccessResult } from '../../tools/FileEditTool';
+import { GitRepositoryInfo } from '../../types/session';
 
 export class E2BExecutionAdapter implements ExecutionAdapter {
   /**
@@ -70,5 +71,26 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
     - mockFile.txt
   - mockFile2.txt
 </context>`;
+  }
+  
+  async getGitRepositoryInfo(): Promise<GitRepositoryInfo | null> {
+    // Mock git repository information with dirty status
+    return {
+      isGitRepository: true,
+      currentBranch: 'feature/e2b-mock-branch',
+      defaultBranch: 'main',
+      status: {
+        type: 'dirty',
+        modifiedFiles: ['src/utils/mockFile.ts'],
+        stagedFiles: ['src/components/mockComponent.tsx'],
+        untrackedFiles: ['src/utils/newFile.ts'],
+        deletedFiles: []
+      },
+      recentCommits: [
+        'abc1234 Mock commit 1',
+        'def5678 Mock commit 2',
+        'ghi9012 Mock commit 3'
+      ]
+    };
   }
 }

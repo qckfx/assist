@@ -3,7 +3,7 @@
  */
 import { EventEmitter } from 'events';
 import { v5 as uuidv5 } from 'uuid';
-import { SessionState } from "../types/model";
+import { GitRepositoryInfo, DirtyRepositoryStatus } from '../types/session';
 
 /**
  * Event emitter for agent-wide events
@@ -101,4 +101,57 @@ export const TOOL_EXECUTION_NAMESPACE = '1b671a64-40d5-491e-99b0-da01ff1f3341';
  */
 export function generateExecutionId(toolUseId: string): string {
   return uuidv5(toolUseId, TOOL_EXECUTION_NAMESPACE);
+}
+
+/**
+ * Format git repository information as a context prompt
+ * @param gitInfo Git repository information
+ * @returns Formatted string for use in system prompt
+ */
+export function formatGitInfoAsContextPrompt(gitInfo: GitRepositoryInfo | null): string | null {
+  if (!gitInfo || !gitInfo.isGitRepository) {
+    return null;
+  }
+  
+  // Format the status information
+  let statusInfo = '';
+  if (gitInfo.status.type === 'clean') {
+    statusInfo = '(clean)';
+  } else {
+    const dirtyStatus = gitInfo.status as DirtyRepositoryStatus;
+    const parts = [];
+    
+    // Only include sections that have files
+    if (dirtyStatus.modifiedFiles.length > 0) {
+      parts.push(`Modified:\n  ${dirtyStatus.modifiedFiles.join('\n  ')}`);
+    }
+    
+    if (dirtyStatus.stagedFiles.length > 0) {
+      parts.push(`Staged:\n  ${dirtyStatus.stagedFiles.join('\n  ')}`);
+    }
+    
+    if (dirtyStatus.untrackedFiles.length > 0) {
+      parts.push(`Untracked:\n  ${dirtyStatus.untrackedFiles.join('\n  ')}`);
+    }
+    
+    if (dirtyStatus.deletedFiles.length > 0) {
+      parts.push(`Deleted:\n  ${dirtyStatus.deletedFiles.join('\n  ')}`);
+    }
+    
+    statusInfo = parts.join('\n\n');
+  }
+  
+  // Format the prompt as a context block
+  const prompt = `<context name="gitStatus">This is the git status at the start of the conversation. Note that this status is a snapshot in time, and will not update during the conversation.
+Current branch: ${gitInfo.currentBranch}
+
+${gitInfo.defaultBranch ? `Default branch (you will usually use this for PRs): ${gitInfo.defaultBranch}` : ''}
+
+Status:
+${statusInfo}
+
+${gitInfo.recentCommits.length > 0 ? `Recent commits:\n${gitInfo.recentCommits.join('\n')}` : ''}
+</context>`;
+  
+  return prompt;
 }
