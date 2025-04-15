@@ -119,15 +119,29 @@ export const createFileWriteTool = (): Tool => {
         try {
           const readResult = await context.executionAdapter.readFile(filePath);
           
-          if (readResult.success && !overwrite) {
-            return {
-              success: false,
-              path: filePath,
-              error: `File already exists: ${filePath}. Set overwrite to true to replace it.`
-            };
+          if (readResult.success === true) {
+            // If overwrite is not enabled, don't allow writing
+            if (!overwrite) {
+              return {
+                success: false,
+                path: filePath,
+                error: `File already exists: ${filePath}. Set overwrite to true to replace it.`
+              };
+            }
+            
+            // If overwrite is enabled, check if the file has been read first
+            if (context.sessionState?.contextWindow && 
+                !context.sessionState.contextWindow.hasReadFile(filePath)) {
+              context.logger?.warn(`Attempt to overwrite file ${filePath} without reading it first`);
+              return {
+                success: false,
+                path: filePath,
+                error: `File must be read before overwriting. Please use FileReadTool first to read the file.`
+              };
+            }
           }
         } catch {
-          // File doesn't exist, which is what we want
+          // File doesn't exist, which is what we want for creating a new file
           // Or there was an error that will be handled during write
         }
         
