@@ -34,6 +34,13 @@ export interface ExecutionAdapter {
 
   ls: (dirPath: string, showHidden?: boolean, details?: boolean) => Promise<LSToolResult>;
   
+  /**
+   * Generates a structured directory map for the specified path
+   * @param rootPath The root directory to map
+   * @param maxDepth Maximum depth to traverse (default: 10)
+   * @returns A formatted directory structure as a string in context tag format
+   */
+  generateDirectoryMap: (rootPath: string, maxDepth?: number) => Promise<string>;
 }
 
 export interface ParameterSchema {

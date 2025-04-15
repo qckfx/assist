@@ -11,6 +11,11 @@ import { createAgentRunner } from './core/AgentRunner';
 import { createToolRegistry } from './core/ToolRegistry';
 import { createPermissionManager } from './core/PermissionManager';
 import { createModelClient } from './core/ModelClient';
+import { 
+  createDefaultPromptManager, 
+  createPromptManager,
+  PromptManager 
+} from './core/PromptManager';
 
 // Providers
 import { createAnthropicProvider } from './providers/AnthropicProvider';
@@ -65,7 +70,8 @@ const createAgent = (config: AgentConfig): Agent => {
   );
   
   const modelClient = createModelClient({
-    modelProvider: config.modelProvider as ModelProvider
+    modelProvider: config.modelProvider as ModelProvider,
+    promptManager: config.promptManager
   });
   
   // Create and register default tools
@@ -111,7 +117,8 @@ const createAgent = (config: AgentConfig): Agent => {
       toolRegistry,
       permissionManager,
       logger,
-      executionAdapter
+      executionAdapter,
+      promptManager: config.promptManager
     });
   };
   
@@ -154,6 +161,9 @@ export {
   createToolRegistry,
   createPermissionManager,
   createModelClient,
+  createDefaultPromptManager,
+  createPromptManager,
+  PromptManager,
   
   // Providers
   createAnthropicProvider,

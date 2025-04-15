@@ -43,7 +43,16 @@
     "eval:custom": "ts-node src/eval/index.ts run --config",
     "eval:list": "ts-node src/eval/index.ts list",
     "eval:build": "npm run build && node dist/eval/index.js",
-    "eval:setup": "echo 'Set ANTHROPIC_API_KEY and E2B_API_KEY in your environment variables'"
+    "eval:setup": "echo 'Set ANTHROPIC_API_KEY and E2B_API_KEY in your environment variables'",
+    "docker:build": "docker-compose -f docker/docker-compose.yml -p qckfx build",
+    "docker:start": "docker-compose -f docker/docker-compose.yml -p qckfx up -d",
+    "docker:stop": "docker-compose -f docker/docker-compose.yml -p qckfx down",
+    "docker:shell": "docker exec -it qckfx_agent-sandbox_1 bash",
+    "docker:logs": "docker-compose -f docker/docker-compose.yml -p qckfx logs -f",
+    "docker:test-mapper": "./scripts/test-docker-mapper.sh",
+    "docker:debug": "./scripts/docker-debug.sh",
+    "docker:advanced-debug": "./scripts/docker-advanced-debug.sh",
+    "docker:fix": "./scripts/fix-docker-mapper.sh"
   },
   "keywords": [
     "ai",
