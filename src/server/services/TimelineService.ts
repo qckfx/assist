@@ -9,7 +9,9 @@ import {
   ToolExecutionState, 
   PermissionRequestState, 
   ToolExecutionStatus,
-  ToolExecutionManager
+  ToolExecutionManager,
+  PermissionRequestedEventData,
+  PermissionResolvedEventData
 } from '../../types/tool-execution';
 
 // Define local version of ToolState enum to match UI's definition
@@ -462,6 +464,13 @@ export class TimelineService extends EventEmitter {
     permissionRequest: PermissionRequestState,
     preview?: ToolPreviewState
   ): Promise<PermissionRequestTimelineItem> {
+    // If we have a preview but permissionRequest doesn't have previewId, add it
+    if (preview && !permissionRequest.previewId) {
+      permissionRequest.previewId = preview.id;
+      
+      serverLogger.debug(`[TIMELINE] Updated permission request ${permissionRequest.id} with previewId ${preview.id}`);
+    }
+    
     // Create the timeline item
     const timelineItem: PermissionRequestTimelineItem = {
       id: permissionRequest.id,
@@ -491,6 +500,24 @@ export class TimelineService extends EventEmitter {
         executionId: permissionRequest.executionId
       });
       
+      // Format the preview for client consumption if we have one
+      let formattedPreview = undefined;
+      if (preview) {
+        formattedPreview = {
+          contentType: preview.contentType,
+          briefContent: preview.briefContent,
+          fullContent: preview.fullContent,
+          metadata: preview.metadata
+        };
+        
+        serverLogger.debug(`[PERMISSION] Including preview data in PERMISSION_REQUESTED event`, {
+          previewId: preview.id,
+          contentType: preview.contentType,
+          hasMetadata: !!preview.metadata,
+          metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
+        });
+      }
+      
       // Directly emit to WebSocket so the client gets the permission request immediately
       this.emitToSession(sessionId, WebSocketEvent.PERMISSION_REQUESTED, {
         sessionId,
@@ -503,33 +530,48 @@ export class TimelineService extends EventEmitter {
           executionId: permissionRequest.executionId,
           args: permissionRequest.args,
           timestamp: permissionRequest.requestTime,
-          preview: preview ? {
-            contentType: preview.contentType,
-            briefContent: preview.briefContent,
-            fullContent: preview.fullContent,
-            metadata: preview.metadata
-          } : undefined
+          preview: formattedPreview,
+          // Add these flags to help client-side detection
+          hasPreview: !!formattedPreview,
+          previewContentType: preview?.contentType
         },
         // Also include these top-level fields for UI components
         executionId: permissionRequest.executionId,
         toolId: permissionRequest.toolId,
-        toolName: permissionRequest.toolName || "Unknown Tool"
+        toolName: permissionRequest.toolName || "Unknown Tool",
+        // Also include preview as a top-level field for components that might expect it there
+        preview: formattedPreview,
+        hasPreview: !!formattedPreview
       });
       
       // Additionally emit a tool execution update to ensure the status change is visible to clients
       // But ONLY for new permission requests, not resolved ones
       if (permissionRequest.executionId) {
         // Get the execution from cache if available
+        const toolExecution: Record<string, unknown> = {
+          id: permissionRequest.executionId,
+          toolId: permissionRequest.toolId,
+          toolName: permissionRequest.toolName || "Unknown Tool",
+          status: "awaiting-permission",
+          args: permissionRequest.args,
+          startTime: permissionRequest.requestTime
+        };
+        
+        // Include preview if available
+        if (formattedPreview) {
+          toolExecution.preview = formattedPreview;
+          toolExecution.hasPreview = true;
+          toolExecution.previewContentType = preview?.contentType;
+          
+          serverLogger.debug(`[PERMISSION] Including preview in TOOL_EXECUTION_UPDATED for ${permissionRequest.executionId}`, {
+            previewId: preview?.id,
+            contentType: preview?.contentType
+          });
+        }
+        
         this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
           sessionId,
-          toolExecution: {
-            id: permissionRequest.executionId,
-            toolId: permissionRequest.toolId,
-            toolName: permissionRequest.toolName || "Unknown Tool",
-            status: "awaiting-permission",
-            args: permissionRequest.args,
-            startTime: permissionRequest.requestTime
-          }
+          toolExecution
         });
       }
     }
@@ -750,7 +792,7 @@ export class TimelineService extends EventEmitter {
     
     // Subscribe to permission events from registry
     
-    this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_REQUESTED, (data: any) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_REQUESTED, (data: PermissionRequestedEventData & { sessionId: string }) => {
       
       if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
         serverLogger.error('[PERMISSION] Missing required data in PERMISSION_REQUESTED event', data);
@@ -781,7 +823,7 @@ export class TimelineService extends EventEmitter {
     });
     
     
-    this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_RESOLVED, (data: any) => {
+    this.agentServiceRegistry.on(AgentServiceEvent.PERMISSION_RESOLVED, (data: PermissionResolvedEventData & { sessionId: string }) => {
       
       if (!data || !data.sessionId || !data.permissionRequest || !data.permissionRequest.id) {
         serverLogger.error('[PERMISSION] Missing required data in PERMISSION_RESOLVED event', data);
@@ -789,7 +831,9 @@ export class TimelineService extends EventEmitter {
       }
       
       // All the data we need is in the event - no need to query other services
-      const { sessionId, permissionRequest, preview } = data;
+      const { sessionId, permissionRequest } = data;
+      // PermissionResolved events don't have preview, so default to undefined
+      const preview = undefined;
       const permissionId = permissionRequest.id;
       const now = Date.now();
       const lastProcessed = permissionDebounce.get(permissionId);
@@ -815,12 +859,8 @@ export class TimelineService extends EventEmitter {
       // Include additional fields to ensure UI components can handle this properly
       this.emitToSession(sessionId, WebSocketEvent.PERMISSION_RESOLVED, {
         sessionId,
-        executionId: permissionRequest.executionId, // This must match what's used in the UI
-        resolution: permissionRequest.granted,
-        // Add these fields to maintain compatibility with all UI components
-        toolId: permissionRequest.toolId,
-        toolName: permissionRequest.toolName || "Unknown Tool",
-        permissionId: permissionRequest.id
+        executionId: permissionRequest.executionId,
+        resolution: permissionRequest.granted
       });
       
       // Clean up after a delay
@@ -883,11 +923,7 @@ export class TimelineService extends EventEmitter {
     serverLogger.info('🟢🟢🟢 TimelineService: Set up to receive events from AgentServiceRegistry');
   }
   
-  // The setupToolExecutionListeners and setupToolExecutionManagerListeners methods
-  // have been removed as part of the refactoring to use the AgentServiceRegistry
-  // for event propagation instead of directly subscribing to tool execution managers.
-
-  /**
+    /**
    * Find the parent message ID for a tool execution
    */
   private async findParentMessageId(sessionId: string, executionId: string): Promise<string | undefined> {

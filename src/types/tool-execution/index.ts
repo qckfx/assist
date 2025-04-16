@@ -199,6 +199,23 @@ export interface ExecutionCompletedWithPreviewEventData {
 }
 
 /**
+ * Type for data emitted with the PERMISSION_REQUESTED event
+ */
+export interface PermissionRequestedEventData {
+  execution: ToolExecutionState;
+  permissionRequest: PermissionRequestState;
+  preview?: ToolPreviewState;
+}
+
+/**
+ * Type for data emitted with the PERMISSION_RESOLVED event
+ */
+export interface PermissionResolvedEventData {
+  execution: ToolExecutionState;
+  permissionRequest: PermissionRequestState;
+}
+
+/**
  * Interface for tool execution manager
  */
 export interface ToolExecutionManager {

@@ -1,27 +1,21 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { AgentService, AgentServiceEvent } from './AgentService';
+import { AgentServiceEvent } from './AgentService';
 import { AgentServiceRegistry } from './AgentServiceRegistry';
-import { container } from '../container';
-import { SessionManager, sessionManager, Session } from './SessionManager';
+import { SessionManager, sessionManager } from './SessionManager';
 import { serverLogger } from '../logger';
-import { LogCategory } from '../../types/logger';
 import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from '../../utils/sessionUtils';
 import { 
   ToolPreviewData, 
   ToolPreviewState,
-  PreviewContentType,
-  TextPreviewData,
-  CodePreviewData,
-  DiffPreviewData
 } from '../../types/preview';
 import { WebSocketEvent } from '../../types/websocket';
 import { 
   ToolExecutionState, 
-  ToolExecutionStatus
+  ToolExecutionStatus,
+  PermissionRequestedEventData,
+  PermissionResolvedEventData
 } from '../../types/tool-execution';
-import { previewService } from './preview';
-import { getSessionStatePersistence } from './sessionPersistenceProvider';
 
 
 /**
@@ -866,12 +860,10 @@ export class WebSocketService {
   /**
    * Handle permission requested event
    */
-  private handlePermissionRequested(data: {
+  private handlePermissionRequested(data: PermissionRequestedEventData & {
     sessionId: string;
-    execution: { id: string; toolId: string; toolName: string; }; 
-    permissionRequest: { id: string; toolId: string; args: Record<string, unknown>; requestTime: string; };
   }): void {
-    const { sessionId, execution, permissionRequest } = data;
+    const { sessionId, execution, permissionRequest, preview } = data;
     
     if (!execution || !execution.id || !permissionRequest) {
       serverLogger.warn(`Invalid permission request data:`, data);
@@ -891,69 +883,106 @@ export class WebSocketService {
       return;
     }
     
-    // Add enhanced logging to diagnose issues
-    console.log(`🔥 Sending PERMISSION_REQUESTED for execution ${executionId} in session ${sessionId}`);
-    console.log(`🔥 Data being sent:`, {
-      sessionId,
-      toolId: permissionRequest.toolId,
-      toolName: execution.toolName,
-      executionId: executionId,
-      permissionId: permissionRequest.id
-    });
+    console.log(`🔴🔴🔴 Preview: ${preview}`);
+    if (!preview && permissionRequest.previewId) {
+      console.log(`🔴🔴🔴 Preview not found for permission request: ${permissionRequest.previewId}`);
+    }
     
-    // Send permission requested event with the execution ID in the format client expects
+    // Check if we have a preview in the event data or need to look it up
+    // let previewData = preview;
+    
+    // If no preview in event data but there's a previewId, try to get it
+    // if (!previewData && permissionRequest.previewId) {
+    //   previewData = agentService.getPreview(permissionRequest.previewId);
+    //   serverLogger.debug(`Retrieved preview for permission request from ID: ${permissionRequest.previewId}`, {
+    //     hasPreview: !!previewData,
+    //     contentType: previewData?.contentType
+    //   });
+    // }
+    
+    // If still no preview, try to get it from the execution
+    // if (!previewData) {
+    //   previewData = agentService.getPreviewForExecution(executionId);
+    //   if (previewData) {
+    //     serverLogger.debug(`Retrieved preview for permission request from execution: ${executionId}`, {
+    //       previewId: previewData.id,
+    //       contentType: previewData.contentType
+    //     });
+    //   }
+    // }
+    
+    // Format the preview for client if we have one
+    const formattedPreview = preview ? this.convertPreviewToClientFormat(preview) : null;
+    
+    // Send permission requested event - SIMPLIFIED FORMAT - with just executionId at top level
+    console.log(`🔴🔴🔴 Sending PERMISSION_REQUESTED for execution ${executionId} in session ${sessionId}`);
+    
     this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, {
       sessionId,
+      executionId: executionId,
       permission: {
         id: permissionRequest.id,
         toolId: permissionRequest.toolId,
         toolName: execution.toolName,
         args: permissionRequest.args,
         timestamp: permissionRequest.requestTime,
-        executionId: executionId // This is the critical field for client-side permission resolution
-      },
-      // Also include these top-level fields for UI components that expect them
-      executionId: executionId,
-      toolId: permissionRequest.toolId,
-      toolName: execution.toolName
+        executionId: executionId
+      }
     });
     
     // Also emit a tool execution update to ensure the status is properly set to "awaiting-permission"
     // This ensures tools will appear in the activeTools array in useToolVisualization
-    console.log(`🔥 Also sending TOOL_EXECUTION_UPDATED for execution ${executionId} with status "awaiting-permission"`);
+    serverLogger.info(`🔥 Sending TOOL_EXECUTION_UPDATED for execution ${executionId} with status "awaiting-permission"`, {
+      hasPreview: !!formattedPreview,
+      previewType: preview?.contentType
+    });
     
+    // Create the execution update with all necessary fields
+    const toolExecution: Record<string, unknown> = {
+      id: executionId,
+      toolId: permissionRequest.toolId,
+      toolName: execution.toolName,
+      status: "awaiting-permission",
+      args: permissionRequest.args,
+      startTime: permissionRequest.requestTime,
+      permissionId: permissionRequest.id
+    };
+    
+    // If we have a preview, include it in the update
+    if (formattedPreview) {
+      toolExecution.preview = formattedPreview;
+      toolExecution.hasPreview = true;
+      toolExecution.previewContentType = preview?.contentType;
+      
+      serverLogger.info(`Including preview in tool execution update for ${executionId}:`, {
+        previewId: preview?.id,
+        contentType: preview?.contentType,
+        formattedPreviewKeys: Object.keys(formattedPreview)
+      });
+    }
+    
+    // Send the update
     this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
       sessionId,
-      toolExecution: {
-        id: executionId,
-        toolId: permissionRequest.toolId,
-        toolName: execution.toolName,
-        status: "awaiting-permission",
-        args: permissionRequest.args,
-        startTime: permissionRequest.requestTime,
-        // Include the permission details to ensure UI components have all necessary information
-        permissionId: permissionRequest.id
-      }
+      toolExecution
     });
   }
   
   /**
    * Handle permission resolved event
    */
-  private handlePermissionResolved(data: {
+  private handlePermissionResolved(data: PermissionResolvedEventData & {
     sessionId: string;
-    execution: { id: string; toolId: string; toolName: string; }; 
-    permission: { id: string; toolId: string; granted: boolean; resolvedTime: string; };
   }): void {
-    const { sessionId, execution, permission } = data;
+    const { sessionId, execution, permissionRequest } = data;
     
-    if (!execution || !execution.id || !permission) {
+    if (!execution || !execution.id || !permissionRequest) {
       serverLogger.warn(`Invalid permission resolution data:`, data);
       return;
     }
     
     const executionId = execution.id;
-    const granted = permission.granted;
+    const granted = permissionRequest.granted;
     
     // Get the agent service for this session
     const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
@@ -972,12 +1001,8 @@ export class WebSocketService {
     
     this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, {
       sessionId,
-      executionId,
-      resolution: granted,
-      // Add these fields to maintain compatibility with all UI components
-      toolId: permission.toolId,
-      toolName: execution.toolName,
-      permissionId: permission.id
+      executionId: executionId,
+      resolution: granted
     });
     
     // Also emit a tool execution update to ensure the status is updated based on the permission resolution
@@ -985,15 +1010,22 @@ export class WebSocketService {
     const newStatus = granted ? "running" : "aborted";
     console.log(`🔥 Also sending TOOL_EXECUTION_UPDATED for execution ${executionId} with status "${newStatus}" after permission resolution`);
     
+    // Also include the permissionRequest object in this update, ensuring all components receive the data in the same structure
     this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
       sessionId,
       toolExecution: {
         id: executionId,
-        toolId: permission.toolId,
+        toolId: permissionRequest.toolId,
         toolName: execution.toolName,
         status: newStatus,
-        // Include the permission resolution to ensure UI components have all necessary information
-        permissionResolution: granted
+        permission: {
+          id: permissionRequest.id,
+          toolId: permissionRequest.toolId,
+          toolName: execution.toolName,
+          timestamp: permissionRequest.resolvedTime,
+          executionId: executionId,
+          granted: granted
+        }
       }
     });
   }
