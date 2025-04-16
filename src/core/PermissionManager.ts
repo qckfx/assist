@@ -19,8 +19,6 @@ export const createPermissionManager = (
 ): PermissionManager => {
   const logger = config.logger;
   
-  // Track granted permissions
-  const grantedPermissions = new Map<string, boolean>();
   
   // Fast Edit Mode state - when enabled, file operations don't require permission
   let fastEditMode = config.initialFastEditMode || false;
@@ -38,14 +36,6 @@ export const createPermissionManager = (
   };
   
   return {
-    /**
-     * Check if a tool has been granted permission
-     * @param toolId - The ID of the tool to check
-     * @returns Whether permission has been granted
-     */
-    hasPermission(toolId: string): boolean {
-      return grantedPermissions.has(toolId);
-    },
     
     /**
      * Request permission for a tool
@@ -112,7 +102,6 @@ export const createPermissionManager = (
       // Log the permission decision
       if (granted) {
         logger?.info(`Permission granted for tool: ${toolId}`, LogCategory.PERMISSIONS);
-        grantedPermissions.set(toolId, true);
       } else {
         logger?.info(`Permission denied for tool: ${toolId}`, LogCategory.PERMISSIONS);
       }
@@ -120,20 +109,6 @@ export const createPermissionManager = (
       return granted;
     },
     
-    /**
-     * Revoke permission for a tool
-     * @param toolId - The ID of the tool to revoke permission for
-     */
-    revokePermission(toolId: string): void {
-      grantedPermissions.delete(toolId);
-    },
-    
-    /**
-     * Clear all granted permissions
-     */
-    clearAllPermissions(): void {
-      grantedPermissions.clear();
-    },
     
     /**
      * Set the fast edit mode

@@ -21,10 +21,7 @@ export interface PermissionManagerConfig {
 }
 
 export interface PermissionManager {
-  hasPermission(toolId: string): boolean;
   requestPermission(toolId: string, args: Record<string, unknown>): Promise<boolean>;
-  revokePermission(toolId: string): void;
-  clearAllPermissions(): void;
   
   // Fast Edit Mode methods
   setFastEditMode(enabled: boolean): void;
