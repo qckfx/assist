@@ -3,26 +3,24 @@
  */
 
 import { Anthropic } from '@anthropic-ai/sdk';
-import { Logger } from '../utils/logger';
 
 export class ContextWindow {
   // Public conversation history
-  public messages: Anthropic.Messages.MessageParam[];
+  private _messages: Anthropic.Messages.MessageParam[];
   
   // Private file tracking
   private _filesRead: Set<string>;
   
-  constructor() {
-    this.messages = [];
+  constructor(messages?: Anthropic.Messages.MessageParam[]) {
+    this._messages = messages || [];
     this._filesRead = new Set<string>();
   }
   
   /**
    * Record a file being read in the current context
    */
-  public recordFileRead(filePath: string, logger?: Logger): void {
+  public recordFileRead(filePath: string): void {
     this._filesRead.add(filePath);
-    logger?.debug(`Recorded file read: ${filePath}`);
   }
   
   /**
@@ -35,10 +33,8 @@ export class ContextWindow {
   /**
    * Clear all file tracking data when context is refreshed
    */
-  public clearFileTracking(logger?: Logger): void {
-    const count = this._filesRead.size;
+  public clearFileTracking(): void {
     this._filesRead.clear();
-    logger?.debug(`Cleared file tracking data (${count} files)`);
   }
   
   /**
@@ -47,9 +43,29 @@ export class ContextWindow {
   public getReadFiles(): string[] {
     return Array.from(this._filesRead);
   }
+
+  public getMessages(): Anthropic.Messages.MessageParam[] {
+    return this._messages;
+  }
+
+  public push(message: Anthropic.Messages.MessageParam): void {
+    this._messages.push(message);
+  }
+  
+  public clear(): void {
+    this._messages = [];
+  }
+  
+  public getLength(): number {
+    return this._messages.length;
+  }
+  
+  public setMessages(messages: Anthropic.Messages.MessageParam[]): void {
+    this._messages = messages;
+  }
 }
 
 // Factory function for creating new context windows
-export function createContextWindow(): ContextWindow {
-  return new ContextWindow();
+export function createContextWindow(messages?: Anthropic.Messages.MessageParam[]): ContextWindow {
+  return new ContextWindow(messages);
 }

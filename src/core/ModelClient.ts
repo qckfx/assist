@@ -77,7 +77,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         query: query ? query.substring(0, 50) + (query.length > 50 ? '...' : '') : 'none',
         toolCount: toolDescriptions.length,
         sessionId: sessionState.id || 'unknown',
-        historyLength: sessionState.contextWindow?.messages.length || 0,
+        historyLength: sessionState.contextWindow?.getMessages().length || 0,
         lastResult: !!sessionState.lastResult,
         hasToolError: !!sessionState.lastToolError
       });
@@ -106,7 +106,7 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       console.log('⚠️ MODEL_CLIENT sending request to modelProvider with:', {
         hasQuery: !!query, 
         toolCount: claudeTools.length,
-        historyLength: sessionState.contextWindow?.messages.length || 0,
+        historyLength: sessionState.contextWindow.getLength() || 0,
         sessionId: sessionState.id || 'unknown'
       });
       
@@ -162,10 +162,10 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
             ]
           };
           
-          sessionState.contextWindow.messages.push(toolUseMessage);
+          sessionState.contextWindow.push(toolUseMessage);
           console.log('⚠️ MODEL_CLIENT added tool use to context window:', {
             toolName: toolUse.name,
-            historyLength: sessionState.contextWindow.messages.length
+            historyLength: sessionState.contextWindow.getLength()
           });
         } else {
           console.log('⚠️ MODEL_CLIENT did not add tool use to context window:', {

@@ -122,8 +122,8 @@ export const createFileReadTool = (): Tool => {
         const result = await executionAdapter.readFile(filePath, maxSize, lineOffset, lineCount, encoding);
         
         // If successful (result.success is true), record the file read in the contextWindow
-        if (result.success === true && context.sessionState?.contextWindow) {
-          context.sessionState.contextWindow.recordFileRead(filePath, context.logger);
+        if (result.success === true && context.sessionState && context.sessionState.contextWindow) {
+          context.sessionState.contextWindow.recordFileRead(filePath);
         }
         
         return result;
