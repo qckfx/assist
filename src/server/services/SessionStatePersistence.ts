@@ -98,7 +98,7 @@ export class SessionStatePersistence extends EventEmitter {
       }
       
       const data = await fs.readFile(filePath, 'utf-8');
-      let sessionData = JSON.parse(data) as SavedSessionData;
+      const sessionData = JSON.parse(data) as SavedSessionData;
       
       // IMPORTANT ADDITION: Try to load messages from subdirectory if they exist
       try {
@@ -687,7 +687,7 @@ export class SessionStatePersistence extends EventEmitter {
     sessionState: SessionState, 
     toolExecutions: ToolExecutionState[]
   ): StoredMessage[] {
-    if (!sessionState.conversationHistory) {
+    if (!sessionState.contextWindow) {
       return [];
     }
     
@@ -701,7 +701,7 @@ export class SessionStatePersistence extends EventEmitter {
     const messages: StoredMessage[] = [];
     let sequence = 0;
     
-    for (const message of sessionState.conversationHistory) {
+    for (const message of sessionState.contextWindow.getMessages()) {
       if (!message.content || !Array.isArray(message.content)) {
         continue;
       }

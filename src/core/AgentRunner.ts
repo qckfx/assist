@@ -9,7 +9,7 @@ import {
   ProcessQueryResult, 
   ToolResultEntry 
 } from '../types/agent';
-import { ToolCall, ConversationMessage, SessionState } from '../types/model';
+import { ToolCall, SessionState } from '../types/model';
 import { LogCategory, createLogger, LogLevel } from '../utils/logger';
 import Anthropic from '@anthropic-ai/sdk';
 import { MESSAGE_ADDED } from '../server/services/TimelineService';
@@ -21,6 +21,7 @@ import {
   AgentEventType,
   formatGitInfoAsContextPrompt 
 } from '../utils/sessionUtils';
+import { createContextWindow } from '../types/contextWindow';
 
 /**
  * Creates a standard response for aborted operations
@@ -99,7 +100,7 @@ function summarizeArgs(args: Record<string, unknown>): string {
  */
 export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
   // Listen for abort events just for logging purposes
-  const removeAbortListener = AgentEvents.on(
+  AgentEvents.on(
     AgentEventType.ABORT_SESSION,
     (sessionId: string) => {
       console.log(`AgentRunner received abort event for session: ${sessionId}`);
@@ -155,19 +156,14 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         const maxIterations = permissionManager.isDangerModeEnabled() ? 40 : 15;
         let iterations = 0;
         
-        // Initialize conversation history if it doesn't exist
-        if (!sessionState.conversationHistory) {
-          sessionState.conversationHistory = [];
-        }
-        
         // Always reset the tool limit reached flag at the start of processing a new query
         sessionState.toolLimitReached = false;
         
         // Always add the user query to conversation history after an abort
         // or if it's the first message or if the last message wasn't from the user
         if (isSessionAborted(sessionId) || 
-            sessionState.conversationHistory.length === 0 || 
-            sessionState.conversationHistory[sessionState.conversationHistory.length - 1].role !== 'user') {
+            sessionState.contextWindow.getLength() === 0 || 
+            sessionState.contextWindow.getMessages()[sessionState.contextWindow.getLength() - 1].role !== 'user') {
           
           // Reset abort status if it was previously set
           if (isSessionAborted(sessionId)) {
@@ -181,7 +177,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             role: 'user',
             content: [{ type: 'text', text: query }]
           };
-          sessionState.conversationHistory.push(userMessage);
+          sessionState.contextWindow.push(userMessage);
         }
         
         // Create the context for tool execution
@@ -203,7 +199,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           hasFinalResponse: !!finalResponse,
           sessionId: sessionId,
           isAborted: isSessionAborted(sessionId),
-          conversationHistoryLength: sessionState.conversationHistory?.length || 0,
+          conversationHistoryLength: sessionState.contextWindow.getLength() || 0,
           currentQuery: currentQuery ? currentQuery.substring(0, 50) + '...' : 'none'
         });
         
@@ -255,8 +251,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 const toolCall = toolCallChat.toolCall as ToolCall;
                 
                 // Create an aborted tool result message for the chosen tool
-                if (sessionState.conversationHistory && toolCall.toolUseId) {
-                  sessionState.conversationHistory.push({
+                if (sessionState.contextWindow && toolCall.toolUseId) {
+                  sessionState.contextWindow.push({
                     role: "user",
                     content: [
                       {
@@ -328,8 +324,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               });
               
               // Always add a tool_result message to the conversation history for this tool call
-              if (sessionState.conversationHistory && toolCall.toolUseId) {
-                sessionState.conversationHistory.push({
+              if (sessionState.contextWindow && toolCall.toolUseId) {
+                sessionState.contextWindow.push({
                   role: "user",
                   content: [
                     {
@@ -394,8 +390,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 };
                 
                 // Add this result to the conversation history as a proper tool result
-                if (sessionState.conversationHistory && toolCall.toolUseId) {
-                  sessionState.conversationHistory.push({
+                if (sessionState.contextWindow && toolCall.toolUseId) {
+                  sessionState.contextWindow.push({
                     role: "user",
                     content: [
                       {
@@ -439,7 +435,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 // Modify the current query for the next iteration
                 currentQuery = fixPrompt;
 
-                sessionState.conversationHistory.push({
+                sessionState.contextWindow.push({
                   role: 'user',
                   content: [
                     { type: 'tool_result', tool_use_id: toolCall.toolUseId, content: fixPrompt } 
@@ -465,9 +461,9 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               // We should have already added the tool_result to the conversation history
               // But let's ensure it was done by checking if the last message has our tool_use_id
               
-              const lastMessage = sessionState.conversationHistory && 
-                sessionState.conversationHistory.length > 0 ?
-                sessionState.conversationHistory[sessionState.conversationHistory.length - 1] : null;
+              const lastMessage = sessionState.contextWindow && 
+                sessionState.contextWindow.getLength() > 0 ?
+                sessionState.contextWindow.getMessages()[sessionState.contextWindow.getLength() - 1] : null;
                 
               const hasToolResultMessage = lastMessage &&
                 lastMessage.role === 'user' &&
@@ -478,9 +474,9 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 );
               
               // If for some reason the tool result wasn't added, add it now
-              if (!hasToolResultMessage && sessionState.conversationHistory && toolCall.toolUseId) {
+              if (!hasToolResultMessage && sessionState.contextWindow && toolCall.toolUseId) {
                 logger.info('Adding tool result to conversation history', LogCategory.SYSTEM);
-                sessionState.conversationHistory.push({
+                sessionState.contextWindow.push({
                   role: "user",
                   content: [
                     {
@@ -497,7 +493,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             
             // Add tool result to conversation history if it exists
             console.log('⚠️ HISTORY: Adding tool result to conversation history for tool:', toolCall.toolId);
-            if (sessionState.conversationHistory && toolCall.toolUseId) {
+            if (sessionState.contextWindow && toolCall.toolUseId) {
               // Create the message with proper Anthropic types
               const resultMessage: Anthropic.Messages.MessageParam = {
                 role: "user",
@@ -509,15 +505,15 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                   } 
                 ]
               };
-              sessionState.conversationHistory.push(resultMessage);
-              console.log('⚠️ HISTORY: Added tool result to conversation history, history length now:', sessionState.conversationHistory.length);
+              sessionState.contextWindow.push(resultMessage);
+              console.log('⚠️ HISTORY: Added tool result to conversation history, history length now:', sessionState.contextWindow.getLength());
               
               // Type assertion to safely access properties
               const contentBlock = resultMessage.content[0] as { type: string; tool_use_id: string };
               console.log('⚠️ HISTORY: Last message type:', contentBlock.type, 'for tool use ID:', contentBlock.tool_use_id);
             } else {
               console.log('⚠️ HISTORY ERROR: Could not add tool result to conversation history:', {
-                hasHistory: !!sessionState.conversationHistory,
+                hasHistory: !!sessionState.contextWindow,
                 hasToolUseId: !!toolCall.toolUseId,
                 toolUseId: toolCall.toolUseId
               });
@@ -551,7 +547,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               hasFinalResponse: !!finalResponse,
               sessionId: sessionId,
               isAborted: isSessionAborted(sessionId),
-              conversationHistoryLength: sessionState.conversationHistory?.length || 0
+              conversationHistoryLength: sessionState.contextWindow.getLength() || 0
             });
           } catch (error: unknown) {
             logger.error(`Error in iteration ${iterations}:`, error, LogCategory.SYSTEM);
@@ -609,7 +605,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             role: 'assistant',
             content: finalResponse.content
           };
-          sessionState.conversationHistory.push(assistantMessage);
+          sessionState.contextWindow.push(assistantMessage);
           
           // Emit message:added event for TimelineService to pick up
           AgentEvents.emit(MESSAGE_ADDED, {
@@ -636,7 +632,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           iterations,
           hasResponse: !!responseText,
           responseTextLength: responseText ? responseText.length : 0,
-          conversationHistoryLength: sessionState.conversationHistory?.length || 0,
+          conversationHistoryLength: sessionState.contextWindow.getLength() || 0,
           isAborted: isSessionAborted(sessionId)
         });
         
@@ -676,7 +672,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
      */
     async runConversation(initialQuery: string): Promise<ConversationResult> {
       let query = initialQuery;
-      let sessionState: Record<string, unknown> = { conversationHistory: [] };
+      let sessionState: Record<string, unknown> = { contextWindow: createContextWindow() };
       let done = false;
       const responses: string[] = [];
       

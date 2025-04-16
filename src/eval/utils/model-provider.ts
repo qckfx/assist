@@ -5,6 +5,7 @@
  */
 
 import { createAnthropicProvider } from '../../providers/AnthropicProvider';
+import { createContextWindow } from '../../types/contextWindow';
 import { createLogger, LogLevel } from '../../utils/logger';
 import { ModelProvider, ProcessQueryOptions } from '../runners/judge';
 import { MessageParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs';
@@ -38,7 +39,7 @@ class AnthropicProviderAdapter implements ModelProvider {
         systemMessage: options.systemPrompt || "You are an expert AI evaluator and judge.",
         temperature: options.temperature || 0.1, // Lower temperature for more consistent judging
         sessionState: {
-          conversationHistory: [userMessage],
+          contextWindow: createContextWindow([userMessage]),
           agentServiceConfig: {
             apiKey: process.env.ANTHROPIC_API_KEY!,
             defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',

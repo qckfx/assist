@@ -7,6 +7,7 @@ import { FileEditToolResult } from "../tools/FileEditTool";
 import { FileReadToolResult } from "../tools/FileReadTool";
 import { LSToolResult } from "../tools/LSTool";
 import { GitRepositoryInfo } from "./session";
+import { SessionState } from "./model";
 
 /**
  * Categories for tools to classify their purpose and permission requirements
@@ -104,6 +105,7 @@ export interface ToolContext {
     getAllTools: () => Tool[];
     getTool: (toolId: string) => Tool | undefined;
   };
+  sessionState: SessionState;
   [key: string]: unknown;
 }
 

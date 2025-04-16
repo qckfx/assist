@@ -879,7 +879,7 @@ export class AgentService extends EventEmitter {
         await persistence.saveSession(sessionData);
         
         // Log conversation history size
-        const historyLength = sessionState?.conversationHistory?.length || 0;
+        const historyLength = sessionState?.contextWindow.getLength() || 0;
         serverLogger.debug(
           `Saved agent conversation history for session ${sessionId} (${historyLength} messages)`,
           LogCategory.SESSION
@@ -1037,12 +1037,12 @@ export class AgentService extends EventEmitter {
     try {
       // Get session
       const session = sessionManager.getSession(sessionId);
-      if (!session.state?.conversationHistory) {
+      if (!session.state?.contextWindow) {
         return;
       }
       
       // Extract storable messages from conversation history
-      const messages = this.extractStorableMessages(session.state.conversationHistory);
+      const messages = this.extractStorableMessages(session.state.contextWindow.getMessages());
       
       // Enrich with tool details
       const toolExecutions = this.toolExecutionManager.getExecutionsForSession(sessionId);
@@ -1771,7 +1771,7 @@ export class AgentService extends EventEmitter {
   public getHistory(sessionId: string): Anthropic.Messages.MessageParam[] {
     // Get the session
     const session = sessionManager.getSession(sessionId);
-    return session.state.conversationHistory || [];
+    return session.state.contextWindow?.getMessages() || [];
   }
   
   /**
