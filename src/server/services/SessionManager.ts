@@ -7,6 +7,7 @@ import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
 import { AgentServiceConfig } from './AgentService';
+import { ContextWindow } from '../../types/contextWindow';
 
 /**
  * Session information
@@ -113,7 +114,7 @@ export class SessionManager {
       createdAt: new Date(),
       lastActiveAt: new Date(),
       state: { 
-        conversationHistory: [],
+        contextWindow: new ContextWindow(),
         agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig
       },
       isProcessing: false,

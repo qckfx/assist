@@ -22,6 +22,7 @@ import { createFileWriteTool } from '../../tools/FileWriteTool';
 import { extractExecutionHistory } from '../utils/execution-history';
 import { ModelProvider } from '../../types';
 import { ToolRegistry } from '../../types/registry';
+import { createContextWindow } from '../../types/contextWindow';
 
 /**
  * Run a single test case with the given system prompt
@@ -136,7 +137,7 @@ export async function runTestCase(
   
   try {
     // Run the test case
-    const result = await runner.processQuery(testCase.instructions, { conversationHistory: [] });
+    const result = await runner.processQuery(testCase.instructions, { contextWindow: createContextWindow() });
     
     // Determine success based on the result - no error means success by default
     success = !result.error;
@@ -331,7 +332,7 @@ export async function runTestCaseWithHistory(
   
   try {
     // Create an empty session state to collect the conversation
-    const sessionState = { conversationHistory: [] };
+    const sessionState = { contextWindow: createContextWindow() };
     
     // Run the test case with session state
     const result = await runner.processQuery(testCase.instructions, sessionState);

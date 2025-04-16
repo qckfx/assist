@@ -129,16 +129,16 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         ? prompt.cachingEnabled 
         : cachingEnabled;
       
-      if (prompt.sessionState?.conversationHistory && prompt.sessionState.conversationHistory.length > 0) {
+      if (prompt.sessionState?.contextWindow && prompt.sessionState.contextWindow.getLength() > 0) {
         logger?.debug('Calling Anthropic API', LogCategory.MODEL, { 
           model,
-          messageCount: prompt.sessionState.conversationHistory.length
+          messageCount: prompt.sessionState.contextWindow.getLength()
         });
       } else {
         logger?.debug('Calling Anthropic API', LogCategory.MODEL, { model, prompt: 'No messages provided' });
       }
 
-      const conversationHistory = prompt.sessionState?.conversationHistory || [];
+      const conversationHistory = prompt.sessionState?.contextWindow?.getMessages() || [];
       
       // Proactively check token count if conversation history is getting long (> 8 messages)
       if (prompt.sessionState && conversationHistory.length > 2) {
@@ -189,7 +189,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
             );
             
             logger?.info(
-              `Compressed conversation history to ${prompt.sessionState.conversationHistory.length} messages before API call.`,
+              `Compressed conversation history to ${prompt.sessionState.contextWindow.getLength()} messages before API call.`,
               LogCategory.MODEL
             );
           }
@@ -233,10 +233,10 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
       }
       
       // Add cache_control to the last message in conversation history if available
-      let modifiedMessages = prompt.sessionState?.conversationHistory || [];
+      let modifiedMessages = prompt.sessionState?.contextWindow?.getMessages() || [];
       if (shouldUseCache && 
-          prompt.sessionState?.conversationHistory && 
-          prompt.sessionState.conversationHistory.length > 0) {
+          prompt.sessionState?.contextWindow && 
+          prompt.sessionState.contextWindow.getLength() > 0) {
         
         // Create a deep copy to avoid modifying the original conversation history
         modifiedMessages = JSON.parse(JSON.stringify(modifiedMessages)) as Anthropic.MessageParam[];
@@ -426,7 +426,7 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
         });
         
         // If it's a token limit error and we have a session state and token manager, try to compress
-        if (isTokenLimitError && prompt.sessionState && prompt.sessionState.conversationHistory.length > 0) {
+        if (isTokenLimitError && prompt.sessionState && prompt.sessionState.contextWindow.getLength() > 0) {
           logger?.warn(
             `Token limit exceeded ${apiError.message ? `(${apiError.message})` : ''}. Attempting to compress conversation history.`,
             LogCategory.MODEL
@@ -441,12 +441,12 @@ export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvi
           );
           
           logger?.info(
-            `Compressed conversation history to ${prompt.sessionState.conversationHistory.length} messages. Retrying API call.`,
+            `Compressed conversation history to ${prompt.sessionState.contextWindow.getLength()} messages. Retrying API call.`,
             LogCategory.MODEL
           );
           
           // Update API params with compressed conversation
-          apiParams.messages = prompt.sessionState.conversationHistory;
+          apiParams.messages = prompt.sessionState.contextWindow.getMessages();
           
           // Retry the API call with compressed conversation
           const retryResponse = await withRetryAndBackoff(

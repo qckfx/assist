@@ -18,7 +18,7 @@ import {
 import { getSessionStatePersistence } from '../services/SessionStatePersistence';
 import { TimelineService } from '../container';
 import { AgentServiceConfig } from '../services/AgentService';
-// No errors imported as they're handled by middleware
+import { createContextWindow } from '../../types/contextWindow';
 
 /**
  * Start a new agent session or reconnect to an existing one
@@ -68,7 +68,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
         
         // Create a state object that includes the agentServiceConfig
         const state = savedSession.sessionState || { 
-          conversationHistory: [],
+          contextWindow: createContextWindow(),
           agentServiceConfig: defaultAgentServiceConfig
         };
         
@@ -178,14 +178,11 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
         confirmationStatus: 'confirmed' // Mark as confirmed since it's server-generated
       };
       
-      // Get the session to ensure we're working with the latest state
-      const session = sessionManager.getSession(sessionId);
-      
-      // IMPORTANT: The AgentRunner now handles the conversationHistory updates
+      // IMPORTANT: The AgentRunner now handles the contextWindow updates
       // so we need to ensure we don't create a race condition with the timeline
       
       // Start agent processing in the background 
-      // AgentRunner will add the user message to conversation history itself
+      // AgentRunner will add the user message to contextWindow itself
       serverLogger.info(`Starting agent processing for session ${sessionId}`);
       agentService.processQuery(sessionId, query)
         .catch((error: unknown) => {
@@ -429,7 +426,7 @@ export async function validateSessionIds(req: Request, res: Response, next: Next
         validSessionIds.push(sessionId);
         serverLogger.debug(`Session ${sessionId} found in memory, marking as valid`, LogCategory.SESSION);
         continue; // Skip persistence check for this session
-      } catch (error) {
+      } catch {
         // Session not in memory, will check persistence below
         serverLogger.debug(`Session ${sessionId} not found in memory, checking persistence`, LogCategory.SESSION);
       }
@@ -468,7 +465,7 @@ export async function toggleFastEditMode(req: Request, res: Response, next: Next
     // Validate that session exists
     try {
       sessionManager.getSession(sessionId);
-    } catch (error) {
+    } catch {
       res.status(404).json({ success: false, message: 'Session not found' });
       return;
     }
@@ -510,7 +507,7 @@ export async function getFastEditMode(req: Request, res: Response, next: NextFun
     // Validate that session exists
     try {
       sessionManager.getSession(sessionId);
-    } catch (error) {
+    } catch {
       res.status(404).json({ success: false, message: 'Session not found' });
       return;
     }
