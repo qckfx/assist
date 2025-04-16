@@ -126,9 +126,9 @@ export const createTool = (config: ToolConfig): Tool => {
       }
       
       // Check permissions if needed
-      if (this.requiresPermission && 
-          context.permissionManager && 
-          !context.permissionManager.hasPermission(this.id)) {
+      if (this.requiresPermission && context.permissionManager) {
+        // Always call requestPermission which will handle all the checks internally
+        // This will ask for permission every time unless in fast edit mode
         const granted = await context.permissionManager.requestPermission(this.id, args);
         if (!granted) {
           throw new Error(`Permission denied for ${this.name}`);

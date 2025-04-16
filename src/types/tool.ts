@@ -8,6 +8,7 @@ import { FileReadToolResult } from "../tools/FileReadTool";
 import { LSToolResult } from "../tools/LSTool";
 import { GitRepositoryInfo } from "./session";
 import { SessionState } from "./model";
+import { PermissionManager } from "./permission";
 
 /**
  * Categories for tools to classify their purpose and permission requirements
@@ -90,10 +91,7 @@ export interface ToolConfig {
 }
 
 export interface ToolContext {
-  permissionManager?: {
-    hasPermission: (toolId: string) => boolean;
-    requestPermission: (toolId: string, args: Record<string, unknown>) => Promise<boolean>;
-  };
+  permissionManager?: PermissionManager;
   logger?: {
     debug: (message: string, ...args: unknown[]) => void;
     info: (message: string, ...args: unknown[]) => void;
