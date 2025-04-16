@@ -8,6 +8,7 @@ import { DockerContainerManager, ContainerInfo } from './DockerContainerManager'
 import { LogCategory } from './logger';
 import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from './sessionUtils';
 import { GitRepositoryInfo } from '../types/session';
+import { GitInfoHelper } from './GitInfoHelper';
 
 /**
  * Execution adapter that runs commands in a Docker container
@@ -21,6 +22,9 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
     error: (message: string, ...args: unknown[]) => void;
   };
   private lastEmittedStatus?: 'initializing' | 'connecting' | 'connected' | 'disconnected' | 'error';
+  
+  // Git information helper for optimized git operations
+  private gitInfoHelper: GitInfoHelper;
 
   /**
    * Create a Docker execution adapter with a container manager
@@ -38,6 +42,9 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
   ) {
     this.containerManager = containerManager;
     this.logger = options?.logger;
+    
+    // Initialize git helper with same logger
+    this.gitInfoHelper = new GitInfoHelper({ logger: this.logger });
     
     // Start container initialization immediately in the background
     // Fire and forget - we don't await this promise in the constructor
@@ -955,6 +962,7 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
   
   /**
    * Retrieves git repository information for the current directory in the container
+   * Using the optimized GitInfoHelper for maximum performance
    * @returns Git repository information or null if not a git repository
    */
   async getGitRepositoryInfo(): Promise<GitRepositoryInfo | null> {
@@ -969,91 +977,12 @@ export class DockerExecutionAdapter implements ExecutionAdapter {
       // Get container working directory
       const workingDir = containerInfo.workspacePath;
       
-      // Check if the container directory is a git repository
-      const isGitRepo = await this.executeCommand(`cd "${workingDir}" && git rev-parse --is-inside-work-tree 2>/dev/null || echo false`);
-      if (isGitRepo.exitCode !== 0 || isGitRepo.stdout.trim() !== 'true') {
-        this.logger?.debug('Docker container directory is not a git repository', LogCategory.SYSTEM);
-        return null;
-      }
-      
-      // Get current branch
-      const currentBranch = await this.executeCommand(`cd "${workingDir}" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown`);
-      
-      // Get default branch by checking the remote
-      let defaultBranch = '';
-      try {
-        // First try getting the default branch from remote
-        const remoteCheck = await this.executeCommand(`cd "${workingDir}" && git remote show origin 2>/dev/null | grep 'HEAD branch' | cut -d ':' -f 2 | xargs`);
-        defaultBranch = remoteCheck.stdout.trim();
-      } catch (error) {
-        this.logger?.debug('Error getting default branch from remote in container', LogCategory.SYSTEM);
-      }
-      
-      // If we couldn't get the default branch from remote, try common defaults
-      if (!defaultBranch) {
-        // Try main, master, and trunk in order
-        for (const branch of ['main', 'master', 'trunk']) {
-          const branchCheck = await this.executeCommand(`cd "${workingDir}" && git show-ref --verify --quiet refs/heads/${branch} 2>/dev/null && echo ${branch} || echo ''`);
-          if (branchCheck.stdout.trim()) {
-            defaultBranch = branchCheck.stdout.trim();
-            break;
-          }
-        }
-      }
-      
-      // If still no default branch, just use the current branch
-      if (!defaultBranch) {
-        defaultBranch = currentBranch.stdout.trim() || 'main';
-      }
-      
-      // Get status to check if repository is clean
-      const status = await this.executeCommand(`cd "${workingDir}" && git status --porcelain`);
-      const isClean = status.stdout.trim() === '';
-      
-      // If clean, we can return a simpler structure
-      if (isClean) {
-        // Get recent commits (5 most recent)
-        const recentCommits = await this.executeCommand(`cd "${workingDir}" && git log -5 --pretty=format:'%h %s'`);
-        
-        return {
-          isGitRepository: true,
-          currentBranch: currentBranch.stdout.trim(),
-          defaultBranch,
-          status: { type: 'clean' },
-          recentCommits: recentCommits.stdout.split('\n').filter(Boolean)
-        };
-      } else {
-        // Repository is dirty, get detailed status
-        
-        // Get files that are modified but unstaged
-        const modifiedFiles = await this.executeCommand(`cd "${workingDir}" && git diff --name-only`);
-        
-        // Get files that are staged
-        const stagedFiles = await this.executeCommand(`cd "${workingDir}" && git diff --name-only --staged`);
-        
-        // Get untracked files
-        const untrackedFiles = await this.executeCommand(`cd "${workingDir}" && git ls-files --others --exclude-standard`);
-        
-        // Get deleted files
-        const deletedFiles = await this.executeCommand(`cd "${workingDir}" && git ls-files --deleted`);
-        
-        // Get recent commits (5 most recent)
-        const recentCommits = await this.executeCommand(`cd "${workingDir}" && git log -5 --pretty=format:'%h %s'`);
-        
-        return {
-          isGitRepository: true,
-          currentBranch: currentBranch.stdout.trim(),
-          defaultBranch,
-          status: {
-            type: 'dirty',
-            modifiedFiles: modifiedFiles.stdout.split('\n').filter(Boolean),
-            stagedFiles: stagedFiles.stdout.split('\n').filter(Boolean),
-            untrackedFiles: untrackedFiles.stdout.split('\n').filter(Boolean),
-            deletedFiles: deletedFiles.stdout.split('\n').filter(Boolean)
-          },
-          recentCommits: recentCommits.stdout.split('\n').filter(Boolean)
-        };
-      }
+      // Use the GitInfoHelper with a custom command executor that executes in the Docker container
+      return await this.gitInfoHelper.getGitRepositoryInfo(async (command) => {
+        // Prepend cd to the working directory for all git commands
+        const containerCommand = `cd "${workingDir}" && ${command}`;
+        return await this.executeCommand(containerCommand);
+      });
     } catch (error) {
       this.logger?.error('Error retrieving git repository information from container:', error, LogCategory.SYSTEM);
       return null;
