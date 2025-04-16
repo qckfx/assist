@@ -10,6 +10,7 @@ import { SessionState, ToolResultEntry } from './types';
 import chalk from 'chalk';
 import prompts from 'prompts';
 import setupEvalCLI from './eval/cli';
+import { createContextWindow } from './types/contextWindow';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -272,7 +273,7 @@ const startChat = async (options: {
   // We'll keep track of the session state
   let conversationActive = true;
   let sessionState: SessionState = {
-    conversationHistory: [],
+    contextWindow: createContextWindow(),
     agentServiceConfig: {
       apiKey: ANTHROPIC_API_KEY || '',
       defaultModel: options.model,
@@ -350,7 +351,7 @@ const startChat = async (options: {
     
     try {
       // Add user query to conversation history in the format expected by Claude
-      sessionState.conversationHistory.push({
+      sessionState.contextWindow.push({
         role: "user",
         content: [
           { type: "text", text: query, citations: null }
@@ -415,7 +416,7 @@ const startChat = async (options: {
           cliLogger.info(`${assistantLabel}${result.response}`, LogCategory.USER_INTERACTION);
           
           // Add the assistant's response to the conversation history
-          sessionState.conversationHistory.push({
+          sessionState.contextWindow.push({
             role: "assistant",
             content: [
               { type: "text", text: result.response, citations: null }
@@ -432,7 +433,7 @@ const startChat = async (options: {
               allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
               cachingEnabled: options.caching !== false // Enable caching by default
             },
-            conversationHistory: sessionState.conversationHistory, // Keep our updated conversation history
+            contextWindow: sessionState.contextWindow, // Keep our updated conversation history
           };
         }
       }

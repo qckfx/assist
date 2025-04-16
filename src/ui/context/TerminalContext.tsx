@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useReducer, ReactNode, useEffect, useCallback } from 'react';
-import { TerminalState, TerminalAction, TerminalMessage } from '@/types/terminal';
-import { MessageType } from '@/components/Message';
-import { WebSocketEvent, SessionData } from '@/types/api';
+import { TerminalState, TerminalAction, TerminalMessage } from '../types/terminal';
+import { MessageType } from '../components/Message';
+import { WebSocketEvent, SessionData } from '../types/api';
 import { useWebSocketContext } from './WebSocketContext';
 import { PreviewMode } from '../../types/preview';
+import { ContentPart } from '../../types/message';
 
 // Initial state
 const initialState: TerminalState = {
@@ -257,7 +258,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
             id: generateUniqueId('error'),
             content: [{ type: 'text', text: `Error: ${error.message}` }],
             type: 'error',
-            timestamp: new Date()
+            timestamp: Date.now()
           }
         });
       } else {
@@ -278,7 +279,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
           id: generateUniqueId('system'),
           content: [{ type: 'text', text: 'Operation stopped. You can continue with a new message.' }],
           type: 'system',
-          timestamp: new Date()
+          timestamp: Date.now()
         }
       });
       dispatch({ type: 'SET_PROCESSING', payload: false });
@@ -344,8 +345,8 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       
       // Add debugging to identify session structure
       if (sessionData?.state) {
-        console.log('Session state exists, conversationHistory available:', 
-          Boolean(sessionData.state.conversationHistory));
+        console.log('Session state exists, contextWindow available:', 
+          Boolean(sessionData.state.contextWindow));
       } else if (sessionData?.history) {
         console.log('Legacy history format detected:', sessionData.history.length, 'messages');
       } else {
@@ -355,10 +356,10 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       // Try both types of session data structures (state.conversationHistory or history)
       let historyToProcess = null;
       
-      // First try the new structure with state.conversationHistory
-      if (sessionData?.state?.conversationHistory && Array.isArray(sessionData.state.conversationHistory)) {
-        historyToProcess = sessionData.state.conversationHistory;
-        console.log('Using state.conversationHistory with', historyToProcess.length, 'messages');
+      // First try the new structure with state.contextWindow
+      if (sessionData?.state?.contextWindow && Array.isArray(sessionData.state.contextWindow)) {
+        historyToProcess = sessionData.state.contextWindow;
+        console.log('Using state.contextWindow with', historyToProcess.length, 'messages');
       } 
       // Then try the legacy structure with history
       else if (sessionData?.history && Array.isArray(sessionData.history)) {
@@ -396,7 +397,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
             if (Array.isArray(message.content)) {
               // For array content, extract all text blocks
               textContent = message.content
-                .filter(item => {
+                .filter((item: ContentPart | string) => {
                   // Check for { type: 'text', text: string } format
                   if (typeof item === 'object' && item !== null && 'type' in item && item.type === 'text' && 'text' in item) {
                     return true;
@@ -404,7 +405,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
                   // Check for simple string content
                   return typeof item === 'string';
                 })
-                .map(item => {
+                .map((item: ContentPart | string) => {
                   if (typeof item === 'string') return item;
                   if (typeof item === 'object' && 'text' in item) return item.text;
                   return '';
@@ -422,7 +423,7 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
                 content: [{ type: 'text' as const, text: textContent }],
                 type: message.role,
                 // Use current time for all messages from history
-                timestamp: new Date()
+                timestamp: Date.now()
               });
             }
           }

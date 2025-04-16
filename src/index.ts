@@ -45,6 +45,7 @@ import { Agent, AgentConfig, RepositoryEnvironment } from './types/main';
 import { Tool } from './types/tool';
 import { ErrorType } from './types/error';
 import { ModelProvider } from './types/model';
+import { createContextWindow } from './types/contextWindow';
 
 /**
  * Creates a complete agent with default tools
@@ -135,7 +136,7 @@ const createAgent = (config: AgentConfig): Agent => {
     logger,
     
     // Helper methods
-    async processQuery(query, sessionState = { conversationHistory: [], agentServiceConfig: { apiKey: '', defaultModel: '', permissionMode: 'interactive', allowedTools: [], cachingEnabled: true } }) {
+    async processQuery(query, sessionState = { contextWindow: createContextWindow(), agentServiceConfig: { apiKey: '', defaultModel: '', permissionMode: 'interactive', allowedTools: [], cachingEnabled: true } }) {
       const runner = await agentRunner();
       return runner.processQuery(query, sessionState);
     },

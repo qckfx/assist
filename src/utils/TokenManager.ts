@@ -22,7 +22,7 @@ const trackTokenUsage = (response: Anthropic.Messages.Message, sessionState: Ses
     }
     
     // Store token usage for this message
-    const messageIndex = sessionState.conversationHistory.length - 1;
+    const messageIndex = sessionState.contextWindow.getLength() - 1;
     const oldTotalTokens = sessionState.tokenUsage.totalTokens;
     sessionState.tokenUsage.totalTokens = response.usage.input_tokens + response.usage.output_tokens;
     // Store the input tokens for the previous message
@@ -89,7 +89,7 @@ const manageConversationSize = (
   maxTokens: number = 60000,
   logger?: Logger
 ): void => {
-  if (!sessionState.tokenUsage || !sessionState.conversationHistory) {
+  if (!sessionState.tokenUsage || !sessionState.contextWindow) {
     return;
   }
   
@@ -102,8 +102,8 @@ const manageConversationSize = (
   
   // Find tool_use/tool_result pairs for potential removal
   const toolPairs: Array<{toolUseIndex: number; toolResultIndex: number; totalTokens: number}> = [];
-  for (let i = 0; i < sessionState.conversationHistory.length - 15; i++) { // Skip the most recent 15 messages
-    const message = sessionState.conversationHistory[i];
+  for (let i = 0; i < sessionState.contextWindow.getLength() - 15; i++) { // Skip the most recent 15 messages
+    const message = sessionState.contextWindow.getMessages()[i];
     if (message.role === 'assistant' && 
         message.content && 
         Array.isArray(message.content) && 
@@ -117,8 +117,8 @@ const manageConversationSize = (
         const toolUseId = toolUse.id;
         
         // Look for the corresponding tool_result
-        for (let j = i + 1; j < sessionState.conversationHistory.length; j++) {
-          const resultMessage = sessionState.conversationHistory[j];
+        for (let j = i + 1; j < sessionState.contextWindow.getLength(); j++) {
+          const resultMessage = sessionState.contextWindow.getMessages()[j];
           if (resultMessage.role === 'user' && 
               resultMessage.content && 
               Array.isArray(resultMessage.content) &&
@@ -149,8 +149,8 @@ const manageConversationSize = (
       break;
     }
     
-    const toolUseMessage = sessionState.conversationHistory[pair.toolUseIndex];
-    const toolResultMessage = sessionState.conversationHistory[pair.toolResultIndex];
+    const toolUseMessage = sessionState.contextWindow.getMessages()[pair.toolUseIndex];
+    const toolResultMessage = sessionState.contextWindow.getMessages()[pair.toolResultIndex];
     
     logger?.debug(`Removing tool pair - Tool Use (index ${pair.toolUseIndex}): ${JSON.stringify(toolUseMessage.content)}`, LogCategory.MODEL);
     logger?.debug(`Removing tool pair - Tool Result (index ${pair.toolResultIndex}): ${JSON.stringify(toolResultMessage.content)}`, LogCategory.MODEL);
@@ -163,9 +163,9 @@ const manageConversationSize = (
   
   // Find the index of the most recent user message
   let lastUserMessageIndex = -1;
-  for (let i = sessionState.conversationHistory.length - 1; i >= 0; i--) {
-    const content = sessionState.conversationHistory[i].content;
-    if (sessionState.conversationHistory[i].role === 'user' && 
+    for (let i = sessionState.contextWindow.getLength() - 1; i >= 0; i--) {
+    const content = sessionState.contextWindow.getMessages()[i].content;
+    if (sessionState.contextWindow.getMessages()[i].role === 'user' && 
         !(content && 
           typeof content !== 'string' &&
           Array.isArray(content) &&
@@ -177,12 +177,12 @@ const manageConversationSize = (
   
   // If we still need to remove tokens, target assistant messages before the most recent user message
   if (tokensRemoved < tokensToRemove) {
-    const safeCutoff = Math.max(sessionState.conversationHistory.length - 15, 0);
+    const safeCutoff = Math.max(sessionState.contextWindow.getLength() - 15, 0);
     
     for (let i = 0; i < Math.min(safeCutoff, lastUserMessageIndex); i++) {
       if (removedIndices.has(i)) continue; // Skip if already marked for removal
       
-      const message = sessionState.conversationHistory[i];
+      const message = sessionState.contextWindow.getMessages()[i];
       if (message.role === 'assistant') {
         const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
         
@@ -200,8 +200,8 @@ const manageConversationSize = (
   
   // Count remaining assistant messages not marked for removal
   let remainingAssistantCount = 0;
-  for (let i = 0; i < sessionState.conversationHistory.length; i++) {
-    if (!removedIndices.has(i) && sessionState.conversationHistory[i].role === 'assistant') {
+  for (let i = 0; i < sessionState.contextWindow.getLength(); i++) {
+    if (!removedIndices.has(i) && sessionState.contextWindow.getMessages()[i].role === 'assistant') {
       remainingAssistantCount++;
     }
   }
@@ -209,16 +209,16 @@ const manageConversationSize = (
   // If we still need to remove tokens and have 10 or fewer assistant messages left,
   // start removing user messages (oldest first), excluding the most recent 15 messages
   if (tokensRemoved < tokensToRemove && remainingAssistantCount <= 10) {
-    const safeCutoff = Math.max(sessionState.conversationHistory.length - 15, 0);
+    const safeCutoff = Math.max(sessionState.contextWindow.getLength() - 15, 0);
     
     for (let i = 0; i < safeCutoff; i++) {
       if (removedIndices.has(i)) continue; // Skip if already marked for removal
       
-      const message = sessionState.conversationHistory[i];
+      const message = sessionState.contextWindow.getMessages()[i];
       if (message.role === 'user' && 
           !(message.content && 
             typeof message.content !== 'string' &&
-            message.content.some(c => c.type === 'tool_result'))) { // Not a tool result message
+            message.content.some((c: Anthropic.Messages.ContentBlockParam) => c.type === 'tool_result'))) { // Not a tool result message
         const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
         
         logger?.debug(`Removing user message (index ${i}): ${JSON.stringify(message.content)}`, LogCategory.MODEL);
@@ -237,16 +237,16 @@ const manageConversationSize = (
   // If we STILL need to remove tokens and have exhausted all other options,
   // reluctantly remove from the most recent 15 messages, starting with oldest
   if (tokensRemoved < tokensToRemove) {
-    const safeCutoff = Math.max(sessionState.conversationHistory.length - 15, 0);
+    const safeCutoff = Math.max(sessionState.contextWindow.getLength() - 15, 0);
     
-    for (let i = safeCutoff; i < sessionState.conversationHistory.length; i++) {
+    for (let i = safeCutoff; i < sessionState.contextWindow.getLength(); i++) {
       if (removedIndices.has(i)) continue; // Skip if already marked for removal
       
       // Prioritize assistant messages over user messages
-      if (sessionState.conversationHistory[i].role === 'assistant') {
+      if (sessionState.contextWindow.getMessages()[i].role === 'assistant') {
         const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
         
-        logger?.debug(`Removing recent assistant message (index ${i}): ${JSON.stringify(sessionState.conversationHistory[i].content)}`, LogCategory.MODEL);
+        logger?.debug(`Removing recent assistant message (index ${i}): ${JSON.stringify(sessionState.contextWindow.getMessages()[i].content)}`, LogCategory.MODEL);
         
         removedIndices.add(i);
         tokensRemoved += tokens;
@@ -259,13 +259,13 @@ const manageConversationSize = (
     
     // If we absolutely must, remove user messages from the most recent 15
     if (tokensRemoved < tokensToRemove) {
-      for (let i = safeCutoff; i < sessionState.conversationHistory.length; i++) {
+      for (let i = safeCutoff; i < sessionState.contextWindow.getLength(); i++) {
         if (removedIndices.has(i)) continue; // Skip if already marked for removal
         
-        if (sessionState.conversationHistory[i].role === 'user') {
+        if (sessionState.contextWindow.getMessages()[i].role === 'user') {
           const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
           
-          logger?.debug(`Removing recent user message (index ${i}): ${JSON.stringify(sessionState.conversationHistory[i].content)}`, LogCategory.MODEL);
+          logger?.debug(`Removing recent user message (index ${i}): ${JSON.stringify(sessionState.contextWindow.getMessages()[i].content)}`, LogCategory.MODEL);
           
           removedIndices.add(i);
           tokensRemoved += tokens;
@@ -281,9 +281,12 @@ const manageConversationSize = (
   
   // Create new history without the removed messages
   const removedCount = removedIndices.size;
-  sessionState.conversationHistory = sessionState.conversationHistory.filter((_, idx) => 
+
+  // TODO: Replace with squashing contextWindow and resetting file tracking.
+  // When we replace this we can delete the setMessages method.
+  sessionState.contextWindow.setMessages(sessionState.contextWindow.getMessages().filter((_, idx) => 
     !removedIndices.has(idx)
-  );
+  ));
   
   // Update token tracking
   const newTokensByMessage: MessageTokenUsage[] = [];
