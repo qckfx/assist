@@ -64,7 +64,6 @@ export async function runTestCase(
   
   // Initialize the provider with the specified system prompt
   const provider = createAnthropicProvider({
-    apiKey: process.env.ANTHROPIC_API_KEY!,
     model: systemPrompt.model || 'claude-3-7-sonnet-20250219',
     logger
   });

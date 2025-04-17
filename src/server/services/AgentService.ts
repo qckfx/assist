@@ -88,8 +88,6 @@ export enum AgentServiceEvent {
  * Configuration for the agent service
  */
 export interface AgentServiceConfig {
-  /** Anthropic API key */
-  apiKey: string;
   /** Default model to use */
   defaultModel?: string;
   /** Permission mode */
@@ -1151,7 +1149,6 @@ export class AgentService extends EventEmitter {
 
       // Create the model provider
       const modelProvider = createAnthropicProvider({
-        apiKey: this.config.apiKey,
         model: this.config.defaultModel,
         cachingEnabled: this.config.cachingEnabled,
       });

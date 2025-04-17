@@ -41,7 +41,6 @@ class AnthropicProviderAdapter implements ModelProvider {
         sessionState: {
           contextWindow: createContextWindow([userMessage]),
           agentServiceConfig: {
-            apiKey: process.env.ANTHROPIC_API_KEY!,
             defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
             permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',
             allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
@@ -74,7 +73,6 @@ class AnthropicProviderAdapter implements ModelProvider {
 export function createJudgeModelProvider(): ModelProvider {
   // Create an Anthropic provider
   const anthropicProvider = createAnthropicProvider({
-    apiKey: process.env.ANTHROPIC_API_KEY!,
     model: 'claude-3-7-sonnet-20250219'
   });
 

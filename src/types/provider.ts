@@ -5,7 +5,6 @@
 import { AgentMessage, AgentResponse, ToolDefinition } from './agent';
 
 export interface ProviderOptions {
-  apiKey?: string;
   baseUrl?: string;
   timeout?: number;
   maxRetries?: number;

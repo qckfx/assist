@@ -15,11 +15,6 @@ import { createContextWindow } from './types/contextWindow';
 // Load environment variables from .env file
 dotenv.config();
 
-// Get API key from environment
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-
-// Helper functions for formatting tool calls
-
 // Define a minimal spinner interface
 interface Spinner {
   start: () => void;
@@ -160,11 +155,6 @@ const startChat = async (options: {
     }
   });
   
-  if (!ANTHROPIC_API_KEY) {
-    cliLogger.error('ANTHROPIC_API_KEY environment variable is required', LogCategory.SYSTEM);
-    process.exit(1);
-  }
-
   // Create server config from CLI options
   const serverConfig = createServerConfig({
     web: options.web,
@@ -235,7 +225,6 @@ const startChat = async (options: {
   
   // Create the model provider
   const modelProvider = createAnthropicProvider({
-    apiKey: ANTHROPIC_API_KEY,
     model: options.model,
     cachingEnabled: options.caching !== false // Enable caching by default
   });
@@ -275,7 +264,6 @@ const startChat = async (options: {
   let sessionState: SessionState = {
     contextWindow: createContextWindow(),
     agentServiceConfig: {
-      apiKey: ANTHROPIC_API_KEY || '',
       defaultModel: options.model,
       permissionMode: 'interactive',
       allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
@@ -427,7 +415,6 @@ const startChat = async (options: {
           sessionState = {
             ...result.sessionState,
             agentServiceConfig: {
-              apiKey: ANTHROPIC_API_KEY || '',
               defaultModel: options.model,
               permissionMode: 'interactive',
               allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],

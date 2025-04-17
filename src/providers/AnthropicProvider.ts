@@ -14,6 +14,9 @@ import {
 import { LogCategory } from '../types/logger';
 import { Logger } from '../utils/logger';
 import { tokenManager as defaultTokenManager } from '../utils/TokenManager';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 export { AnthropicProvider };
 
@@ -97,11 +100,11 @@ async function withRetryAndBackoff<T>(
  * @returns The provider function
  */
 export const createAnthropicProvider = (config: AnthropicConfig): AnthropicProvider => {
-  if (!config.apiKey) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
     throw new Error('Anthropic provider requires an API key');
   }
   
-  const apiKey = config.apiKey;
   const model = config.model || 'claude-3-7-sonnet-20250219';
   const maxTokens = config.maxTokens || 4096;
   const logger = config.logger;

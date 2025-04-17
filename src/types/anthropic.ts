@@ -62,7 +62,6 @@ export interface SystemContentBlock {
 export type SystemWithCache = SystemContentBlock[];
 
 export interface AnthropicConfig {
-  apiKey: string;
   model?: string;
   maxTokens?: number;
   logger?: Logger;

@@ -2,7 +2,7 @@
  * API controller functions
  */
 import { Request, Response, NextFunction } from 'express';
-import { sessionManager } from '../services/SessionManager';
+import { Session, sessionManager } from '../services/SessionManager';
 import { AgentServiceRegistry } from '../container';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
@@ -27,7 +27,7 @@ import { createContextWindow } from '../../types/contextWindow';
 export async function startSession(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const body = req.body as StartSessionRequest;
-    let session;
+    let session: Session;
     
     // Get the agent service registry from the container
     const appInstance = req.app;
@@ -40,7 +40,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       try {
         session = sessionManager.getSession(body.sessionId);
         serverLogger.info(`Reconnected to existing in-memory session ${body.sessionId}`, LogCategory.SESSION);
-      } catch (error) {
+      } catch {
         // Session not found in memory, try to load from persistence
         const sessionStatePersistence = getSessionStatePersistence();
         const savedSession = await sessionStatePersistence.loadSession(body.sessionId);
@@ -56,7 +56,6 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
         
         // Get default agent service config
         const defaultAgentServiceConfig: AgentServiceConfig = {
-          apiKey: process.env.ANTHROPIC_API_KEY || '',
           defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
           permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',
           allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
@@ -69,13 +68,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
         // Create a state object that includes the agentServiceConfig
         const state = savedSession.sessionState || { 
           contextWindow: createContextWindow(),
-          agentServiceConfig: defaultAgentServiceConfig
         };
-        
-        // Ensure agentServiceConfig exists in the state
-        if (!state.agentServiceConfig) {
-          state.agentServiceConfig = agentServiceConfig;
-        }
         
         // Convert SavedSessionData to Session
         session = {
