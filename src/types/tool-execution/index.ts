@@ -213,6 +213,7 @@ export interface PermissionRequestedEventData {
 export interface PermissionResolvedEventData {
   execution: ToolExecutionState;
   permissionRequest: PermissionRequestState;
+  preview?: ToolPreviewState;
 }
 
 /**

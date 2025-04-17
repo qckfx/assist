@@ -613,40 +613,29 @@ export class WebSocketService {
                 const preview = await this.getPreviewForExecution(executionId);
                 
                 if (preview) {
-                  // Convert to client format
-                  const formattedPreview = this.convertPreviewToClientFormat(preview);
+                  // Send enhanced update with the properly generated preview
+                  this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+                    sessionId,
+                    toolExecution: {
+                      id: item.id,
+                      toolId: item.toolExecution.toolId,
+                      toolName: item.toolExecution.toolName,
+                      status: item.toolExecution.status,
+                      args: item.toolExecution.args,
+                      startTime: item.toolExecution.startTime,
+                      endTime: item.toolExecution.endTime,
+                      executionTime: item.toolExecution.executionTime,
+                      result: item.toolExecution.result,
+                      error: item.toolExecution.error,
+                      // Include the enhanced preview
+                      preview: preview,
+                      hasPreview: true,
+                      previewContentType: preview.contentType
+                    }
+                  });
                   
-                  if (formattedPreview) {
-                    serverLogger.info(`Enhanced timeline preview for ${executionId}:`, {
-                      contentType: preview.contentType,
-                      briefContentLength: preview.briefContent?.length,
-                      fullContentLength: preview.fullContent?.length
-                    });
-                    
-                    // Send enhanced update with the properly generated preview
-                    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-                      sessionId,
-                      toolExecution: {
-                        id: item.id,
-                        toolId: item.toolExecution.toolId,
-                        toolName: item.toolExecution.toolName,
-                        status: item.toolExecution.status,
-                        args: item.toolExecution.args,
-                        startTime: item.toolExecution.startTime,
-                        endTime: item.toolExecution.endTime,
-                        executionTime: item.toolExecution.executionTime,
-                        result: item.toolExecution.result,
-                        error: item.toolExecution.error,
-                        // Include the enhanced preview
-                        preview: formattedPreview,
-                        hasPreview: true,
-                        previewContentType: preview.contentType
-                      }
-                    });
-                    
-                    // We've sent the enhanced update, so return to avoid sending duplicate events
-                    return;
-                  }
+                  // We've sent the enhanced update, so return to avoid sending duplicate events
+                  return;
                 }
               }
             }
@@ -863,7 +852,7 @@ export class WebSocketService {
   private handlePermissionRequested(data: PermissionRequestedEventData & {
     sessionId: string;
   }): void {
-    const { sessionId, execution, permissionRequest, preview } = data;
+    const { execution, permissionRequest, preview } = data;
     
     if (!execution || !execution.id || !permissionRequest) {
       serverLogger.warn(`Invalid permission request data:`, data);
@@ -872,53 +861,8 @@ export class WebSocketService {
 
     const executionId = execution.id;
     
-    // Get the agent service for this session
-    const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
-    
-    // Get the full execution state
-    const fullExecution = agentService.getToolExecution(executionId);
-    
-    if (!fullExecution) {
-      serverLogger.warn(`Tool execution not found for permission request: ${executionId}`);
-      return;
-    }
-    
-    console.log(`🔴🔴🔴 Preview: ${preview}`);
-    if (!preview && permissionRequest.previewId) {
-      console.log(`🔴🔴🔴 Preview not found for permission request: ${permissionRequest.previewId}`);
-    }
-    
-    // Check if we have a preview in the event data or need to look it up
-    // let previewData = preview;
-    
-    // If no preview in event data but there's a previewId, try to get it
-    // if (!previewData && permissionRequest.previewId) {
-    //   previewData = agentService.getPreview(permissionRequest.previewId);
-    //   serverLogger.debug(`Retrieved preview for permission request from ID: ${permissionRequest.previewId}`, {
-    //     hasPreview: !!previewData,
-    //     contentType: previewData?.contentType
-    //   });
-    // }
-    
-    // If still no preview, try to get it from the execution
-    // if (!previewData) {
-    //   previewData = agentService.getPreviewForExecution(executionId);
-    //   if (previewData) {
-    //     serverLogger.debug(`Retrieved preview for permission request from execution: ${executionId}`, {
-    //       previewId: previewData.id,
-    //       contentType: previewData.contentType
-    //     });
-    //   }
-    // }
-    
-    // Format the preview for client if we have one
-    const formattedPreview = preview ? this.convertPreviewToClientFormat(preview) : null;
-    
-    // Send permission requested event - SIMPLIFIED FORMAT - with just executionId at top level
-    console.log(`🔴🔴🔴 Sending PERMISSION_REQUESTED for execution ${executionId} in session ${sessionId}`);
-    
-    this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, {
-      sessionId,
+    this.io.to(execution.sessionId).emit(WebSocketEvent.PERMISSION_REQUESTED, {
+      sessionId: execution.sessionId,
       executionId: executionId,
       permission: {
         id: permissionRequest.id,
@@ -928,13 +872,6 @@ export class WebSocketService {
         timestamp: permissionRequest.requestTime,
         executionId: executionId
       }
-    });
-    
-    // Also emit a tool execution update to ensure the status is properly set to "awaiting-permission"
-    // This ensures tools will appear in the activeTools array in useToolVisualization
-    serverLogger.info(`🔥 Sending TOOL_EXECUTION_UPDATED for execution ${executionId} with status "awaiting-permission"`, {
-      hasPreview: !!formattedPreview,
-      previewType: preview?.contentType
     });
     
     // Create the execution update with all necessary fields
@@ -949,21 +886,15 @@ export class WebSocketService {
     };
     
     // If we have a preview, include it in the update
-    if (formattedPreview) {
-      toolExecution.preview = formattedPreview;
+    if (preview) {
+      toolExecution.preview = preview;
       toolExecution.hasPreview = true;
       toolExecution.previewContentType = preview?.contentType;
-      
-      serverLogger.info(`Including preview in tool execution update for ${executionId}:`, {
-        previewId: preview?.id,
-        contentType: preview?.contentType,
-        formattedPreviewKeys: Object.keys(formattedPreview)
-      });
     }
     
     // Send the update
-    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-      sessionId,
+    this.io.to(execution.sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+      sessionId: execution.sessionId,
       toolExecution
     });
   }
@@ -974,7 +905,7 @@ export class WebSocketService {
   private handlePermissionResolved(data: PermissionResolvedEventData & {
     sessionId: string;
   }): void {
-    const { sessionId, execution, permissionRequest } = data;
+    const { execution, permissionRequest, preview } = data;
     
     if (!execution || !execution.id || !permissionRequest) {
       serverLogger.warn(`Invalid permission resolution data:`, data);
@@ -984,23 +915,8 @@ export class WebSocketService {
     const executionId = execution.id;
     const granted = permissionRequest.granted;
     
-    // Get the agent service for this session
-    const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
-    
-    // Get the full execution state
-    const fullExecution = agentService.getToolExecution(executionId);
-    
-    if (!fullExecution) {
-      serverLogger.warn(`Tool execution not found for permission resolution: ${executionId}`);
-      return;
-    }
-    
-    // Emit consistent events using executionId
-    // Add enhanced logging to diagnose issues
-    console.log(`🔥 Sending PERMISSION_RESOLVED for execution ${executionId} in session ${sessionId}, granted: ${granted}`);
-    
-    this.io.to(sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, {
-      sessionId,
+    this.io.to(execution.sessionId).emit(WebSocketEvent.PERMISSION_RESOLVED, {
+      sessionId: execution.sessionId,
       executionId: executionId,
       resolution: granted
     });
@@ -1008,11 +924,10 @@ export class WebSocketService {
     // Also emit a tool execution update to ensure the status is updated based on the permission resolution
     // When permission is granted, the status returns to "running"; otherwise it should be "aborted"
     const newStatus = granted ? "running" : "aborted";
-    console.log(`🔥 Also sending TOOL_EXECUTION_UPDATED for execution ${executionId} with status "${newStatus}" after permission resolution`);
     
     // Also include the permissionRequest object in this update, ensuring all components receive the data in the same structure
-    this.io.to(sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-      sessionId,
+    this.io.to(execution.sessionId).emit(WebSocketEvent.TOOL_EXECUTION_UPDATED, {
+      sessionId: execution.sessionId,
       toolExecution: {
         id: executionId,
         toolId: permissionRequest.toolId,
@@ -1025,214 +940,12 @@ export class WebSocketService {
           timestamp: permissionRequest.resolvedTime,
           executionId: executionId,
           granted: granted
-        }
+        },
+        preview: preview,
+        hasPreview: !!preview,
+        previewContentType: preview?.contentType
       }
     });
-  }
-  
-  /**
-   * Convert a tool execution state to the format expected by clients
-   * Now async to properly handle preview generation
-   */
-  private async convertExecutionToClientFormat(execution: ToolExecutionState): Promise<Record<string, unknown>> {
-    // Add extra logging for debugging
-    serverLogger.debug(`Converting execution to client format: ${execution.id}`, {
-      status: execution.status,
-      toolId: execution.toolId,
-      hasPreviewId: !!execution.previewId,
-      previewId: execution.previewId
-    });
-    
-    // Map ToolExecutionStatus to client status string
-    const statusMap: Record<ToolExecutionStatus, string> = {
-      [ToolExecutionStatus.PENDING]: 'pending',
-      [ToolExecutionStatus.RUNNING]: 'running',
-      [ToolExecutionStatus.AWAITING_PERMISSION]: 'awaiting-permission',
-      [ToolExecutionStatus.COMPLETED]: 'completed',
-      [ToolExecutionStatus.ERROR]: 'error',
-      [ToolExecutionStatus.ABORTED]: 'aborted'
-    };
-    
-    // Build the client data object
-    const clientData: Record<string, unknown> = {
-      id: execution.id,
-      tool: execution.toolId,
-      toolName: execution.toolName,
-      status: statusMap[execution.status],
-      args: execution.args,
-      startTime: new Date(execution.startTime).getTime(),
-      paramSummary: execution.summary
-    };
-    
-    // Add optional fields if present
-    if (execution.result !== undefined) {
-      clientData.result = execution.result;
-    }
-    
-    if (execution.error) {
-      clientData.error = execution.error;
-    }
-    
-    if (execution.endTime) {
-      clientData.endTime = new Date(execution.endTime).getTime();
-    }
-    
-    if (execution.executionTime) {
-      clientData.executionTime = execution.executionTime;
-    }
-    
-    if (execution.permissionId) {
-      clientData.permissionId = execution.permissionId;
-    }
-    
-    // Add preview if available - now with proper async handling
-    // First, try to use the preview ID if it exists
-    if (execution.previewId) {
-      try {
-        serverLogger.debug(`Execution ${execution.id} has previewId: ${execution.previewId}`);
-        // Properly await the preview retrieval
-        const preview = await this.getPreviewForExecution(execution.id);
-        if (preview) {
-          serverLogger.info(`Preview found for execution ${execution.id}:`, {
-            previewId: preview.id,
-            contentType: preview.contentType,
-            briefContentLength: preview.briefContent?.length,
-            fullContentLength: preview.fullContent?.length
-          });
-          
-          // Convert preview to client format with validation
-          const formattedPreview = this.convertPreviewToClientFormat(preview);
-          
-          // Only set preview data if we have valid preview content
-          if (formattedPreview) {
-            clientData.preview = formattedPreview;
-            
-            // These are important for the client to know there's a preview available
-            clientData.hasPreview = true;
-            clientData.previewContentType = preview.contentType;
-            clientData.previewBriefContentLength = preview.briefContent?.length;
-            clientData.previewFullContentLength = preview.fullContent?.length;
-            clientData.previewMetadataKeys = preview.metadata ? Object.keys(preview.metadata) : [];
-            
-            // Log detailed preview content to help diagnose potential issues
-            serverLogger.info(`Adding preview to client data for ${execution.id}:`, {
-              hasPreview: true,
-              contentType: preview.contentType,
-              briefContent: preview.briefContent?.substring(0, 50) + (preview.briefContent?.length > 50 ? '...' : ''),
-              briefContentLength: preview.briefContent?.length,
-              fullContentLength: preview.fullContent?.length,
-              metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
-            });
-          } else {
-            serverLogger.warn(`Invalid preview data for execution ${execution.id}: missing required fields`);
-            clientData.hasPreview = false;
-          }
-        } else {
-          serverLogger.warn(`No preview found for execution ${execution.id} despite having previewId: ${execution.previewId}`);
-          clientData.hasPreview = false;
-        }
-      } catch (error) {
-        serverLogger.error(`Error getting preview for execution ${execution.id}:`, error);
-        clientData.hasPreview = false;
-      }
-    } else {
-      // Try to get preview even if there's no previewId - sometimes it might exist
-      try {
-        serverLogger.debug(`Execution ${execution.id} has no previewId, trying to find preview anyway`);
-        // Properly await the preview generation
-        const preview = await this.getPreviewForExecution(execution.id);
-        if (preview) {
-          serverLogger.info(`Preview generated for execution ${execution.id} despite no previewId:`, {
-            previewId: preview.id,
-            contentType: preview.contentType,
-            briefContentLength: preview.briefContent?.length,
-            fullContentLength: preview.fullContent?.length
-          });
-          
-          // Convert preview to client format with validation
-          const formattedPreview = this.convertPreviewToClientFormat(preview);
-          
-          // Only set preview data if we have valid preview content
-          if (formattedPreview) {
-            clientData.preview = formattedPreview;
-            
-            // These are important for the client to know there's a preview available
-            clientData.hasPreview = true;
-            clientData.previewContentType = preview.contentType;
-            clientData.previewBriefContentLength = preview.briefContent?.length;
-            clientData.previewFullContentLength = preview.fullContent?.length;
-            clientData.previewMetadataKeys = preview.metadata ? Object.keys(preview.metadata) : [];
-            
-            // Log detailed preview content to help diagnose potential issues
-            serverLogger.info(`Adding generated preview to client data for ${execution.id}:`, {
-              hasPreview: true,
-              contentType: preview.contentType,
-              briefContent: preview.briefContent?.substring(0, 50) + (preview.briefContent?.length > 50 ? '...' : ''),
-              briefContentLength: preview.briefContent?.length,
-              fullContentLength: preview.fullContent?.length,
-              metadataKeys: preview.metadata ? Object.keys(preview.metadata) : []
-            });
-          } else {
-            serverLogger.warn(`Invalid generated preview data for execution ${execution.id}: missing required fields`);
-            clientData.hasPreview = false;
-          }
-        } else {
-          clientData.hasPreview = false;
-        }
-      } catch (error) {
-        // Log more details about the error
-        serverLogger.warn(`Error generating preview for execution ${execution.id} without previewId:`, error);
-        clientData.hasPreview = false;
-      }
-    }
-    
-    return clientData;
-  }
-  
-  /**
-   * Convert a preview state to the format expected by clients
-   */
-  private convertPreviewToClientFormat(preview: ToolPreviewState): Record<string, unknown> | null {
-    // Validate that the preview has required fields
-    if (!preview.contentType) {
-      serverLogger.warn(`Invalid preview data for ${preview.id}: missing contentType`);
-      return null;
-    }
-    
-    // Ensure briefContent is not empty or undefined
-    if (!preview.briefContent || preview.briefContent.trim() === '') {
-      serverLogger.warn(`Preview ${preview.id} has empty briefContent - adding placeholder`);
-      
-      // Set a placeholder message based on content type
-      let placeholderContent = '[Preview content unavailable]';
-      
-      if (preview.contentType === 'directory') {
-        placeholderContent = `Directory listing preview:\n\nFiles and directories will be shown here`;
-      } else if (preview.contentType === 'code') {
-        placeholderContent = `Code preview:\n\nFile contents will be shown here`;
-      } else if (preview.contentType === 'diff') {
-        placeholderContent = `Diff preview:\n\nChanges will be shown here`;
-      }
-      
-      // Log that we're adding placeholder content
-      serverLogger.info(`Adding placeholder content for preview ${preview.id} of type ${preview.contentType}`);
-      
-      // Return preview with placeholder content
-      return {
-        contentType: preview.contentType,
-        briefContent: placeholderContent,
-        fullContent: preview.fullContent || placeholderContent,
-        metadata: preview.metadata
-      };
-    }
-    
-    // Normal case - return the preview with its content
-    return {
-      contentType: preview.contentType,
-      briefContent: preview.briefContent,
-      fullContent: preview.fullContent,
-      metadata: preview.metadata
-    };
   }
   
   /**

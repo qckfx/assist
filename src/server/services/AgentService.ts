@@ -222,8 +222,8 @@ export class AgentService extends EventEmitter {
     };
     
     // Initialize the new managers
-    this.toolExecutionManager = createToolExecutionManager() as ToolExecutionManagerImpl;
     this.previewManager = createPreviewManager() as PreviewManagerImpl;
+    this.toolExecutionManager = createToolExecutionManager(this.previewManager) as ToolExecutionManagerImpl;
     
     // Set up event forwarding from the tool execution manager
     this.setupToolExecutionEventForwarding();

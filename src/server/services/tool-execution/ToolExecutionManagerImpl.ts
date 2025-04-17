@@ -38,17 +38,18 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   private sessionPermissions: Map<string, Set<string>> = new Map();
   private executionPermissions: Map<string, string> = new Map();
   private eventEmitter = new EventEmitter();
-  
-  // Add persistence support
+  private previewManager: PreviewManager;
   private persistence: SessionStatePersistence;
+
   
   /**
    * Create a new ToolExecutionManagerImpl
    * @param persistenceService Optional persistence service to use
    */
-  constructor(persistenceService?: SessionStatePersistence) {
+  constructor(previewManager: PreviewManager, persistenceService?: SessionStatePersistence) {
     // Use provided persistence service or get singleton instance
     this.persistence = persistenceService || getSessionStatePersistence();
+    this.previewManager = previewManager;
     
   }
 
@@ -154,7 +155,6 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
    */
   async generatePreviewForExecution(
     executionId: string,
-    previewManager?: PreviewManager
   ): Promise<ToolPreviewState | null> {
     const execution = this.executions.get(executionId);
     if (!execution) {
@@ -170,14 +170,11 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     }
 
     try {
-      // Use or create a preview manager
-      const previewMgr = previewManager || createPreviewManager();
-      
       // Check if we already have a preview
       // If the execution status is COMPLETED, always generate a fresh completion preview
       // This ensures we replace any permission preview with an actual result preview
       if (execution.previewId) {
-        const existingPreview = previewMgr.getPreview(execution.previewId);
+        const existingPreview = this.previewManager.getPreview(execution.previewId);
         
         // Log information about existing preview for debugging
         if (existingPreview) {
@@ -227,7 +224,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
       }
       
       // Create a preview state
-      const preview = previewMgr.createPreview(
+      const preview = this.previewManager.createPreview(
         execution.sessionId,
         execution.id,
         generatedPreview.contentType,
@@ -449,9 +446,6 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
         
         // If we have a preview, associate it with the execution
         if (preview) {
-          // Use or create a preview manager
-          const previewMgr = createPreviewManager();
-          
           // Make sure metadata includes isPermissionPreview flag
           const enhancedMetadata = {
             ...preview.metadata,
@@ -469,7 +463,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
             fullContent = preview.briefContent;
           }
           
-          previewState = previewMgr.createPreview(
+          previewState = this.previewManager.createPreview(
             execution.sessionId,
             execution.id,
             preview.contentType,
@@ -498,11 +492,8 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
       // Use existing preview
       console.log(`Using existing preview ${previewId} for permission request ${id}`);
       
-      // Get the preview manager
-      const previewMgr = createPreviewManager();
-      
       // Get the existing preview
-      previewState = previewMgr.getPreview(previewId);
+      previewState = this.previewManager.getPreview(previewId);
     }
 
     // Update permission request with preview ID for consistent handling
@@ -520,7 +511,6 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
       preview: previewState
     };
    
-    console.log(`🔴🔴🔴 Permission requested event data: ${JSON.stringify(eventData)}`);
     this.emitEvent(ToolExecutionEvent.PERMISSION_REQUESTED, eventData);
     
     serverLogger.debug(`Created permission request: ${id} for execution: ${executionId}${previewId ? ' with preview' : ''}`, {
@@ -564,10 +554,27 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     // Get execution for event
     const execution = this.executions.get(executionId);
     
-    // Emit event
+    // Get the preview associated with this permission request if it exists
+    let preview = undefined;
+    // Add detailed logging to track the preview ID and resolution process
+    console.log(`🔎 [ToolExecutionManager] Resolving permission with previewId: ${updatedPermission.previewId || 'none'}`);
+    
+    if (updatedPermission.previewId) {
+      try {
+        // Try to get the preview that was created during permission request
+        preview = this.previewManager.getPreview(updatedPermission.previewId);
+      } catch (error) {
+        console.error(`[ToolExecutionManager] Error retrieving preview:`, error);
+      }
+    } else {
+      console.log(`[ToolExecutionManager] No previewId in permission request ${permissionId} for execution ${executionId}`);
+    }
+
+    // Emit event with the preview included
     this.emitEvent(ToolExecutionEvent.PERMISSION_RESOLVED, {
       execution,
-      permissionRequest: updatedPermission
+      permissionRequest: updatedPermission,
+      preview
     } as PermissionResolvedEventData);
     
     serverLogger.debug(`Resolved permission request: ${permissionId}`, {
@@ -806,7 +813,8 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
  * @returns New ToolExecutionManager instance
  */
 export function createToolExecutionManager(
+  previewManager: PreviewManager,
   persistenceService?: SessionStatePersistence
 ): ToolExecutionManager {
-  return new ToolExecutionManagerImpl(persistenceService);
+  return new ToolExecutionManagerImpl(previewManager, persistenceService);
 }
