@@ -21,7 +21,9 @@ import {
   ToolExecutionState, 
   ToolExecutionStatus,
   ToolExecutionEvent,
-  PermissionRequestState
+  PermissionRequestState,
+  PermissionRequestedEventData,
+  PermissionResolvedEventData
 } from '../../types/tool-execution';
 
 import { ExecutionCompletedWithPreviewEventData } from './tool-execution/ToolExecutionManagerImpl';
@@ -220,8 +222,8 @@ export class AgentService extends EventEmitter {
     };
     
     // Initialize the new managers
-    this.toolExecutionManager = createToolExecutionManager() as ToolExecutionManagerImpl;
     this.previewManager = createPreviewManager() as PreviewManagerImpl;
+    this.toolExecutionManager = createToolExecutionManager(this.previewManager) as ToolExecutionManagerImpl;
     
     // Set up event forwarding from the tool execution manager
     this.setupToolExecutionEventForwarding();
@@ -272,26 +274,7 @@ export class AgentService extends EventEmitter {
             
           } else if (toolEvent === ToolExecutionEvent.PERMISSION_REQUESTED || 
                      toolEvent === ToolExecutionEvent.PERMISSION_RESOLVED) {
-            // For permission events, expect { execution, permission } structure
-            const typedData = data as { 
-              execution: ToolExecutionState; 
-              permission: PermissionRequestState;
-              sessionId?: string;
-            };
-            
-            const sessionId = typedData.sessionId || typedData.execution?.sessionId;
-            
-            // Create a new event data structure with the renamed field
-            const eventData = {
-              execution: typedData.execution,
-              permissionRequest: typedData.permission,
-              sessionId: sessionId
-            };
-            
-            if (toolEvent === ToolExecutionEvent.PERMISSION_REQUESTED) {
-                    }
-            
-            this.emit(agentEvent, eventData);
+            this.emit(agentEvent, data);
           }
           return; // Skip the standard emit flow
         }
@@ -336,9 +319,6 @@ export class AgentService extends EventEmitter {
         
       case ToolExecutionEvent.ABORTED:
         return this.transformToolAbortedEvent(data as ToolExecutionState);
-        
-      case ToolExecutionEvent.PERMISSION_REQUESTED:
-        return this.transformPermissionRequestedEvent(data as { execution: ToolExecutionState; permission: PermissionRequestState });
         
       case ToolExecutionEvent.PERMISSION_RESOLVED:
         return this.transformPermissionResolvedEvent(data as { execution: ToolExecutionState; permission: PermissionRequestState });
@@ -614,65 +594,6 @@ export class AgentService extends EventEmitter {
       timestamp: execution.endTime,
       startTime: execution.startTime,
       abortTimestamp: execution.endTime,
-      preview: preview ? this.convertPreviewStateToData(preview) : undefined
-    };
-  }
-  
-  /**
-   * Transform permission requested event data
-   */
-  private transformPermissionRequestedEvent(data: { execution: ToolExecutionState, permission: PermissionRequestState }): PermissionEventData {
-    const { execution, permission } = data;
-    
-    // Check if a preview exists already
-    let preview = this.previewManager.getPreviewForExecution(execution.id);
-    
-    // If no preview exists, generate a permission preview
-    if (!preview) {
-      try {
-        // Generate a preview specifically for this permission request
-        const permissionPreview = previewService.generatePermissionPreview(
-          { id: execution.toolId, name: execution.toolName },
-          permission.args || {}
-        );
-        
-        // Extract fullContent from permission preview if available
-        let fullContent: string | undefined = undefined;
-        
-        // Permission previews may have a fullContent field with details
-        if (permissionPreview.hasFullContent) {
-          // Try to safely extract fullContent from any preview with it
-          fullContent = (permissionPreview as unknown as { fullContent?: string }).fullContent;
-        }
-        
-        // Create and store the preview
-        preview = this.previewManager.createPreview(
-          execution.sessionId,
-          execution.id,
-          permissionPreview.contentType,
-          permissionPreview.briefContent,
-          fullContent,
-          { 
-            ...permissionPreview.metadata,
-            executionId: execution.id
-          }
-        );
-        
-        // Link the preview to the execution
-        this.toolExecutionManager.associatePreview(execution.id, preview.id);
-      } catch (error) {
-        serverLogger.error(`Error generating permission preview for ${execution.id}:`, error);
-      }
-    }
-    
-    return {
-      permissionId: permission.id,
-      sessionId: permission.sessionId,
-      toolId: permission.toolId,
-      toolName: permission.toolName,
-      executionId: execution.id,
-      args: permission.args,
-      timestamp: permission.requestTime,
       preview: preview ? this.convertPreviewStateToData(preview) : undefined
     };
   }
@@ -1338,9 +1259,6 @@ export class AgentService extends EventEmitter {
               return Promise.resolve(false);
             }
             
-            // Generate a preview for the permission request
-            this.generatePermissionPreview(executionId, toolId, args);
-            
             // Create a promise to wait for permission resolution
             return new Promise<boolean>(resolve => {
               // Store resolver in a closure that will be called when permission is resolved
@@ -1350,16 +1268,16 @@ export class AgentService extends EventEmitter {
               // Create a one-time event listener for permission resolution
               const onPermissionResolved = (data: unknown) => {
                 // Type check and cast the data
-                const typedData = data as { execution: ToolExecutionState; permission: PermissionRequestState };
+                const typedData = data as { execution: ToolExecutionState; permissionRequest: PermissionRequestState };
                 
                 // Check if this is our permission request
-                if (typedData.permission.id === permission.id) {
+                if (typedData.permissionRequest.id === permission.id) {
                   // Remove the listener to avoid memory leaks
                   const removeListener = this.toolExecutionManager.on(ToolExecutionEvent.PERMISSION_RESOLVED, onPermissionResolved);
                   removeListener();
                   
                   // Resolve with the permission status
-                  resolve(typedData.permission.granted || false);
+                  resolve(typedData.permissionRequest.granted || false);
                 }
               };
               
@@ -1486,9 +1404,10 @@ export class AgentService extends EventEmitter {
     try {
       // Directly use the ToolExecutionManager method to resolve permission
       const result = this.toolExecutionManager.resolvePermissionByExecutionId(executionId, granted);
+      console.log(`🔴🔴🔴 Permission resolved by execution ID: ${executionId}`, result);
       return !!result;
     } catch (error) {
-      serverLogger.error(`Error resolving permission for execution: ${executionId}`, error);
+      console.log(`Error resolving permission for execution: ${executionId}`, error);
       return false;
     }
   }
@@ -1569,83 +1488,6 @@ export class AgentService extends EventEmitter {
     }
   }
   
-  /**
-   * Generate a preview for a permission request
-   */
-  private generatePermissionPreview(
-    executionId: string,
-    toolId: string,
-    args: Record<string, unknown>
-  ): void {
-    try {
-      // Get the execution and permission from the manager
-      const execution = this.toolExecutionManager.getExecution(executionId);
-      if (!execution) {
-        serverLogger.warn(`No execution found for permission preview: ${executionId}`);
-        return;
-      }
-      
-      const permission = this.toolExecutionManager.getPermissionRequestForExecution(executionId);
-      if (!permission) {
-        serverLogger.warn(`No permission found for execution: ${executionId}`);
-        return;
-      }
-      
-      // Use the existing previewService to generate the preview
-      const toolInfo = {
-        id: toolId,
-        name: execution.toolName
-      };
-      
-      serverLogger.debug(`Generating permission preview for execution: ${executionId}`, {
-        toolId,
-        toolName: execution.toolName,
-        permissionId: permission.id
-      });
-      
-      // Generate the permission preview
-      const previewData = previewService.generatePermissionPreview(toolInfo, args);
-      if (!previewData) {
-        serverLogger.warn(`No preview data generated for permission request: ${permission.id}`);
-        return;
-      }
-      
-      serverLogger.debug(`Permission preview generated for execution ${executionId}:`, {
-        contentType: previewData.contentType,
-        hasBriefContent: !!previewData.briefContent,
-        hasFullContent: previewData.hasFullContent
-      });
-      
-      // Create a preview in the manager
-      // For TypeScript compatibility - check if there's full content available
-      const fullContent = previewData.hasFullContent 
-        ? (previewData as unknown as { fullContent: string }).fullContent
-        : undefined;
-        
-      const preview = this.previewManager.createPermissionPreview(
-        execution.sessionId,
-        executionId,
-        permission.id,
-        previewData.contentType,
-        previewData.briefContent,
-        fullContent,
-        previewData.metadata
-      );
-      
-      serverLogger.debug(`Permission preview created and stored for execution ${executionId}:`, {
-        previewId: preview.id,
-        executionId: preview.executionId,
-        permissionId: permission.id
-      });
-      
-      // Also update the execution to link to the preview
-      this.toolExecutionManager.updateExecution(executionId, { previewId: preview.id });
-      serverLogger.debug(`Updated execution ${executionId} with permission preview ID: ${preview.id}`);
-    } catch (error) {
-      serverLogger.error(`Error in generatePermissionPreview:`, error);
-    }
-  }
-
   /**
    * Get pending permission requests for a session
    */

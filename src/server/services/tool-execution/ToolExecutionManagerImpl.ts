@@ -5,7 +5,9 @@ import {
   ToolExecutionState,
   ToolExecutionStatus,
   ToolExecutionEvent,
-  PermissionRequestState
+  PermissionRequestState,
+  PermissionRequestedEventData,
+  PermissionResolvedEventData
 } from '../../../types/tool-execution';
 import { SessionStatePersistence } from '../SessionStatePersistence';
 import { getSessionStatePersistence } from '../sessionPersistenceProvider';
@@ -20,7 +22,7 @@ export interface ExecutionCompletedWithPreviewEventData {
   execution: ToolExecutionState;
   preview?: ToolPreviewState;
 }
-import { PreviewManager, ToolPreviewState } from '../../../types/preview';
+import { PreviewManager, ToolPreviewData, ToolPreviewState } from '../../../types/preview';
 import { createPreviewManager } from '../PreviewManagerImpl';
 import { previewService } from '../preview';
 import { serverLogger } from '../../logger';
@@ -36,17 +38,18 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   private sessionPermissions: Map<string, Set<string>> = new Map();
   private executionPermissions: Map<string, string> = new Map();
   private eventEmitter = new EventEmitter();
-  
-  // Add persistence support
+  private previewManager: PreviewManager;
   private persistence: SessionStatePersistence;
+
   
   /**
    * Create a new ToolExecutionManagerImpl
    * @param persistenceService Optional persistence service to use
    */
-  constructor(persistenceService?: SessionStatePersistence) {
+  constructor(previewManager: PreviewManager, persistenceService?: SessionStatePersistence) {
     // Use provided persistence service or get singleton instance
     this.persistence = persistenceService || getSessionStatePersistence();
+    this.previewManager = previewManager;
     
   }
 
@@ -152,7 +155,6 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
    */
   async generatePreviewForExecution(
     executionId: string,
-    previewManager?: PreviewManager
   ): Promise<ToolPreviewState | null> {
     const execution = this.executions.get(executionId);
     if (!execution) {
@@ -168,18 +170,23 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     }
 
     try {
-      // Use or create a preview manager
-      const previewMgr = previewManager || createPreviewManager();
-      
       // Check if we already have a preview
+      // If the execution status is COMPLETED, always generate a fresh completion preview
+      // This ensures we replace any permission preview with an actual result preview
       if (execution.previewId) {
-        const existingPreview = previewMgr.getPreview(execution.previewId);
+        const existingPreview = this.previewManager.getPreview(execution.previewId);
+        
+        // Log information about existing preview for debugging
         if (existingPreview) {
-          serverLogger.debug(`Preview already exists for execution ${executionId}`, {
+          serverLogger.debug(`Found existing preview for execution ${executionId}`, {
             previewId: existingPreview.id,
-            contentType: existingPreview.contentType
+            contentType: existingPreview.contentType,
+            isPermissionPreview: existingPreview.metadata?.isPermissionPreview || false
           });
-          return existingPreview;
+          
+          // If this is a completed execution, we always want to generate a new preview
+          // to replace any permission preview with the actual result preview
+          serverLogger.debug(`For completed execution ${executionId}, generating fresh result preview`);
         }
       }
       
@@ -200,16 +207,30 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
         return null;
       }
       
+      // Enhance metadata to mark as completion preview
+      const enhancedMetadata = {
+        ...generatedPreview.metadata,
+        isCompletionPreview: true,
+        completionTime: new Date().toISOString()
+      };
+      
+      // Extract fullContent if available
+      let fullContent = undefined;
+      if (generatedPreview.hasFullContent && 'fullContent' in generatedPreview) {
+        fullContent = (generatedPreview as any).fullContent;
+      } else if (generatedPreview.briefContent) {
+        // Use briefContent as fallback
+        fullContent = generatedPreview.briefContent;
+      }
+      
       // Create a preview state
-      const preview = previewMgr.createPreview(
+      const preview = this.previewManager.createPreview(
         execution.sessionId,
         execution.id,
         generatedPreview.contentType,
         generatedPreview.briefContent,
-        generatedPreview.hasFullContent ? 
-          // If fullContent is available, extract it from the generated preview
-          (generatedPreview as any).fullContent : undefined,
-        generatedPreview.metadata
+        fullContent,
+        enhancedMetadata
       );
       
       // Associate the preview with the execution
@@ -365,6 +386,16 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
       throw new Error(`Tool execution not found: ${executionId}`);
     }
 
+    // Check if there's already a permission request for this execution
+    const existingPermissionId = this.executionPermissions.get(executionId);
+    if (existingPermissionId) {
+      const existingPermission = this.permissionRequests.get(existingPermissionId);
+      if (existingPermission && !existingPermission.resolvedTime) {
+        serverLogger.warn(`Permission request already exists for execution ${executionId}, returning existing request`);
+        return existingPermission;
+      }
+    }
+
     const id = uuidv4();
     const permissionRequest: PermissionRequestState = {
       id,
@@ -391,18 +422,104 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     // Update execution status
     this.updateStatus(executionId, ToolExecutionStatus.AWAITING_PERMISSION);
 
-    // Emit event
-    this.emitEvent(ToolExecutionEvent.PERMISSION_REQUESTED, {
-      execution: this.executions.get(executionId),
-      permission: permissionRequest
-    });
+    // Check if we already have a preview for this execution
+    let previewId = execution.previewId;
+    let previewState;
+
+    // If no existing preview, generate one for the permission
+    if (!previewId) {
+      try {
+        const toolInfo = {
+          id: execution.toolId,
+          name: execution.toolName
+        };
+        
+        console.log(`Generating permission preview for ${executionId} (${toolInfo.name})`, {
+          toolId: toolInfo.id,
+          toolName: toolInfo.name,
+          executionId,
+          argsKeys: Object.keys(args)
+        });
+        
+        // Generate a permission preview using the preview service
+        const preview: ToolPreviewData  = previewService.generatePermissionPreview(toolInfo, args);
+        
+        // If we have a preview, associate it with the execution
+        if (preview) {
+          // Make sure metadata includes isPermissionPreview flag
+          const enhancedMetadata = {
+            ...preview.metadata,
+            isPermissionPreview: true,
+            permissionRequestTime: new Date().toISOString()
+          };
+          
+          // Create a preview state
+          // For permission previews, check if we need to extract any fullContent
+          let fullContent: string | undefined = undefined;
+          if (preview.hasFullContent && 'fullContent' in preview) {
+            fullContent = preview.fullContent as string;
+          } else {
+            // Use briefContent as fallback
+            fullContent = preview.briefContent;
+          }
+          
+          previewState = this.previewManager.createPreview(
+            execution.sessionId,
+            execution.id,
+            preview.contentType,
+            preview.briefContent,
+            fullContent,
+            enhancedMetadata
+          );
+          
+          // Get the preview ID
+          previewId = previewState.id;
+          
+          // Associate the preview with the execution
+          this.associatePreview(execution.id, previewId);
+          
+          console.log(`Generated permission preview for execution ${executionId}`, {
+            previewId: previewId,
+            contentType: preview.contentType,
+            briefContentLength: preview.briefContent?.length || 0,
+            hasFullContent: preview.hasFullContent || false
+          });
+        }
+      } catch (error) {
+        console.error(`Error generating permission preview for ${executionId}:`, error);
+      }
+    } else {
+      // Use existing preview
+      console.log(`Using existing preview ${previewId} for permission request ${id}`);
+      
+      // Get the existing preview
+      previewState = this.previewManager.getPreview(previewId);
+    }
+
+    // Update permission request with preview ID for consistent handling
+    if (previewId) {
+      permissionRequest.previewId = previewId;
+      // Update the stored permission request with the preview ID
+      this.permissionRequests.set(id, permissionRequest);
+    }
     
-    serverLogger.debug(`Created permission request: ${id} for execution: ${executionId}`, {
+    // Emit the event with the execution and permission request
+    // Include preview if available
+    const eventData: PermissionRequestedEventData = {
+      execution: this.executions.get(executionId)!,
+      permissionRequest,
+      preview: previewState
+    };
+   
+    this.emitEvent(ToolExecutionEvent.PERMISSION_REQUESTED, eventData);
+    
+    serverLogger.debug(`Created permission request: ${id} for execution: ${executionId}${previewId ? ' with preview' : ''}`, {
       permissionId: id,
       executionId,
-      toolId: execution.toolId
+      toolId: execution.toolId,
+      previewId
     });
-
+    
     return permissionRequest;
   }
 
@@ -437,11 +554,28 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     // Get execution for event
     const execution = this.executions.get(executionId);
     
-    // Emit event
+    // Get the preview associated with this permission request if it exists
+    let preview = undefined;
+    // Add detailed logging to track the preview ID and resolution process
+    console.log(`🔎 [ToolExecutionManager] Resolving permission with previewId: ${updatedPermission.previewId || 'none'}`);
+    
+    if (updatedPermission.previewId) {
+      try {
+        // Try to get the preview that was created during permission request
+        preview = this.previewManager.getPreview(updatedPermission.previewId);
+      } catch (error) {
+        console.error(`[ToolExecutionManager] Error retrieving preview:`, error);
+      }
+    } else {
+      console.log(`[ToolExecutionManager] No previewId in permission request ${permissionId} for execution ${executionId}`);
+    }
+
+    // Emit event with the preview included
     this.emitEvent(ToolExecutionEvent.PERMISSION_RESOLVED, {
       execution,
-      permission: updatedPermission
-    });
+      permissionRequest: updatedPermission,
+      preview
+    } as PermissionResolvedEventData);
     
     serverLogger.debug(`Resolved permission request: ${permissionId}`, {
       permissionId,
@@ -521,8 +655,8 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
     
     // For permission events, ensure permissionRequest is defined and has an id
     if (event === ToolExecutionEvent.PERMISSION_REQUESTED || event === ToolExecutionEvent.PERMISSION_RESOLVED) {
-      const typedData = data as { permission?: PermissionRequestState; execution?: ToolExecutionState };
-      if (!typedData.permission || !typedData.permission.id || !typedData.execution) {
+      const typedData = data as { permissionRequest?: PermissionRequestState; execution?: ToolExecutionState };
+      if (!typedData.permissionRequest || !typedData.permissionRequest.id || !typedData.execution) {
         serverLogger.error(`Cannot emit ${event} with invalid permission data:`, typedData);
         return;
       }
@@ -679,7 +813,8 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
  * @returns New ToolExecutionManager instance
  */
 export function createToolExecutionManager(
+  previewManager: PreviewManager,
   persistenceService?: SessionStatePersistence
 ): ToolExecutionManager {
-  return new ToolExecutionManagerImpl(persistenceService);
+  return new ToolExecutionManagerImpl(previewManager, persistenceService);
 }

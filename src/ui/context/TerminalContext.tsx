@@ -287,52 +287,6 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
       dispatch({ type: 'CLEAR_STREAM_BUFFER' });
     };
     
-    // Handler for tool execution event - now handled by tool visualization
-    const handleToolExecution = ({ 
-      _sessionId, 
-      _tool, 
-      _result 
-    }: { 
-      _sessionId: string, 
-      _tool: { 
-        id: string; 
-        name: string;
-      }, 
-      _result: unknown 
-    }) => {
-      // Tool execution is now handled by the ToolVisualization component
-      // No need to track current tool in TerminalContext anymore
-    };
-    
-    
-    // Handler for permission requested event
-    const handlePermissionRequested = ({ 
-      _sessionId, 
-      permission 
-    }: { 
-      _sessionId: string, 
-      permission: { 
-        toolId: string;
-        id: string;
-        args: Record<string, unknown>;
-        timestamp: string;
-      }
-    }) => {
-      // We no longer add a system message for permission requests
-      // The UI will show permission requests in the tool visualization
-      console.log('Permission request received in TerminalContext, handled by ToolVisualization:', permission);
-    };
-    
-    // Handler for permission resolved event
-    const handlePermissionResolved = ({ 
-      _sessionId, 
-      permissionId, 
-      resolution 
-    }: { _sessionId: string, permissionId: string, resolution: boolean }) => {
-      // Just log to console, don't add a system message
-      console.log(`Permission ${resolution ? 'granted' : 'denied'} for request ${permissionId}`);
-    };
-    
     // Handler for session updated event - displays messages from the conversation history
     const handleSessionUpdated = (sessionData: SessionData) => {
       console.log('SESSION_UPDATED event received:', JSON.stringify(sessionData, null, 2));
@@ -454,39 +408,12 @@ export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }
     const processAbortedWrapper = (data: { sessionId: string }) => 
       handleProcessingAborted({ _sessionId: data.sessionId });
     
-    const toolExecutionWrapper = (data: { sessionId: string, tool: { id: string; name: string }, result: unknown }) => 
-      handleToolExecution({ 
-        _sessionId: data.sessionId, 
-        _tool: data.tool, 
-        _result: data.result 
-      });
-    
-    const permissionRequestedWrapper = (data: { sessionId: string, permission: { id: string; toolId: string; args: Record<string, unknown>; timestamp: string; } }) => 
-      handlePermissionRequested({ 
-        _sessionId: data.sessionId, 
-        permission: { 
-          toolId: data.permission.toolId, 
-          id: data.permission.id,
-          args: data.permission.args,
-          timestamp: data.permission.timestamp
-        } 
-      });
-    
-    const permissionResolvedWrapper = (data: { sessionId: string, executionId: string, resolution: boolean }) => 
-      handlePermissionResolved({ 
-        _sessionId: data.sessionId, 
-        permissionId: data.executionId, // Map executionId to permissionId for compatibility
-        resolution: data.resolution 
-      });
     
     const cleanupFunctions = [
       websocketContext.on(WebSocketEvent.PROCESSING_STARTED, processStartedWrapper),
       websocketContext.on(WebSocketEvent.PROCESSING_COMPLETED, processCompletedWrapper),
       websocketContext.on(WebSocketEvent.PROCESSING_ERROR, processErrorWrapper),
       websocketContext.on(WebSocketEvent.PROCESSING_ABORTED, processAbortedWrapper),
-      websocketContext.on(WebSocketEvent.TOOL_EXECUTION, toolExecutionWrapper),
-      websocketContext.on(WebSocketEvent.PERMISSION_REQUESTED, permissionRequestedWrapper),
-      websocketContext.on(WebSocketEvent.PERMISSION_RESOLVED, permissionResolvedWrapper),
       websocketContext.on(WebSocketEvent.SESSION_UPDATED, handleSessionUpdated)
     ];
     
