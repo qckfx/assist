@@ -207,10 +207,7 @@ export function Terminal({
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   
   // Get createSession from WebSocketTerminal context
-  const { createSession, createSessionWithEnvironment } = wsTerminalContext;
-  
-  // Get the navigation function from React Router
-  const navigate = useNavigate();
+  const { createSessionWithEnvironment } = wsTerminalContext;
   
   // Handle environment selection
   const handleEnvironmentSelect = async (environment: ExecutionEnvironment, e2bSandboxId?: string) => {
