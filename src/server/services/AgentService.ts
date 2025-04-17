@@ -174,6 +174,10 @@ export class AgentService extends EventEmitter {
   private sessionMessages: Map<string, StoredMessage[]> = new Map();
   private sessionRepositoryInfo: Map<string, RepositoryInfo> = new Map();
   
+  // Instance properties to track Docker initialization status
+  private dockerInitializing = false;
+  private dockerInitializationPromise: Promise<ExecutionAdapter | null> | null = null;
+  
   /**
    * Creates a concise summary of tool arguments for display
    * @private
@@ -319,7 +323,7 @@ export class AgentService extends EventEmitter {
         return this.transformToolAbortedEvent(data as ToolExecutionState);
         
       case ToolExecutionEvent.PERMISSION_RESOLVED:
-        return this.transformPermissionResolvedEvent(data as { execution: ToolExecutionState; permission: PermissionRequestState });
+        return this.transformPermissionResolvedEvent(data as { execution: ToolExecutionState, permission: PermissionRequestState });
         
       default:
         // Create a basic structure for unknown event types
@@ -1828,11 +1832,6 @@ export class AgentService extends EventEmitter {
     }
   }
   
-  
-  // Static cache to track Docker initialization status
-  private static dockerInitializing = false;
-  private static dockerInitializationPromise: Promise<ExecutionAdapter | null> | null = null;
-
   /**
    * Create an execution adapter for a session with the specified type
    */
@@ -1865,11 +1864,11 @@ export class AgentService extends EventEmitter {
       // This is a performance optimization for the first tool call
       if (options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) {
         // Only pre-initialize if Docker initialization isn't already in progress
-        if (!AgentService.dockerInitializing) {
-          AgentService.dockerInitializing = true;
+        if (!this.dockerInitializing) {
+          this.dockerInitializing = true;
           
           // Start Docker initialization early for a smoother experience
-          AgentService.dockerInitializationPromise = new Promise((resolve) => {
+          this.dockerInitializationPromise = new Promise((resolve) => {
             // Use an immediately-invoked async function to avoid async executor
             (async () => {
               try {
@@ -1903,8 +1902,8 @@ export class AgentService extends EventEmitter {
       let adapter: ExecutionAdapter | null;
       let type: 'local' | 'docker' | 'e2b' | undefined;
       if ((options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) && 
-          AgentService.dockerInitializationPromise) {
-        adapter = await AgentService.dockerInitializationPromise;
+          this.dockerInitializationPromise) {
+        adapter = await this.dockerInitializationPromise;
         type = 'docker';
       } else {
         const res = await createExecutionAdapter(adapterOptions);
