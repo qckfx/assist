@@ -70,7 +70,7 @@ if [ "$HEX_POS" = "0" ]; then
 fi
 
 # Calculate byte position (hex_pos is character position in hex dump)
-BYTE_POS=$((HEX_POS / 2))
+BYTE_POS=$(((HEX_POS / 2) - 1))
 if [ $((HEX_POS % 2)) -ne 0 ]; then
   echo "INFO: Hex position $HEX_POS is not aligned to byte boundary"
   # Adjust for alignment
