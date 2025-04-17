@@ -213,13 +213,24 @@ export class LocalExecutionAdapter implements ExecutionAdapter {
           // Fallback to the string-based approach if the script isn't available
           this.logger?.warn('Falling back to string-based replacement', LogCategory.TOOLS);
           
-          // Use our previously proven string replacement approach
+          // Use string replacement with careful handling of newlines
           const searchIndex = normalizedContent.indexOf(normalizedSearchCode);
+          if (searchIndex === -1) {
+            throw new Error(`Search pattern not found in file: ${filepath}`);
+          }
+          
           const prefixContent = normalizedContent.substring(0, searchIndex);
           const suffixContent = normalizedContent.substring(searchIndex + normalizedSearchCode.length);
           
-          // Construct the new content
+          // Construct the new content with proper newline preservation
           newContent = prefixContent + normalizedReplaceCode + suffixContent;
+          
+          // Add diagnostic logging for newline debugging
+          this.logger?.debug('File edit newline preservation check:', LogCategory.TOOLS, {
+            searchEndsWithNewline: normalizedSearchCode.endsWith('\n'),
+            replaceEndsWithNewline: normalizedReplaceCode.endsWith('\n'),
+            suffixStartsWithNewline: suffixContent.startsWith('\n')
+          });
         }
         
         // Write the updated content back to the original file
