@@ -490,42 +490,17 @@ export function Terminal({
           )}
         </div>
         <div className="flex items-center space-x-2">
-          <button
-            className="hover:text-white text-sm group relative"
+           <button
+            className="hover:text-white text-sm group relative bg-blue-600 text-white px-2 py-1 rounded"
             onClick={handleNewSession}
             aria-label="New Session"
             data-testid="new-session"
           >
-            ➕
+            ➕ New Session
             <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
               New Session ({isMac ? 'Cmd' : 'Ctrl'}+.)
             </span>
-          </button>
-          <button
-            className="hover:text-white text-sm group relative"
-            onClick={saveSession}
-            aria-label="Save Current Session"
-            data-testid="quick-save-session"
-          >
-            💾
-            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-              Save Session
-            </span>
-          </button>
-          <button
-            className="hover:text-white text-sm group relative"
-            onClick={toggleSessionManager}
-            aria-label="Session Management"
-            data-testid="show-session-manager"
-            aria-haspopup="dialog"
-            aria-expanded={showSessionManager}
-          >
-            📋
-            <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-              {showSessionManager ? 'Close Sessions' : 'Session List'}
-            </span>
-          </button>
-          <button
+          </button>         <button
             className="hover:text-white text-sm group relative"
             onClick={() => setShowSettings(true)}
             aria-label="Terminal settings"
