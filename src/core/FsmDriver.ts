@@ -31,8 +31,16 @@ interface DriverDeps {
 
 export class FsmDriver {
   private state: AgentState = { type: 'IDLE' };
+  private _iterations: number = 0;
 
   constructor(private readonly deps: DriverDeps) {}
+  
+  /**
+   * The number of iterations through the FSM loop
+   */
+  public get iterations(): number {
+    return this._iterations;
+  }
 
   private dispatch(event: AgentEvent): void {
     this.state = transition(this.state, event);
@@ -41,9 +49,13 @@ export class FsmDriver {
   /**
    * Runs a single user query through the FSM until it reaches a terminal
    * state. Handles both tool execution flow and direct assistant replies.
-   * @returns A response object containing the assistant's text and abort status
+   * @returns A response object containing the assistant's text, tool results, and abort status
    */
-  public async run(query: string, sessionState: SessionState): Promise<{ response: string; aborted: boolean }> {
+  public async run(query: string, sessionState: SessionState): Promise<{ 
+    response: string; 
+    aborted: boolean;
+    toolResults: ToolResultEntry[];
+  }> {
     // Initialize tracking
     const toolResults: ToolResultEntry[] = [];
     let finalAssistant: Anthropic.Messages.Message | undefined;
@@ -63,8 +75,14 @@ export class FsmDriver {
     // USER_MESSAGE
     this.dispatch({ type: 'USER_MESSAGE' });
 
+    // Reset iterations counter for this run
+    this._iterations = 0;
+    
     // FSM loop - continue until we reach a terminal state
     while (!isTerminal(this.state)) {
+      // Increment iterations counter
+      this._iterations++;
+      
       // Check for abortion at the beginning of each loop
       if (abortSignal.aborted) {
         this.dispatch({ type: 'ABORT_REQUESTED' });
@@ -213,7 +231,8 @@ export class FsmDriver {
     if (this.state.type === 'ABORTED') {
       return {
         response: "Operation aborted by user",
-        aborted: true
+        aborted: true,
+        toolResults
       };
     }
 
@@ -223,13 +242,15 @@ export class FsmDriver {
       const responseText = first.type === 'text' ? first.text || '' : '';
       return {
         response: responseText,
-        aborted: false
+        aborted: false,
+        toolResults
       };
     }
     
     return {
       response: '',
-      aborted: false
+      aborted: false,
+      toolResults
     };
   }
 }
