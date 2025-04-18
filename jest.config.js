@@ -8,6 +8,7 @@ module.exports = {
     '/src/ui/',
     '/bak/'
   ],
+  modulePathIgnorePatterns: ['<rootDir>/dist/'],
   collectCoverage: true,
   coverageDirectory: 'coverage',
   collectCoverageFrom: [

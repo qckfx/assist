@@ -104,6 +104,8 @@ export interface ToolContext {
     getTool: (toolId: string) => Tool | undefined;
   };
   sessionState: SessionState;
+  /** AbortSignal for cooperative cancellation */
+  abortSignal?: AbortSignal;
   [key: string]: unknown;
 }
 
