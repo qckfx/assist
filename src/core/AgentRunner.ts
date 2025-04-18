@@ -21,6 +21,7 @@ import {
   AgentEventType,
   formatGitInfoAsContextPrompt 
 } from '../utils/sessionUtils';
+import { getAbortSignal, resetAbort } from '../utils/sessionAbort';
 import { createContextWindow } from '../types/contextWindow';
 
 /**
@@ -136,7 +137,10 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
      */
     async processQuery(query: string, sessionState: SessionState): Promise<ProcessQueryResult> {
       // Extract the sessionId from the state
+
       const sessionId = sessionState.id as string;
+      // Ensure we have an AbortSignal for this session (created lazily)
+      const abortSignal = getAbortSignal(sessionId);
       
       if (!sessionId) {
         logger.error('Cannot process query: Missing sessionId in session state', LogCategory.SYSTEM);
@@ -168,8 +172,9 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           // Reset abort status if it was previously set
           if (isSessionAborted(sessionId)) {
             logger.info("Clearing abort status as new user message received", LogCategory.SYSTEM);
-            // Clear from the centralized registry
+            // Clear from the centralized registry (legacy) and reset AbortController
             clearSessionAborted(sessionId);
+            resetAbort(sessionId);
           }
           
           // Create properly typed message following Anthropic's expected structure
@@ -232,9 +237,10 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             logger.debug('Getting tool call from model', LogCategory.MODEL);
             
             const toolCallChat = await modelClient.getToolCall(
-              currentQuery, 
-              toolRegistry.getToolDescriptions(), 
-              sessionState
+              currentQuery,
+              toolRegistry.getToolDescriptions(),
+              sessionState,
+              { signal: abortSignal }
             );
 
             // AgentEvents.emit(MESSAGE_ADDED, {
@@ -559,7 +565,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               finalResponse = await modelClient.generateResponse(
                 query,
                 toolRegistry.getToolDescriptions(),
-                sessionState
+                sessionState,
+                { signal: abortSignal }
               );
               
               break;
@@ -588,7 +595,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             query,
             toolRegistry.getToolDescriptions(),
             sessionState,
-            { tool_choice: { type: "none" } }  // Explicitly disable tool usage for this response
+            { tool_choice: { type: "none" }, signal: abortSignal }  // Explicitly disable tool usage
           );
           
           // Check for abort after final response generation

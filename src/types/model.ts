@@ -107,12 +107,17 @@ export interface ModelClientConfig {
 
 export interface ModelClient {
   formatToolsForClaude(toolDescriptions: ToolDescription[]): unknown[];
-  getToolCall(query: string, toolDescriptions: ToolDescription[], sessionState?: SessionState): Promise<ToolCallResponse>;
+  getToolCall(
+    query: string,
+    toolDescriptions: ToolDescription[],
+    sessionState?: SessionState,
+    options?: { signal?: AbortSignal }
+  ): Promise<ToolCallResponse>;
   generateResponse(
     query: string, 
     toolDescriptions: ToolDescription[], 
     sessionState?: SessionState, 
-    options?: { tool_choice?: { type: string } }
+    options?: { tool_choice?: { type: string }; signal?: AbortSignal }
   ): Promise<Anthropic.Messages.Message>;
 }
 

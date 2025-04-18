@@ -3,7 +3,6 @@
  */
 import { EventEmitter } from 'events';
 import { Anthropic } from '@anthropic-ai/sdk';
-import crypto from 'crypto';
 import {
   createAgent,
   createAnthropicProvider,
@@ -237,7 +236,6 @@ export class AgentService extends EventEmitter {
             
           // Type the data properly based on the event type
           if (toolEvent === ToolExecutionEvent.COMPLETED) {
-            console.log('🔴🔴🔴 ToolExecutionEvent.COMPLETED', JSON.stringify(data, null, 2));
             this.emit(agentEvent, data);
             
           } else if (toolEvent === ToolExecutionEvent.PERMISSION_REQUESTED || 
