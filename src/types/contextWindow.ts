@@ -51,6 +51,77 @@ export class ContextWindow {
   public push(message: Anthropic.Messages.MessageParam): void {
     this._messages.push(message);
   }
+
+  // ----------------------------------------------------------------------
+  // Typed helper methods to make conversation‑history mutations safer.
+  // ----------------------------------------------------------------------
+
+  public pushUser(text: string): void {
+    this.push({ role: 'user', content: [{ type: 'text', text }] });
+    this.validate();
+  }
+
+  public pushAssistant(blocks: Anthropic.Messages.ContentBlockParam[]): void {
+    this.push({ role: 'assistant', content: blocks });
+    this.validate();
+  }
+
+  public pushToolUse(toolUse: { id: string; name: string; input: Record<string, unknown> }): void {
+    this.push({
+      role: 'assistant',
+      content: [
+        {
+          type: 'tool_use' as const,
+          id: toolUse.id,
+          name: toolUse.name,
+          input: toolUse.input,
+        },
+      ],
+    });
+    this.validate();
+  }
+
+  public pushToolResult(toolUseId: string, result: unknown): void {
+    this.push({
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result' as const,
+          tool_use_id: toolUseId,
+          content: JSON.stringify(result),
+        },
+      ],
+    });
+    this.validate();
+  }
+
+  // ----------------------------------------------------------------------
+  // Development‑time invariant check (runs only when NODE_ENV === 'dev')
+  // ----------------------------------------------------------------------
+
+  private validate(): void {
+    if (process.env.NODE_ENV !== 'dev') return;
+
+    for (let i = 0; i < this._messages.length; i++) {
+      const msg = this._messages[i];
+      const first = Array.isArray(msg.content) ? (msg.content[0] as any) : undefined;
+
+      if (first?.type === 'tool_use') {
+        const next = this._messages[i + 1];
+        const ok =
+          next &&
+          Array.isArray(next.content) &&
+          next.content[0]?.type === 'tool_result' &&
+          next.content[0]?.tool_use_id === first.id;
+
+        if (!ok) {
+          throw new Error(
+            `ContextWindow invariant violated: tool_use at index ${i} must be immediately followed by matching tool_result`,
+          );
+        }
+      }
+    }
+  }
   
   public clear(): void {
     this._messages = [];
