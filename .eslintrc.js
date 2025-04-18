@@ -19,7 +19,15 @@ module.exports = {
       'ts-expect-error': 'allow-with-description',
       // Disallow ts-ignore as it's less specific
       'ts-ignore': false 
-    }]
+    }],
+    // Prevent direct use of contextWindow.push() outside of tests
+    'no-restricted-syntax': [
+      'error',
+      {
+        'selector': 'MemberExpression[property.name="push"][object.property.name="contextWindow"], MemberExpression[property.name="push"][object.object.property.name="contextWindow"]',
+        'message': 'Direct use of contextWindow.push() is forbidden. Use typed methods like pushUser(), pushAssistant(), pushToolUse(), or pushToolResult() instead.'
+      }
+    ]
   },
   env: {
     node: true,
@@ -33,7 +41,9 @@ module.exports = {
         // Warn about any but don't break the build for tests
         '@typescript-eslint/no-explicit-any': 'warn',
         // Allow expect.any(X) pattern in tests
-        '@typescript-eslint/no-unsafe-argument': 'off'
+        '@typescript-eslint/no-unsafe-argument': 'off',
+        // Allow direct use of contextWindow.push() in tests
+        'no-restricted-syntax': 'off'
       }
     }
   ]

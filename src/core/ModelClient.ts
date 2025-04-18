@@ -120,6 +120,38 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       try {
         console.log('⚠️ MODEL_CLIENT calling modelProvider...');
 
+        // Guard against orphaned tool calls
+        const msgs = sessionState.contextWindow.getMessages();
+        if (msgs.length > 0) {
+          const last = msgs[msgs.length - 1];
+          if (last?.role === 'assistant' && Array.isArray(last.content) && last.content.length > 0) {
+            const content = last.content[0];
+            if (content && typeof content === 'object' && 'type' in content && content.type === 'tool_use' && 'id' in content) {
+              const useId = content.id as string;
+              let paired = false;
+              
+              if (msgs.length > 1) {
+                const prevMsg = msgs[msgs.length - 2];
+                if (prevMsg && Array.isArray(prevMsg.content) && prevMsg.content.length > 0) {
+                  const prevContent = prevMsg.content[0];
+                  paired = !!(
+                    prevContent && 
+                    typeof prevContent === 'object' && 
+                    'type' in prevContent && 
+                    prevContent.type === 'tool_result' && 
+                    'tool_use_id' in prevContent && 
+                    prevContent.tool_use_id === useId
+                  );
+                }
+              }
+              
+              if (!paired) {
+                sessionState.contextWindow.pushToolResult(useId, { aborted: true });
+              }
+            }
+          }
+        }
+
         if (options?.signal) {
           // Wrap call so it races with abort signal
           response = await new Promise<Anthropic.Messages.Message>((resolve, reject) => {
@@ -182,23 +214,15 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         });
         
         // Add the assistant's tool use response to the conversation history only if not aborted
-        if (sessionState.contextWindow && toolUse && !isSessionAborted(getSessionId(sessionState))) {
-          sessionState.contextWindow.pushToolUse({
-            id: toolUse.id,
-            name: toolUse.name,
-            input: (toolUse.input || {}) as Record<string, unknown>,
-          });
-          console.log('⚠️ MODEL_CLIENT added tool use to context window:', {
-            toolName: toolUse.name,
-            historyLength: sessionState.contextWindow.getLength()
-          });
-        } else {
-          console.log('⚠️ MODEL_CLIENT did not add tool use to context window:', {
-            hasContextWindow: !!sessionState.contextWindow,
-            hasToolUse: !!toolUse,
-            isAborted: isSessionAborted(getSessionId(sessionState))
-          });
-        }
+        // NOTE: We no longer mutate the ContextWindow here. The caller (e.g. the
+        // FsmDriver) is responsible for appending the `tool_use` message once it
+        // has successfully parsed the model response. Mutating the history in
+        // two different layers led to duplicate `tool_use` blocks with the same
+        // ID, which in turn violated Anthropic's constraint that tool_use IDs
+        // be unique within a conversation. Duplicates manifested as
+        // `invalid_request_error: \`tool_use\` ids must be unique` errors from
+        // the Claude API. By centralising this responsibility in the driver we
+        // guarantee that each tool invocation is recorded exactly once.
         
         if (toolUse) {
           const toolCallResponse = {
@@ -265,6 +289,38 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         prompt.tool_choice = options.tool_choice;
       }
       
+      // Guard against orphaned tool calls
+      const msgs = sessionState.contextWindow.getMessages();
+      if (msgs.length > 0) {
+        const last = msgs[msgs.length - 1];
+        if (last?.role === 'assistant' && Array.isArray(last.content) && last.content.length > 0) {
+          const content = last.content[0];
+          if (content && typeof content === 'object' && 'type' in content && content.type === 'tool_use' && 'id' in content) {
+            const useId = content.id as string;
+            let paired = false;
+            
+            if (msgs.length > 1) {
+              const prevMsg = msgs[msgs.length - 2];
+              if (prevMsg && Array.isArray(prevMsg.content) && prevMsg.content.length > 0) {
+                const prevContent = prevMsg.content[0];
+                paired = !!(
+                  prevContent && 
+                  typeof prevContent === 'object' && 
+                  'type' in prevContent && 
+                  prevContent.type === 'tool_result' && 
+                  'tool_use_id' in prevContent && 
+                  prevContent.tool_use_id === useId
+                );
+              }
+            }
+            
+            if (!paired) {
+              sessionState.contextWindow.pushToolResult(useId, { aborted: true });
+            }
+          }
+        }
+      }
+
       const response: Anthropic.Messages.Message = await (options?.signal ?
         new Promise((resolve, reject) => {
           const onAbort = () => reject(new Error('AbortError'));

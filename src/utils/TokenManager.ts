@@ -183,7 +183,15 @@ const manageConversationSize = (
       if (removedIndices.has(i)) continue; // Skip if already marked for removal
       
       const message = sessionState.contextWindow.getMessages()[i];
-      if (message.role === 'assistant') {
+      // Never remove a tool_use message without also removing its paired
+      // tool_result; these are handled together in the first pass above. We
+      // identify tool_use messages by scanning their content blocks.
+
+      const containsToolUse = Array.isArray(message.content) && message.content.some(
+        (c: Anthropic.Messages.ContentBlockParam) => (c as any).type === 'tool_use',
+      );
+
+      if (message.role === 'assistant' && !containsToolUse) {
         const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
         
         logger?.debug(`Removing assistant message (index ${i}): ${JSON.stringify(message.content)}`, LogCategory.MODEL);
@@ -243,7 +251,10 @@ const manageConversationSize = (
       if (removedIndices.has(i)) continue; // Skip if already marked for removal
       
       // Prioritize assistant messages over user messages
-      if (sessionState.contextWindow.getMessages()[i].role === 'assistant') {
+      const msg = sessionState.contextWindow.getMessages()[i];
+      const isToolUse = Array.isArray(msg.content) && msg.content.some((c: Anthropic.Messages.ContentBlockParam) => (c as any).type === 'tool_use');
+
+      if (msg.role === 'assistant' && !isToolUse) {
         const tokens = sessionState.tokenUsage.tokensByMessage.find(t => t.messageIndex === i)?.tokens || 0;
         
         logger?.debug(`Removing recent assistant message (index ${i}): ${JSON.stringify(sessionState.contextWindow.getMessages()[i].content)}`, LogCategory.MODEL);

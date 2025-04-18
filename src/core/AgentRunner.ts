@@ -21,7 +21,6 @@ import {
 } from '../utils/sessionUtils';
 import { withToolCall } from '../utils/withToolCall';
 import { FsmDriver } from './FsmDriver';
-import { getAbortSignal, resetAbort } from '../utils/sessionAbort';
 import { createContextWindow } from '../types/contextWindow';
 
 /**
@@ -77,23 +76,34 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         };
       }
       
-      // Ensure we have an AbortSignal for this session (created lazily)
-      const abortSignal = getAbortSignal(sessionId);
-      
-      // Reset abort status if it was previously set and add user message
-      if (isSessionAborted(sessionId) || 
-          sessionState.contextWindow.getLength() === 0 || 
-          sessionState.contextWindow.getMessages()[sessionState.contextWindow.getLength() - 1].role !== 'user') {
-        
-        // Reset abort status if it was previously set
-        if (isSessionAborted(sessionId)) {
-          logger.info("Clearing abort status as new user message received", LogCategory.SYSTEM);
-          // Clear from the centralized registry (legacy) and reset AbortController
+      // Check if the session is already aborted - short-circuit if it is
+      if (isSessionAborted(sessionId)) {
+        logger.info(`Session ${sessionId} is aborted, skipping FSM execution`, LogCategory.SYSTEM);
+        try {
+          return {
+            aborted: true,
+            done: true,
+            sessionState,
+            response: "Operation aborted by user"
+          };
+        } finally {
+          // Always clear abort status and refresh the AbortController
           clearSessionAborted(sessionId);
-          resetAbort(sessionId);
+          sessionState.abortController = new AbortController();
+          logger.info(`Cleared abort status for short-circuit path`, LogCategory.SYSTEM);
         }
-        
-        // Add user message to conversation history
+      }
+      
+      // Make sure we have an AbortController
+      if (!sessionState.abortController) {
+        // Create a new AbortController in the sessionState
+        sessionState.abortController = new AbortController();
+        console.log(`[AgentRunner] Created new AbortController for session ${sessionId}`);
+      }
+      
+      // Add user message to conversation history if needed
+      if (sessionState.contextWindow.getLength() === 0 || 
+          sessionState.contextWindow.getMessages()[sessionState.contextWindow.getLength() - 1].role !== 'user') {
         sessionState.contextWindow.pushUser(query);
       }
       
@@ -110,12 +120,19 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           toolRegistry,
           permissionManager,
           executionAdapter,
-          logger: fsmLogger,
-          abortSignal
+          logger: fsmLogger
         });
         
         // Run the query through the FSM
         const { response, toolResults, aborted } = await driver.run(query, sessionState);
+        
+        // If the operation was aborted, clear the abort status and create a new controller
+        if (aborted) {
+          clearSessionAborted(sessionId);  // We've honored the abort request
+          // Create a new AbortController for the next message
+          sessionState.abortController = new AbortController();
+          logger.info(`Cleared abort status after handling abort in FSM`, LogCategory.SYSTEM);
+        }
         
         // Emit an event to signal processing is completed - will be captured by WebSocketService
         AgentEvents.emit(AgentEventType.PROCESSING_COMPLETED, {

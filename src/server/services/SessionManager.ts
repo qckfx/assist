@@ -8,6 +8,7 @@ import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
 import { AgentServiceConfig } from './AgentService';
 import { ContextWindow } from '../../types/contextWindow';
+import { clearSessionAborted } from '../../utils/sessionUtils';
 
 /**
  * Session information
@@ -114,7 +115,8 @@ export class SessionManager {
       lastActiveAt: new Date(),
       state: { 
         contextWindow: new ContextWindow(),
-        agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig
+        agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
+        abortController: new AbortController() // Always present as per the new design
       },
       isProcessing: false,
       executionAdapterType: config?.executionAdapterType || 'docker',
@@ -199,6 +201,9 @@ export class SessionManager {
     
     this.sessions.delete(sessionId);
     serverLogger.info(`Deleted session ${sessionId}`, LogCategory.SESSION);
+    
+    // Clean up entries in the aborted sessions map to prevent memory leaks
+    clearSessionAborted(sessionId);
     
     // Emit session:removed event to notify listeners
     this.emit('session:removed', sessionId);

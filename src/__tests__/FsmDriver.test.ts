@@ -8,6 +8,7 @@ import {
 import { FsmDriver } from '../core/FsmDriver';
 import { isTerminal } from '../core/AgentFSM';
 import { createContextWindow } from '../types/contextWindow';
+import { SessionState } from '../types/model';
 
 describe('FsmDriver', () => {
   // Test 1: No-tool happy path
@@ -15,9 +16,10 @@ describe('FsmDriver', () => {
     // Arrange
     const modelClient = fakeModelClient({ chooseTool: false });
     const { registry, calls } = stubToolRegistry();
-    const sessionState = { 
+    const sessionState: SessionState = { 
       contextWindow: createContextWindow(),
-      id: 'test-session'
+      id: 'test-session',
+      abortController: new AbortController()
     };
     const beforeLength = sessionState.contextWindow.getLength();
     
@@ -28,8 +30,8 @@ describe('FsmDriver', () => {
       permissionManager: stubPermissionManager(),
       executionAdapter: stubExecutionAdapter(),
       logger: stubLogger(),
-      abortSignal: new AbortController().signal,
     });
+    
     
     // Act
     const result = await driver.run('What time is it?', sessionState);
@@ -58,9 +60,10 @@ describe('FsmDriver', () => {
     // Arrange
     const modelClient = fakeModelClient({ chooseTool: true, secondChooseTool: false });
     const { registry, calls } = stubToolRegistry();
-    const sessionState = { 
+    const sessionState: SessionState = { 
       contextWindow: createContextWindow(),
-      id: 'test-session'
+      id: 'test-session',
+      abortController: new AbortController()
     };
     const beforeLength = sessionState.contextWindow.getLength();
     
@@ -71,8 +74,8 @@ describe('FsmDriver', () => {
       permissionManager: stubPermissionManager(),
       executionAdapter: stubExecutionAdapter(),
       logger: stubLogger(),
-      abortSignal: new AbortController().signal,
     });
+    
     
     // Act
     const result = await driver.run('search', sessionState);
@@ -118,14 +121,13 @@ describe('FsmDriver', () => {
   test('aborts during tool execution and produces the correct state', async () => {
     // Arrange
     const modelClient = fakeModelClient({ chooseTool: true });
-    const abortController = new AbortController();
-    
     // Tool registry that never resolves promises during execution
     const { registry, calls } = stubToolRegistry('never-resolves');
     
-    const sessionState = { 
+    const sessionState: SessionState = { 
       contextWindow: createContextWindow(),
-      id: 'test-session'
+      id: 'test-session',
+      abortController: new AbortController()
     };
     const beforeLength = sessionState.contextWindow.getLength();
     
@@ -136,11 +138,15 @@ describe('FsmDriver', () => {
       permissionManager: stubPermissionManager(),
       executionAdapter: stubExecutionAdapter(),
       logger: stubLogger(),
-      abortSignal: abortController.signal,
     });
     
+    
     // Set up a promise that aborts after a short delay
-    setTimeout(() => abortController.abort(), 30);
+    setTimeout(() => {
+      if (sessionState.abortController) {
+        sessionState.abortController.abort();
+      }
+    }, 30);
     
     // Act
     const promise = driver.run('search', sessionState);

@@ -16,6 +16,7 @@ export async function withToolCall(
   exec: (ctx: ToolContext) => Promise<unknown>,
   context: ToolContext,
 ): Promise<unknown> {
+  console.log(`[withToolCall] Executing tool ${toolCall.toolId}, abortSignal=${context.abortSignal?.aborted}`);
   let result: unknown;
   let aborted = false;
 
@@ -30,10 +31,12 @@ export async function withToolCall(
         execPromise,
         new Promise<unknown>((_, reject) => {
           const onAbort = () => {
+            console.log(`[withToolCall] AbortSignal 'abort' event received`);
             context.abortSignal!.removeEventListener('abort', onAbort);
             reject(new Error('AbortError'));
           };
           if (context.abortSignal!.aborted) {
+            console.log(`[withToolCall] AbortSignal was already aborted when Promise.race started`);
             return onAbort();
           }
           context.abortSignal!.addEventListener('abort', onAbort);
@@ -44,6 +47,7 @@ export async function withToolCall(
     }
   } catch (err) {
     if ((err as Error).message === 'AbortError') {
+      console.log(`[withToolCall] Caught AbortError, marking result as aborted`);
       aborted = true;
       // Surface a simple aborted marker so tests (and callers) can detect it
       result = { aborted: true };

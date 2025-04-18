@@ -26,7 +26,6 @@ interface DriverDeps {
   permissionManager: PermissionManager;
   executionAdapter: ExecutionAdapter;
   logger: Logger;
-  abortSignal: AbortSignal;
 }
 
 export class FsmDriver {
@@ -67,10 +66,16 @@ export class FsmDriver {
       toolRegistry,
       permissionManager,
       executionAdapter,
-      logger,
-      abortSignal
+      logger
     } = this.deps;
     const cw = sessionState.contextWindow;
+    const abortSignal = sessionState.abortController?.signal;
+    console.log(`[FsmDriver] Running with abortSignal, initial aborted=${abortSignal?.aborted}`);
+    
+    // If the signal is already aborted, log a warning
+    if (abortSignal?.aborted) {
+      console.log(`[FsmDriver] Warning: Starting run with already aborted signal!`);
+    }
 
     // Record the user message at the very start so that the conversation
     // history always follows the canonical order: user → (tool_use →
@@ -89,7 +94,36 @@ export class FsmDriver {
       this._iterations++;
       
       // Check for abortion at the beginning of each loop
-      if (abortSignal.aborted) {
+      if (abortSignal?.aborted) {
+        console.log(`[FsmDriver] Detected aborted signal in iteration ${this._iterations}`);
+        // If we have an outstanding tool_use without a matching tool_result,
+        // append an aborted tool_result so the conversation remains valid.
+        if (
+          this.state.type === 'WAITING_FOR_TOOL_RESULT' &&
+          currentToolCall &&
+          sessionState.contextWindow
+        ) {
+          // Guard against double‑insertion in rare races
+          const msgs = sessionState.contextWindow.getMessages();
+          const last = msgs[msgs.length - 1];
+          const alreadyHasResult =
+            last &&
+            Array.isArray(last.content) &&
+            last.content[0]?.type === 'tool_result' &&
+            last.content[0]?.tool_use_id === currentToolCall.toolUseId;
+
+          if (!alreadyHasResult) {
+            sessionState.contextWindow.pushToolResult(currentToolCall.toolUseId, { aborted: true });
+            toolResults.push({
+              toolId: currentToolCall.toolId,
+              args: currentToolCall.args as Record<string, unknown>,
+              result: { aborted: true },
+              toolUseId: currentToolCall.toolUseId,
+              aborted: true,
+            });
+          }
+        }
+
         this.dispatch({ type: 'ABORT_REQUESTED' });
         break;
       }
@@ -101,11 +135,12 @@ export class FsmDriver {
             query,
             toolRegistry.getToolDescriptions(),
             sessionState,
-            { signal: abortSignal }
+            abortSignal ? { signal: abortSignal } : undefined
           );
 
           // Check for abort after model call
-          if (abortSignal.aborted) {
+          if (abortSignal?.aborted) {
+            console.log(`[FsmDriver] Detected abort after model call, requesting abort`);
             this.dispatch({ type: 'ABORT_REQUESTED' });
             break;
           }
@@ -144,6 +179,13 @@ export class FsmDriver {
         }
 
         case 'WAITING_FOR_TOOL_RESULT': {
+          // If the operation was aborted before the tool starts, short‑circuit
+          if (abortSignal?.aborted) {
+            console.log(`[FsmDriver] Detected abort before tool execution starts, short-circuiting`);
+            // This block will be handled at the top‑level abort check in the
+            // next loop iteration, so just continue.
+            break;
+          }
           if (!currentToolCall) {
             throw new Error('FsmDriver: No tool call available in WAITING_FOR_TOOL_RESULT state');
           }
@@ -166,12 +208,13 @@ export class FsmDriver {
                 executionAdapter,
                 sessionState,
                 toolRegistry,
-                abortSignal,
+                abortSignal: sessionState.abortController?.signal,
               }
             );
           } catch (error) {
             // withToolCall handles errors internally, we just need to check for abort
             if ((error as Error).message === 'AbortError') {
+              console.log(`[FsmDriver] Caught AbortError from withToolCall, requesting abort`);
               this.dispatch({ type: 'ABORT_REQUESTED' });
               break;
             }
@@ -188,11 +231,12 @@ export class FsmDriver {
             `Based on the result of the previous tool execution, what should I do next to answer: ${query}`,
             toolRegistry.getToolDescriptions(),
             sessionState,
-            { signal: abortSignal }
+            abortSignal ? { signal: abortSignal } : undefined
           );
 
           // Check for abort after model call
-          if (abortSignal.aborted) {
+          if (abortSignal?.aborted) {
+            console.log(`[FsmDriver] Detected abort after model call, requesting abort`);
             this.dispatch({ type: 'ABORT_REQUESTED' });
             break;
           }
@@ -241,10 +285,14 @@ export class FsmDriver {
       };
     }
 
-    // Return assistant text (first text block) or empty string
+    // Return assistant text from all text blocks
     if (finalAssistant && finalAssistant.content && finalAssistant.content.length > 0) {
-      const first = finalAssistant.content[0];
-      const responseText = first.type === 'text' ? first.text || '' : '';
+      // Collect text from all text blocks and join them
+      const responseText = finalAssistant.content
+        .filter(block => block.type === 'text')
+        .map(block => block.text || '')
+        .join('');
+      
       return {
         response: responseText,
         aborted: false,

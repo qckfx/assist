@@ -33,9 +33,10 @@ import { ServerError, AgentBusyError } from '../utils/errors';
 import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
 import { serverLogger } from '../logger';
 import { SessionState } from '../../types/model';
-import { setSessionAborted } from '../../utils/sessionUtils';
+import { setSessionAborted, isSessionAborted } from '../../utils/sessionUtils';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { ExecutionAdapter } from '../../types/tool';
+import crypto from 'crypto';
 
 // Default system prompt for the agent
 const DEFAULT_SYSTEM_PROMPT = "You are a precise, efficient AI assistant that helps users with software development tasks.";
@@ -676,7 +677,28 @@ export class AgentService extends EventEmitter {
       // Mark the session as processing
       // Note: Abort status will be cleared in AgentRunner.processQuery when a new message is received
       this.activeProcessingSessionIds.add(sessionId);
-      sessionManager.updateSession(sessionId, { isProcessing: true });
+      
+      // Create a new controller if none exists or if the current one is already used
+      if (!session.state.abortController) {
+        session.state.abortController = new AbortController();
+        console.log(`[AgentService] Created new AbortController for session ${sessionId}`);
+      } else if (session.state.abortController.signal.aborted && !isSessionAborted(sessionId)) {
+        // We already processed the abort, safe to refresh
+        session.state.abortController = new AbortController();
+        console.log(`[AgentService] Replaced used AbortController for session ${sessionId}`);
+      }
+      // Do NOT clearSessionAborted() here - that will be done in AgentRunner after abort is handled
+      // Why? Because:
+      // 1. If we clear here, we'd lose the abort status that AgentRunner uses to detect aborts
+      // 2. AgentRunner needs to both check and clear the status in the same critical section (try/finally)
+      // 3. Clearing here would create a race condition if another abort comes in between clear and AgentRunner's check
+      
+      sessionManager.updateSession(sessionId, { 
+        isProcessing: true,
+        state: {
+          ...session.state
+        }
+      });
 
       // Emit event for processing started
       this.emit(AgentServiceEvent.PROCESSING_STARTED, { sessionId });
@@ -879,6 +901,56 @@ export class AgentService extends EventEmitter {
         // After successful query processing, save the complete session state
         await this.saveSessionState(sessionId, session.state);
 
+        /*
+         * ----------------------------------------------------------------------
+         * Ensure assistant response is persisted to the timeline and broadcast
+         * ----------------------------------------------------------------------
+         * Prior to migrating to the finite‑state‑machine driven agent loop, the
+         * assistant reply was written to the timeline service inside the
+         * legacy execution path.  The UI relies on the resulting
+         * `message_received` WebSocket event to display the assistant message
+         * in real‑time.  Since the FSM refactor the AgentService only emitted
+         * `PROCESSING_COMPLETED`, so no assistant text reached the client.
+         *
+         * To restore the previous behaviour we now:
+         *   1. Build a message object representing the assistant reply.
+         *   2. Persist it via the TimelineService which in turn emits the
+         *      appropriate WebSocket event.
+         *
+         * We perform this step AFTER the main processing succeeds so we only
+         * save complete responses.  Any error paths are handled earlier.
+         */
+
+        try {
+          // Only create a timeline entry for non‑empty assistant responses
+          if (result.response && result.response.trim().length > 0) {
+            // Resolve TimelineService from the DI container lazily to avoid
+            // hard dependencies / circular imports during construction.
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { container, TimelineService } = require('../container');
+
+            if (container?.isBound?.(TimelineService)) {
+              const timelineServiceInstance = container.get(TimelineService) as any;
+
+              // Construct the assistant message compatible with StoredMessage
+              const assistantMessage = {
+                id: crypto.randomUUID(),
+                role: 'assistant' as const,
+                timestamp: new Date().toISOString(),
+                content: [{ type: 'text', text: result.response }],
+                confirmationStatus: 'confirmed' as const,
+              };
+
+              await timelineServiceInstance.addMessageToTimeline(sessionId, assistantMessage);
+            } else {
+              serverLogger.warn('TimelineService not found in container – cannot record assistant message');
+            }
+          }
+        } catch (err) {
+          // Soft‑fail – message persistence must not block the main flow
+          serverLogger.error('Failed to persist assistant message to timeline:', err);
+        }
+
         return {
           response: result.response || '',
           toolResults,
@@ -895,10 +967,12 @@ export class AgentService extends EventEmitter {
 
         throw error;
       } finally {
-        // Clean up by unregistering callbacks
-        unregisterStart();
-        unregisterComplete();
-        unregisterError();
+        // Clean up by unregistering callbacks to prevent memory leaks
+        // Check if the unregister functions exist before calling them
+        // (in case listener registration failed for some reason)
+        if (unregisterStart) unregisterStart();
+        if (unregisterComplete) unregisterComplete(); 
+        if (unregisterError) unregisterError();
         
         // Remove the session from the active processing set
         this.activeProcessingSessionIds.delete(sessionId);
@@ -982,18 +1056,31 @@ export class AgentService extends EventEmitter {
 
     // Check if the session is processing
     if (!session.isProcessing && !this.activeProcessingSessionIds.has(sessionId)) {
+      console.log(`[AgentService] Session ${sessionId} is not processing, nothing to abort`);
       // Not processing, nothing to abort
       return false;
     }
 
-    // Create abort timestamp
-    const abortTimestamp = Date.now();
-    
-    // No need to ensure session state exists anymore for aborting
-    
-    // Use the centralized session abort mechanism
+    // Use the centralized session abort mechanism to get timestamp
     // This will update the abort registry and emit events
-    setSessionAborted(sessionId);
+    const abortTimestamp = setSessionAborted(sessionId);
+    
+    // Store the timestamp in the session state
+    session.state.abortedAt = abortTimestamp;
+    
+    // Abort via the AbortController in the session state
+    if (session.state.abortController && !session.state.abortController.signal.aborted) {
+      console.log(`[AgentService] Aborting operation for session ${sessionId} via AbortController`);
+      session.state.abortController.abort();
+      console.log(`[AgentService] AbortController.signal.aborted=${session.state.abortController.signal.aborted}`);
+    } else if (session.state.abortController) {
+      console.log(`[AgentService] AbortController for session ${sessionId} was already aborted`);
+    } else {
+      console.log(`[AgentService] No AbortController found for session ${sessionId}`);
+      // Ensure we have an abortController even if it's missing
+      session.state.abortController = new AbortController();
+      session.state.abortController.abort();
+    }
 
     serverLogger.info('abortOperation', { sessionId, session });
     
