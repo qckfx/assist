@@ -21,6 +21,7 @@ import {
   AgentEventType,
   formatGitInfoAsContextPrompt 
 } from '../utils/sessionUtils';
+import { withToolCall } from '../utils/withToolCall';
 import { getAbortSignal, resetAbort } from '../utils/sessionAbort';
 import { createContextWindow } from '../types/contextWindow';
 
@@ -356,24 +357,19 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
             logger.debug(`AgentRunner execution progress - preparing to execute tool in iteration ${iterations}`, LogCategory.SYSTEM);
             let result;
             try {
-              // Use the new executeToolWithCallbacks method instead of direct execution
-              logger.debug(`STARTING tool execution for ${tool.name}`, LogCategory.TOOLS);
-              console.log('⚠️ EXECUTING TOOL:', toolCall.toolId, 'with args:', JSON.stringify(toolCall.args));
-              console.log(`⚠️ TOOL_EXECUTION: Starting executeToolWithCallbacks for ${toolCall.toolId}`);
-              
-              try {
-                result = await toolRegistry.executeToolWithCallbacks(
-                  toolCall.toolId, 
-                  toolCall.toolUseId,
-                  toolCall.args as Record<string, unknown>, 
-                  context
-                );
-                console.log('⚠️ TOOL EXECUTION COMPLETE:', toolCall.toolId, 'with result type:', typeof result, 'result:', JSON.stringify(result).substring(0, 100));
-                logger.debug(`COMPLETED tool execution for ${tool.name} successfully`, LogCategory.TOOLS);
-              } catch (toolError) {
-                console.error(`⚠️ TOOL_EXECUTION ERROR: Failed to execute ${toolCall.toolId}:`, toolError);
-                throw toolError;
-              }
+              result = await withToolCall(
+                toolCall,
+                sessionState,
+                toolResults,
+                (ctx) =>
+                  toolRegistry.executeToolWithCallbacks(
+                    toolCall.toolId,
+                    toolCall.toolUseId,
+                    toolCall.args as Record<string, unknown>,
+                    ctx,
+                  ),
+                context,
+              );
             } catch (error: unknown) {
               logger.error(`FAILED tool execution for ${tool.name}`, error, LogCategory.TOOLS);
               // Handle validation errors specifically
@@ -498,48 +494,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               return createAbortResponse(toolResults, iterations, sessionState);
             }
             
-            // Add tool result to conversation history if it exists
-            console.log('⚠️ HISTORY: Adding tool result to conversation history for tool:', toolCall.toolId);
-            if (sessionState.contextWindow && toolCall.toolUseId) {
-              // Create the message with proper Anthropic types
-              const resultMessage: Anthropic.Messages.MessageParam = {
-                role: "user",
-                content: [
-                  {
-                    type: "tool_result" as const,
-                    tool_use_id: toolCall.toolUseId,
-                    content: JSON.stringify(result)
-                  } 
-                ]
-              };
-              sessionState.contextWindow.push(resultMessage);
-              console.log('⚠️ HISTORY: Added tool result to conversation history, history length now:', sessionState.contextWindow.getLength());
-              
-              // Type assertion to safely access properties
-              const contentBlock = resultMessage.content[0] as { type: string; tool_use_id: string };
-              console.log('⚠️ HISTORY: Last message type:', contentBlock.type, 'for tool use ID:', contentBlock.tool_use_id);
-            } else {
-              console.log('⚠️ HISTORY ERROR: Could not add tool result to conversation history:', {
-                hasHistory: !!sessionState.contextWindow,
-                hasToolUseId: !!toolCall.toolUseId,
-                toolUseId: toolCall.toolUseId
-              });
-            }
-            
-            // 5. Add to the list of tool results
-            toolResults.push({
-              toolId: toolCall.toolId,
-              args: toolCall.args as Record<string, unknown>,
-              result,
-              toolUseId: toolCall.toolUseId
-            });
-            
-            console.log('⚠️ RESULTS: Added tool result to toolResults array:', {
-              toolId: toolCall.toolId,
-              toolResultsCount: toolResults.length,
-              hasToolUseId: !!toolCall.toolUseId,
-              resultType: typeof result
-            });
+            // withToolCall already added tool_result to history and toolResults array.
             
             // Ask the model to decide what to do next
             currentQuery = `Based on the result of using ${tool.name}, what should I do next to answer: ${query}`;
