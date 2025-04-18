@@ -89,21 +89,6 @@ export function clearSessionAborted(sessionId: string): void {
  */
 
 /**
- * UUID Namespace for tool execution IDs
- * Used to generate consistent UUIDs from Anthropic tool use IDs
- */
-export const TOOL_EXECUTION_NAMESPACE = '1b671a64-40d5-491e-99b0-da01ff1f3341';
-
-/**
- * Generate a stable execution ID from an Anthropic tool use ID
- * @param toolUseId The Anthropic-generated tool use ID
- * @returns A stable UUID v5 generated from the tool use ID
- */
-export function generateExecutionId(toolUseId: string): string {
-  return uuidv5(toolUseId, TOOL_EXECUTION_NAMESPACE);
-}
-
-/**
  * Format git repository information as a context prompt
  * @param gitInfo Git repository information
  * @returns Formatted string for use in system prompt

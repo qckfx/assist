@@ -24,7 +24,6 @@ interface WebSocketTerminalContextProps {
   
   // Session management
   sessionId: string | undefined;
-  createSession: () => Promise<string | undefined>;
   createSessionWithEnvironment: (
     environment: 'docker' | 'local' | 'e2b', 
     e2bSandboxId?: string
@@ -133,60 +132,6 @@ export function WebSocketTerminalProvider({
   useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
-  
-  // Create a new session with simplified logic
-  const createSession = useCallback(async () => {
-    try {
-      // Update UI state
-      setProcessing(true);
-      
-      console.log('[WebSocketTerminalContext] Requesting new session from API...');
-      
-      // Create session via API
-      const response = await apiClient.startSession();
-      console.log('[WebSocketTerminalContext] Session creation response:', response);
-      
-      const sessionData = response.data || response;
-      
-      // Safely access sessionId with type checking
-      const newSessionId = sessionData && 
-        (typeof sessionData === 'object') && 
-        'sessionId' in sessionData && 
-        typeof sessionData.sessionId === 'string' 
-          ? sessionData.sessionId 
-          : undefined;
-          
-      if (newSessionId) {
-        console.log(`[WebSocketTerminalContext] Session created successfully: ${newSessionId}`);
-        
-        // Skip localStorage storage to allow new sessions to work properly
-        console.log(`[WebSocketTerminalContext] Using sessionId: ${newSessionId}`);
-        
-        // Update session state
-        setSessionId(newSessionId);
-        sessionIdRef.current = newSessionId;
-        
-        // Always use the connection manager directly to ensure the session is joined
-        // This is more reliable than using the hook-based connectToSession
-        const connectionManager = getSocketConnectionManager();
-        connectionManager.joinSession(newSessionId);
-        console.log(`[WebSocketTerminalContext] Requested connection join for session: ${newSessionId}`);
-        
-        // URL updates are now handled by the Terminal component with React Router
-        
-        return newSessionId;
-      } else {
-        console.error('[WebSocketTerminalContext] Failed to create session - invalid response:', response);
-        throw new Error('Failed to create session: Invalid response from server');
-      }
-    } catch (error) {
-      console.error('[WebSocketTerminalContext] Failed to create session:', error);
-      addErrorMessage(`Failed to create session: ${error instanceof Error ? error.message : String(error)}`);
-      return undefined;
-    } finally {
-      setProcessing(false);
-    }
-  }, [addErrorMessage, setProcessing]);
   
   // Create a new session with specific environment settings
   const createSessionWithEnvironment = useCallback(async (
@@ -372,7 +317,6 @@ export function WebSocketTerminalProvider({
     connectionStatus,
     isConnected,
     sessionId,
-    createSession,
     createSessionWithEnvironment,
     handleCommand,
     isProcessing, // Use the value from TerminalContext

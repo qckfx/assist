@@ -101,7 +101,6 @@ export class SessionManager {
     
     // Get default agent service config
     const defaultAgentServiceConfig: AgentServiceConfig = {
-      apiKey: process.env.ANTHROPIC_API_KEY || '',
       defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
       permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',
       allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],

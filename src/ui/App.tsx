@@ -15,81 +15,51 @@ import {
   useParams, 
   useNavigate 
 } from 'react-router-dom';
+import apiClient from '@/services/apiClient';
 
 // Session component that loads a specific session from URL parameter
 function SessionComponent() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [isLoadingSession, setIsLoadingSession] = useState(!!sessionId);
-  const [showSessionPrompt, setShowSessionPrompt] = useState(false);
-  // State to track if this is a fresh load of an existing session
   const [showNewSessionHint, setShowNewSessionHint] = useState(true);
   
-  // Convert sessionId from possibly undefined to string | null for type safety
-  const safeSessionId = sessionId || null;
-  
-  // Check if session exists and handle UI state
   useEffect(() => {
     if (sessionId) {
       console.log('[SessionComponent] Loading session from URL parameter:', sessionId);
       
       // Verify the session ID is valid without showing the prompt
-      import('@/services/apiClient').then(({ default: apiClient }) => {
-        console.log('[SessionComponent] Validating session ID:', sessionId);
-        
-        apiClient.validateSession([sessionId])
-          .then(response => {
-            const validSessionIds = response.data?.validSessionIds || [];
+      apiClient.validateSession([sessionId])
+        .then((response: { data?: { validSessionIds: string[] } }) => {
+          const validSessionIds = response.data?.validSessionIds || [];
+          
+          if (validSessionIds.includes(sessionId)) {
+            console.log('[SessionComponent] Session ID is valid:', sessionId);
+            // Skip storage, rely solely on URL for session identification
+            console.log('[SessionComponent] Using session from URL:', sessionId);
             
-            if (validSessionIds.includes(sessionId)) {
-              console.log('[SessionComponent] Session ID is valid:', sessionId);
-              // Skip storage, rely solely on URL for session identification
-              console.log('[SessionComponent] Using session from URL:', sessionId);
-              
-              // Trigger a session load event via local storage to ensure timeline refreshes
-              const event = new StorageEvent('storage', {
-                key: 'loadSession',
-                newValue: sessionId
-              });
-              window.dispatchEvent(event);
-              
-              setIsLoadingSession(false);
-            } else {
-              console.warn('[SessionComponent] Session metadata not found:', sessionId);
-              // Don't redirect - still try to use the session but warn
-              // The session might still be in memory on the server but not yet persisted
-              setIsLoadingSession(false);
-            }
-          })
-          .catch(err => {
-            console.error('[SessionComponent] Error validating session:', err);
-            // Don't redirect - still try to use the session
+            // Trigger a session load event via local storage to ensure timeline refreshes
+            const event = new StorageEvent('storage', {
+              key: 'loadSession',
+              newValue: sessionId
+            });
+            window.dispatchEvent(event);
+            
             setIsLoadingSession(false);
-          });
-      });
+          } else {
+            console.warn('[SessionComponent] Session metadata not found:', sessionId);
+            // Don't redirect - still try to use the session but warn
+            // The session might still be in memory on the server but not yet persisted
+            setIsLoadingSession(false);
+          }
+        })
+        .catch(err => {
+          console.error('[SessionComponent] Error validating session:', err);
+          // Don't redirect - still try to use the session
+          setIsLoadingSession(false);
+        });
     }
   }, [sessionId, navigate]);
-  
-  // Handle creating a new session
-  const handleNewSession = async () => {
-    setShowSessionPrompt(false);
-    
-    try {
-      // Record prompt dismissal time
-      localStorage.setItem('sessionPromptDismissed', new Date().getTime().toString());
-      
-      // Navigate to the root route to show environment selection UI
-      navigate('/');
-    } catch (error) {
-      console.error('[SessionComponent] Error creating new session:', error);
-    }
-  };
-  
-  // Handle continuing with existing session
-  const handleContinueSession = () => {
-    setShowSessionPrompt(false);
-    localStorage.setItem('sessionPromptDismissed', new Date().getTime().toString());
-  };
   
   // Effect to hide loading indicator after a timeout
   useEffect(() => {
@@ -108,28 +78,24 @@ function SessionComponent() {
   };
 
   return (
-    <>
-      <div className="flex items-center justify-center h-full p-4" style={{ height: "calc(100vh - 120px)" }}>
-        {isLoadingSession && sessionId && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-black px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3">
-              <span className="inline-block animate-spin text-blue-400 text-xl">⟳</span>
-              <span className="text-gray-200">Starting session...</span>
-            </div>
+    <div className="flex items-center justify-center h-full p-4" style={{ height: "calc(100vh - 120px)" }}>
+      {isLoadingSession && sessionId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-black px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3">
+            <span className="inline-block animate-spin text-blue-400 text-xl">⟳</span>
+            <span className="text-gray-200">Starting session...</span>
           </div>
-        )}
-        <WebSocketTerminal 
-          fullScreen 
-          autoConnect={true}
-          showConnectionStatus={true}
-          showTypingIndicator={true}
-          showNewSessionHint={showNewSessionHint}
-          onUserInput={handleUserInput}
-        />
-        
-        {/* Session prompt overlay removed */}
-      </div>
-    </>
+        </div>
+      )}
+      <WebSocketTerminal 
+        fullScreen 
+        autoConnect={true}
+        showConnectionStatus={true}
+        showTypingIndicator={true}
+        showNewSessionHint={showNewSessionHint}
+        onUserInput={handleUserInput}
+      />
+    </div>
   );
 }
 

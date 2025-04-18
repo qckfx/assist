@@ -136,7 +136,7 @@ const createAgent = (config: AgentConfig): Agent => {
     logger,
     
     // Helper methods
-    async processQuery(query, sessionState = { contextWindow: createContextWindow(), agentServiceConfig: { apiKey: '', defaultModel: '', permissionMode: 'interactive', allowedTools: [], cachingEnabled: true } }) {
+    async processQuery(query, sessionState = { contextWindow: createContextWindow(), agentServiceConfig: { defaultModel: '', permissionMode: 'interactive', allowedTools: [], cachingEnabled: true } }) {
       const runner = await agentRunner();
       return runner.processQuery(query, sessionState);
     },

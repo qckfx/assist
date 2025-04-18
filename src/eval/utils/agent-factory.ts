@@ -28,7 +28,6 @@ const logger = createLogger({
 export function createProviderFromConfig(config: AgentConfiguration) {
   // Create the model provider
   return createAnthropicProvider({
-    apiKey: process.env.ANTHROPIC_API_KEY || '',
     model: config.model,
     logger
   });

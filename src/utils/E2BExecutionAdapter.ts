@@ -268,6 +268,13 @@ export class E2BExecutionAdapter implements ExecutionAdapter {
       
       // Construct the new content by joining the parts with the replacement in between
       const newContent = prefixContent + normalizedReplaceCode + suffixContent;
+      
+      // Add diagnostic logging for newline debugging
+      this.logger?.debug('E2B file edit newline preservation check:', LogCategory.TOOLS, {
+        searchEndsWithNewline: normalizedSearchCode.endsWith('\n'),
+        replaceEndsWithNewline: normalizedReplaceCode.endsWith('\n'),
+        suffixStartsWithNewline: suffixContent.startsWith('\n')
+      });
     
       await this.sandbox.files.write(filepath, newContent);
       return {

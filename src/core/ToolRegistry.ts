@@ -4,6 +4,22 @@
 
 import { Tool, ToolContext, ToolCategory } from '../types/tool';
 import { ToolDescription, ToolRegistry } from '../types/registry';
+import { v5 as uuidv5 } from 'uuid';
+
+/**
+ * UUID Namespace for tool execution IDs
+ * Used to generate consistent UUIDs from Anthropic tool use IDs
+ */
+export const TOOL_EXECUTION_NAMESPACE = '1b671a64-40d5-491e-99b0-da01ff1f3341';
+
+/**
+ * Generate a stable execution ID from an Anthropic tool use ID
+ * @param toolUseId The Anthropic-generated tool use ID
+ * @returns A stable UUID v5 generated from the tool use ID
+ */
+export function generateExecutionId(toolUseId: string): string {
+  return uuidv5(toolUseId, TOOL_EXECUTION_NAMESPACE);
+}
 
 /**
  * Creates a tool registry to manage available tools
@@ -15,9 +31,9 @@ export const createToolRegistry = (): ToolRegistry => {
   // Index to look up tools by category
   const toolsByCategory = new Map<ToolCategory, Set<string>>();
   
-  const startCallbacks: Array<(toolId: string, toolUseId: string, args: Record<string, unknown>, context: ToolContext) => void> = [];
-  const completeCallbacks: Array<(toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => void> = [];
-  const errorCallbacks: Array<(toolId: string, args: Record<string, unknown>, error: Error) => void> = [];
+  const startCallbacks: Array<(executionId: string, toolId: string, toolUseId: string, args: Record<string, unknown>, context: ToolContext) => void> = [];
+  const completeCallbacks: Array<(executionId: string, toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => void> = [];
+  const errorCallbacks: Array<(executionId: string, toolId: string, args: Record<string, unknown>, error: Error) => void> = [];
   
   return {
     /**
@@ -85,7 +101,7 @@ export const createToolRegistry = (): ToolRegistry => {
      * @param callback - The callback function to register
      * @returns A function to unregister the callback
      */
-    onToolExecutionStart(callback: (toolId: string, toolUseId: string, args: Record<string, unknown>, context: ToolContext) => void): () => void {
+    onToolExecutionStart(callback: (executionId: string, toolId: string, toolUseId: string, args: Record<string, unknown>, context: ToolContext) => void): () => void {
       startCallbacks.push(callback);
       
       // Return unsubscribe function
@@ -102,7 +118,7 @@ export const createToolRegistry = (): ToolRegistry => {
      * @param callback - The callback function to register
      * @returns A function to unregister the callback
      */
-    onToolExecutionComplete(callback: (toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => void): () => void {
+    onToolExecutionComplete(callback: (executionId: string, toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => void): () => void {
       completeCallbacks.push(callback);
       
       // Return unsubscribe function
@@ -119,7 +135,7 @@ export const createToolRegistry = (): ToolRegistry => {
      * @param callback - The callback function to register
      * @returns A function to unregister the callback
      */
-    onToolExecutionError(callback: (toolId: string, args: Record<string, unknown>, error: Error) => void): () => void {
+    onToolExecutionError(callback: (executionId: string, toolId: string, args: Record<string, unknown>, error: Error) => void): () => void {
       errorCallbacks.push(callback);
       
       // Return unsubscribe function
@@ -170,9 +186,11 @@ export const createToolRegistry = (): ToolRegistry => {
       if (!tool) {
         throw new Error(`Tool ${toolId} not found`);
       }
-      
+
+      const executionId = generateExecutionId(toolUseId);
+
       // Notify start callbacks
-      startCallbacks.forEach(callback => callback(toolId, toolUseId, args, context));
+      startCallbacks.forEach(callback => callback(executionId, toolId, toolUseId, args, context));
       
       const startTime = Date.now();
       try {
@@ -185,14 +203,14 @@ export const createToolRegistry = (): ToolRegistry => {
         console.log("🟠🟠🟠executeToolWithCallbacks", toolId, args, result, executionTime);
         // Notify complete callbacks
         completeCallbacks.forEach(callback => 
-          callback(toolId, args, result, executionTime)
+          callback(executionId, toolId, args, result, executionTime)
         );
         
         return result;
       } catch (error) {
         // Notify error callbacks
         errorCallbacks.forEach(callback => 
-          callback(toolId, args, error instanceof Error ? error : new Error(String(error)))
+          callback(executionId, toolId, args, error instanceof Error ? error : new Error(String(error)))
         );
         
         // Re-throw the error

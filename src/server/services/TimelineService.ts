@@ -648,14 +648,6 @@ export class TimelineService extends EventEmitter {
    */
   private setupEventListeners(): void {
     
-    // Log event registration for specific events
-    const eventsToMonitor = [
-      AgentServiceEvent.TOOL_EXECUTION_COMPLETED,
-      AgentServiceEvent.PERMISSION_REQUESTED,
-      AgentServiceEvent.PERMISSION_RESOLVED
-    ];
-    
-    
     // Listen for message events from AgentEvents (from AgentRunner)
     // This is a one-way flow: Agent -> Timeline -> UI WebSocket
     const handleAgentEventsMessage = (data: MessageAddedEvent) => {
@@ -704,15 +696,16 @@ export class TimelineService extends EventEmitter {
     const permissionThresholdMs = 1000; // 1 second
     
     // Subscribe to registry events for tool execution completed
-    this.agentServiceRegistry.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: any) => {
-      
-      if (!data || !data.sessionId || !data.execution) {
+    this.agentServiceRegistry.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: ExecutionCompletedWithPreviewEventData) => {
+     
+      console.log('🔴🔴🔴 TimelineService received TOOL_EXECUTION_COMPLETED event', JSON.stringify(data, null, 2));
+      if (!data || !data.execution) {
         serverLogger.warn('Received TOOL_EXECUTION_COMPLETED event with missing data', data);
         return;
       }
       
       // All the data we need is in the event - no need to query other services
-      const { sessionId, execution, preview } = data;
+      const { execution, preview } = data;
       
       // First, directly emit to WebSocket to ensure the client gets the update
       // This is a critical path to ensure tool visualization works
@@ -744,7 +737,7 @@ export class TimelineService extends EventEmitter {
         
         // Directly use the WebSocketService to emit the event
         const payload = {
-          sessionId,
+          sessionId: execution.sessionId,
           toolExecution: {
             id: execution.id,
             toolId: execution.toolId,
@@ -765,7 +758,7 @@ export class TimelineService extends EventEmitter {
         };
         
         try {
-          this.webSocketService.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, payload);
+          this.webSocketService.emitToSession(execution.sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, payload);
         } catch (emitError) {
           serverLogger.error(`Error emitting TOOL_EXECUTION_UPDATED:`, emitError);
         }
@@ -774,10 +767,10 @@ export class TimelineService extends EventEmitter {
       }
       
       // Now continue with the usual flow of adding to timeline
-      this.findParentMessageId(sessionId, execution.id)
+      this.findParentMessageId(execution.sessionId, execution.id)
         .then(parentMessageId => {
           // Add the tool execution with its preview to the timeline
-          this.addToolExecutionToTimeline(sessionId, execution, preview, parentMessageId)
+          this.addToolExecutionToTimeline(execution.sessionId, execution, preview, parentMessageId)
             .then(() => {
               serverLogger.debug(`TimelineService processed COMPLETED event for execution ${execution.id} with preview: ${!!preview}`);
             })

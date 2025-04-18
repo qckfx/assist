@@ -1,9 +1,8 @@
 #!/bin/bash
-# binary-replace.sh - A binary-safe file replacement utility
+# binary-replace.sh - A fast, reliable binary replacement utility
 # Usage: binary-replace.sh <original_file> <search_file> <replace_file> <output_file>
 #
-# This script performs binary-safe search and replace operations, avoiding issues
-# with special characters, line endings, and other common text processing problems.
+# This script properly handles special characters and newlines during replacement
 
 set -e
 
@@ -36,71 +35,65 @@ if [ ! -f "$REPLACE_FILE" ]; then
   exit 1
 fi
 
-# Convert files to hex for truly binary-safe operations
-xxd -p "$ORIGINAL_FILE" > "$ORIGINAL_FILE.hex"
-xxd -p "$SEARCH_FILE" > "$SEARCH_FILE.hex"
+# Create temporary files for our work
+PREFIX_FILE="$TEMP_DIR/prefix.bin"
+SUFFIX_FILE="$TEMP_DIR/suffix.bin"
 
-# Read hex content without newlines
-FILE_HEX=$(tr -d '\n' < "$ORIGINAL_FILE.hex")
-SEARCH_HEX=$(tr -d '\n' < "$SEARCH_FILE.hex")
+# Get file sizes for reporting
+ORIG_SIZE=$(wc -c < "$ORIGINAL_FILE")
+SEARCH_SIZE=$(wc -c < "$SEARCH_FILE")
+REPLACE_SIZE=$(wc -c < "$REPLACE_FILE")
 
-# Normalize the search pattern for common issues
-# 1. Remove trailing newline (0a) if present
-SEARCH_HEX_NORMALIZED=$(echo "$SEARCH_HEX" | sed 's/0a$//') 
+# Convert to hex for pattern matching
+xxd -p "$ORIGINAL_FILE" > "$TEMP_DIR/original.hex"
+xxd -p "$SEARCH_FILE" > "$TEMP_DIR/search.hex"
 
-# First try with the original search pattern
+# Read hex content without newlines (more reliable)
+FILE_HEX=$(tr -d '\n' < "$TEMP_DIR/original.hex")
+SEARCH_HEX=$(tr -d '\n' < "$TEMP_DIR/search.hex")
+
+# Find the pattern in the hex representation
 SEARCH_HEX_LEN=${#SEARCH_HEX}
 HEX_POS=$(awk -v a="$FILE_HEX" -v b="$SEARCH_HEX" 'BEGIN{print index(a,b)}')
 
-# If not found, try with normalized pattern
-if [ "$HEX_POS" = "0" ] && [ "$SEARCH_HEX" != "$SEARCH_HEX_NORMALIZED" ]; then
-  echo "Trying with normalized search pattern (removed trailing newline)"
-  SEARCH_HEX="$SEARCH_HEX_NORMALIZED"
-  SEARCH_HEX_LEN=${#SEARCH_HEX}
-  HEX_POS=$(awk -v a="$FILE_HEX" -v b="$SEARCH_HEX" 'BEGIN{print index(a,b)}')
-fi
-
-# If still not found, exit with error
+# If not found, exit with error
 if [ "$HEX_POS" = "0" ]; then
   echo "ERROR: Pattern not found in hex representation"
+  # Try to provide useful debugging info
+  echo "Search content:"
+  cat "$SEARCH_FILE"
+  echo
+  
+  # Clean up temporary files
+  rm -f "$TEMP_DIR/original.hex" "$TEMP_DIR/search.hex"
   exit 2
 fi
 
 # Calculate byte position (hex_pos is character position in hex dump)
-BYTE_POS=$((HEX_POS / 2))
+BYTE_POS=$(((HEX_POS / 2) - 1))
 if [ $((HEX_POS % 2)) -ne 0 ]; then
-  echo "WARNING: Hex position $HEX_POS is not aligned to byte boundary"
-  # Adjust for alignment - since we're working with bytes
+  echo "INFO: Hex position $HEX_POS is not aligned to byte boundary"
+  # Adjust for alignment
   BYTE_POS=$((BYTE_POS + 1))
 fi
 
 # Calculate byte length of search pattern
 BYTE_LEN=$((SEARCH_HEX_LEN / 2))
 
-echo "Found pattern at hex position $HEX_POS (byte offset $BYTE_POS)"
+echo "Found pattern at byte offset $BYTE_POS"
 echo "Pattern length: $BYTE_LEN bytes"
 
-# We've already handled normalization above
-
-# Check for multiple occurrences by removing the first match and searching again
-SECOND_FILE="$TEMP_DIR/second_search.hex"
-FIRST_PART=$(dd if="$ORIGINAL_FILE.hex" bs=1 count=$HEX_POS 2>/dev/null)
-SECOND_PART=$(dd if="$ORIGINAL_FILE.hex" bs=1 skip=$((HEX_POS + SEARCH_HEX_LEN)) 2>/dev/null)
-echo "$FIRST_PART$SECOND_PART" > "$SECOND_FILE"
-
-# Search for another occurrence
-SECOND_HEX=$(tr -d '\n' < "$SECOND_FILE")
-SECOND_POS=$(awk -v a="$SECOND_HEX" -v b="$SEARCH_HEX" 'BEGIN{print index(a,b)}')
+# OPTIMIZATION: Check for multiple occurrences with efficient string operations
+# Remove the matching portion and see if the pattern still exists
+TEMP_HEX="${FILE_HEX:0:$HEX_POS}${FILE_HEX:$((HEX_POS + SEARCH_HEX_LEN))}"
+SECOND_POS=$(awk -v a="$TEMP_HEX" -v b="$SEARCH_HEX" 'BEGIN{print index(a,b)}')
 
 if [ "$SECOND_POS" != "0" ]; then
-  echo "ERROR: Multiple matches found"
+  echo "ERROR: Multiple matches found. Please make the search pattern more specific."
+  # Clean up temporary files
+  rm -f "$TEMP_DIR/original.hex" "$TEMP_DIR/search.hex"
   exit 3
 fi
-
-# Everything looks good, proceed with the replacement
-# Extract parts using binary offsets
-PREFIX_FILE="$TEMP_DIR/prefix.bin"
-SUFFIX_FILE="$TEMP_DIR/suffix.bin"
 
 # Extract the prefix (bytes before the match)
 dd if="$ORIGINAL_FILE" of="$PREFIX_FILE" bs=1 count=$BYTE_POS 2>/dev/null
@@ -112,17 +105,16 @@ echo "Suffix size: $(wc -c < $SUFFIX_FILE) bytes"
 
 # Create the new file by concatenating the parts
 cat "$PREFIX_FILE" "$REPLACE_FILE" "$SUFFIX_FILE" > "$OUTPUT_FILE"
-echo "New file size: $(wc -c < $OUTPUT_FILE) bytes"
+NEW_SIZE=$(wc -c < "$OUTPUT_FILE")
+echo "New file size: $NEW_SIZE bytes"
 
 # Output sizes for verification
-echo "SIZES: orig=$(wc -c < $ORIGINAL_FILE) bytes, prefix=$BYTE_POS bytes, pattern=$BYTE_LEN bytes, replace=$(wc -c < $REPLACE_FILE) bytes, suffix=$(wc -c < $SUFFIX_FILE) bytes, new=$(wc -c < $OUTPUT_FILE) bytes"
+PREFIX_SIZE=$(wc -c < "$PREFIX_FILE")
+SUFFIX_SIZE=$(wc -c < "$SUFFIX_FILE")
+echo "SIZES: orig=$ORIG_SIZE bytes, prefix=$PREFIX_SIZE bytes, pattern=$SEARCH_SIZE bytes, replace=$REPLACE_SIZE bytes, suffix=$SUFFIX_SIZE bytes, new=$NEW_SIZE bytes"
 
-# Verify expected size
-EXPECTED_SIZE=$((BYTE_POS + $(wc -c < $REPLACE_FILE) + $(wc -c < $SUFFIX_FILE)))
-ACTUAL_SIZE=$(wc -c < "$OUTPUT_FILE")
-echo "VERIFICATION: Expected size $EXPECTED_SIZE bytes, actual size $ACTUAL_SIZE bytes"
+# Clean up all temporary files
+rm -f "$TEMP_DIR/original.hex" "$TEMP_DIR/search.hex" "$PREFIX_FILE" "$SUFFIX_FILE"
 
-# Clean up temporary hex files
-rm -f "$ORIGINAL_FILE.hex" "$SEARCH_FILE.hex" "$SECOND_FILE"
-
+echo "SUCCESS: Replacement complete"
 exit 0

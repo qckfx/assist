@@ -160,6 +160,9 @@ export function WebSocketProvider({
       // Stop message buffer
       buffer.stop();
       buffer.removeAllListeners();
+
+      // Disconnect the manager when the provider unmounts
+      manager.disconnect(); 
     };
   }, [testMode, mockSocket]); // Only dependencies that affect initialization
   
