@@ -162,19 +162,20 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           logger: fsmLogger,
           abortSignal
         });
-        const assistantText = await driver.run(query, sessionState);
+        const result = await driver.run(query, sessionState);
 
-        // Record assistant reply in history
-        if (assistantText) {
+        // Record assistant reply in history (only if not aborted)
+        if (!result.aborted && result.response) {
           sessionState.contextWindow.pushAssistant([
-            { type: 'text', text: assistantText },
+            { type: 'text', text: result.response },
           ]);
         }
 
         return {
-          response: assistantText,
+          response: result.response,
           sessionState,
           done: true,
+          aborted: result.aborted,
           result: { toolResults: [], iterations: 1 },
         };
       } catch {

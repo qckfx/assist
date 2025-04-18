@@ -41,8 +41,9 @@ export class FsmDriver {
   /**
    * Runs a single user query through the FSM until it reaches a terminal
    * state. Handles both tool execution flow and direct assistant replies.
+   * @returns A response object containing the assistant's text and abort status
    */
-  public async run(query: string, sessionState: SessionState): Promise<string> {
+  public async run(query: string, sessionState: SessionState): Promise<{ response: string; aborted: boolean }> {
     // Initialize tracking
     const toolResults: ToolResultEntry[] = [];
     let finalAssistant: Anthropic.Messages.Message | undefined;
@@ -210,15 +211,25 @@ export class FsmDriver {
 
     // Handle the aborted state
     if (this.state.type === 'ABORTED') {
-      return "Operation aborted by user";
+      return {
+        response: "Operation aborted by user",
+        aborted: true
+      };
     }
 
     // Return assistant text (first text block) or empty string
     if (finalAssistant && finalAssistant.content && finalAssistant.content.length > 0) {
       const first = finalAssistant.content[0];
-      return first.type === 'text' ? first.text || '' : '';
+      const responseText = first.type === 'text' ? first.text || '' : '';
+      return {
+        response: responseText,
+        aborted: false
+      };
     }
     
-    return '';
+    return {
+      response: '',
+      aborted: false
+    };
   }
 }
