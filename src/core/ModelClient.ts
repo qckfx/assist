@@ -68,10 +68,16 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
      * @returns The recommended tool call
      */
     async getToolCall(
-      query: string, 
-      toolDescriptions: ToolDescription[], 
-      sessionState: SessionState 
+      query: string,
+      toolDescriptions: ToolDescription[],
+      sessionState: SessionState,
+      options?: { signal?: AbortSignal }
     ): Promise<ToolCallResponse> {
+
+      // Fast‑exit if already aborted before work starts
+      if (options?.signal?.aborted) {
+        return { toolChosen: false, aborted: true };
+      }
       console.log('⚠️ MODEL_CLIENT getToolCall called with:', {
         queryLength: query ? query.length : 0,
         query: query ? query.substring(0, 50) + (query.length > 50 ? '...' : '') : 'none',
@@ -112,11 +118,38 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
       
       let response;
       try {
-        // Call the model provider
         console.log('⚠️ MODEL_CLIENT calling modelProvider...');
-        response = await modelProvider(request);
+
+        if (options?.signal) {
+          // Wrap call so it races with abort signal
+          response = await new Promise<Anthropic.Messages.Message>((resolve, reject) => {
+            const onAbort = () => {
+              reject(new Error('AbortError'));
+            };
+            if (options.signal!.aborted) {
+              return onAbort();
+            }
+            options.signal!.addEventListener('abort', onAbort);
+
+            modelProvider(request)
+              .then((r) => {
+                options.signal!.removeEventListener('abort', onAbort);
+                resolve(r);
+              })
+              .catch((err) => {
+                options.signal!.removeEventListener('abort', onAbort);
+                reject(err);
+              });
+          });
+        } else {
+          response = await modelProvider(request);
+        }
+
         console.log('⚠️ MODEL_CLIENT received response from modelProvider');
       } catch (error) {
+        if ((error as Error).message === 'AbortError') {
+          return { toolChosen: false, aborted: true };
+        }
         console.error('⚠️ MODEL_CLIENT error calling modelProvider:', error);
         throw error;
       }
@@ -209,11 +242,16 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
      * @returns The generated response
      */
     async generateResponse(
-      query: string, 
-      toolDescriptions: ToolDescription[], 
+      query: string,
+      toolDescriptions: ToolDescription[],
       sessionState: SessionState,
-      options?: { tool_choice?: { type: string } }
+      options?: { tool_choice?: { type: string }; signal?: AbortSignal }
     ): Promise<Anthropic.Messages.Message> {
+
+      // Early abort check
+      if (options?.signal?.aborted) {
+        throw new Error('AbortError');
+      }
       // Format tools for Claude
       const claudeTools = this.formatToolsForClaude(toolDescriptions);
       
@@ -235,7 +273,21 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         prompt.tool_choice = options.tool_choice;
       }
       
-      const response = await modelProvider(prompt);
+      const response: Anthropic.Messages.Message = await (options?.signal ?
+        new Promise((resolve, reject) => {
+          const onAbort = () => reject(new Error('AbortError'));
+          if (options.signal!.aborted) return onAbort();
+          options.signal!.addEventListener('abort', onAbort);
+          modelProvider(prompt)
+            .then((r) => {
+              options.signal!.removeEventListener('abort', onAbort);
+              resolve(r);
+            })
+            .catch((err) => {
+              options.signal!.removeEventListener('abort', onAbort);
+              reject(err);
+            });
+        }) : modelProvider(prompt));
       
       // Track token usage from response
       if (response.usage) {

@@ -101,6 +101,10 @@ export const createGrepTool = (): Tool => {
     },
     
     execute: async (args: Record<string, unknown>, context: ToolContext): Promise<GrepToolResult> => {
+      if (context.abortSignal?.aborted) {
+        throw new Error('AbortError');
+      }
+
       // Extract and type-cast each argument individually
       const pattern = args.pattern as string;
       const searchPath = args.path as string || '.';

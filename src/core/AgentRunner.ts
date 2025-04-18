@@ -192,7 +192,8 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           logger,
           toolRegistry,
           modelClient,
-          executionAdapter
+          executionAdapter,
+          abortSignal
         };
         
         // Loop until we get a final response or reach max iterations

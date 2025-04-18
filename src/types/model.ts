@@ -7,7 +7,6 @@ import { ToolDescription, ToolRegistry } from './registry';
 import { PromptManager } from '../core/PromptManager';
 import { Logger } from '../utils/logger';
 import { ExecutionAdapter } from './tool';
-import { AgentServiceConfig } from '../server/services/AgentService';
 import { ContextWindow } from './contextWindow';
 
 export interface ToolCall {
