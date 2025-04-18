@@ -72,6 +72,11 @@ export class FsmDriver {
     } = this.deps;
     const cw = sessionState.contextWindow;
 
+    // Record the user message at the very start so that the conversation
+    // history always follows the canonical order: user → (tool_use →
+    // tool_result)* → assistant.
+    cw.pushUser(query);
+
     // USER_MESSAGE
     this.dispatch({ type: 'USER_MESSAGE' });
 

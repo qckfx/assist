@@ -100,7 +100,9 @@ export class ContextWindow {
   // ----------------------------------------------------------------------
 
   private validate(): void {
-    if (process.env.NODE_ENV !== 'dev') return;
+    // Only run expensive invariant checks during development and test runs.
+    // The custom ambient type for NODE_ENV only allows 'development' | 'production' | 'test'.
+    if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') return;
 
     for (let i = 0; i < this._messages.length; i++) {
       const msg = this._messages[i];
@@ -108,8 +110,13 @@ export class ContextWindow {
 
       if (first?.type === 'tool_use') {
         const next = this._messages[i + 1];
+
+        // If this is the last message so far, we are likely in the middle of
+        // the tool‑execution flow. Defer validation until another message is
+        // appended (either the tool_result or an abort).
+        if (!next) continue;
+
         const ok =
-          next &&
           Array.isArray(next.content) &&
           next.content[0]?.type === 'tool_result' &&
           next.content[0]?.tool_use_id === first.id;
