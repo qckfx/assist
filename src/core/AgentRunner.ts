@@ -11,7 +11,6 @@ import {
 } from '../types/agent';
 import { ToolCall, SessionState } from '../types/model';
 import { LogCategory, createLogger, LogLevel } from '../utils/logger';
-import Anthropic from '@anthropic-ai/sdk';
 import { MESSAGE_ADDED } from '../server/services/TimelineService';
 
 import { 
@@ -22,6 +21,7 @@ import {
   formatGitInfoAsContextPrompt 
 } from '../utils/sessionUtils';
 import { withToolCall } from '../utils/withToolCall';
+import { FsmDriver } from './FsmDriver';
 import { getAbortSignal, resetAbort } from '../utils/sessionAbort';
 import { createContextWindow } from '../types/contextWindow';
 
@@ -137,11 +137,51 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
      * history before this call is made.
      */
     async processQuery(query: string, sessionState: SessionState): Promise<ProcessQueryResult> {
-      // Extract the sessionId from the state
-
       const sessionId = sessionState.id as string;
       // Ensure we have an AbortSignal for this session (created lazily)
       const abortSignal = getAbortSignal(sessionId);
+      
+      /*
+       * FSM migration (phase 1): try the new driver for happy‑path queries.
+       * If it throws (tool or abort not yet supported) we silently fall back
+       * to the legacy while‑loop that follows.
+       */
+
+      try {
+        // Create a proper Logger instance for the FSM driver
+        const fsmLogger = createLogger({
+          level: LogLevel.DEBUG,
+          prefix: 'FsmDriver'
+        });
+        
+        const driver = new FsmDriver({ 
+          modelClient, 
+          toolRegistry,
+          permissionManager,
+          executionAdapter,
+          logger: fsmLogger,
+          abortSignal
+        });
+        const assistantText = await driver.run(query, sessionState);
+
+        // Record assistant reply in history
+        if (assistantText) {
+          sessionState.contextWindow.pushAssistant([
+            { type: 'text', text: assistantText },
+          ]);
+        }
+
+        return {
+          response: assistantText,
+          sessionState,
+          done: true,
+          result: { toolResults: [], iterations: 1 },
+        };
+      } catch {
+        // Not yet supported by the driver – continue with legacy flow below.
+      }
+
+      // ---------------- legacy implementation continues -----------------
       
       if (!sessionId) {
         logger.error('Cannot process query: Missing sessionId in session state', LogCategory.SYSTEM);
