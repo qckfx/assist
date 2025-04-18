@@ -218,6 +218,7 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
  */
 export async function abortOperation(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    console.log('🔴🔴🔴 AbortOperation', req.body);
     const { sessionId } = req.body as AbortRequest;
     
     // Get the agent service registry from the container

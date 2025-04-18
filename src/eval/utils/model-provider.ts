@@ -40,6 +40,7 @@ class AnthropicProviderAdapter implements ModelProvider {
         temperature: options.temperature || 0.1, // Lower temperature for more consistent judging
         sessionState: {
           contextWindow: createContextWindow([userMessage]),
+          abortController: new AbortController(), // Add abortController to satisfy SessionState type
           agentServiceConfig: {
             defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
             permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',

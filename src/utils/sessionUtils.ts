@@ -2,7 +2,6 @@
  * Utility functions for working with session state
  */
 import { EventEmitter } from 'events';
-import { v5 as uuidv5 } from 'uuid';
 import { GitRepositoryInfo, DirtyRepositoryStatus } from '../types/session';
 
 /**
@@ -31,6 +30,12 @@ export interface EnvironmentStatusEvent {
 }
 
 /**
+ * Track aborted sessions with timestamps
+ * This is the single source of truth for abort status
+ */
+export const abortedSessions = new Map<string, number>();
+
+/**
  * Check if a session has been aborted
  * This function is used to check if an operation should be stopped mid-execution.
  * 
@@ -43,20 +48,28 @@ export function isSessionAborted(sessionId: string): boolean {
 }
 
 /**
- * Track aborted sessions with timestamps
+ * Get the timestamp when a session was aborted
+ * @param sessionId The session ID to check
+ * @returns The timestamp when the session was aborted, or null if not aborted
  */
-export const abortedSessions = new Map<string, number>();
+export function getAbortTimestamp(sessionId: string): number | null {
+  return abortedSessions.get(sessionId) ?? null;
+}
 
 /**
  * Mark a session as aborted
  * @param sessionId The session ID to abort
+ * @returns The timestamp when the session was aborted
  */
-export function setSessionAborted(sessionId: string): void {
+export function setSessionAborted(sessionId: string): number {
   // Update the centralized abort registry with the current timestamp
-  abortedSessions.set(sessionId, Date.now());
+  const timestamp = Date.now();
+  abortedSessions.set(sessionId, timestamp);
   
   // Emit abort event for all listeners
   AgentEvents.emit(AgentEventType.ABORT_SESSION, sessionId);
+  
+  return timestamp;
 }
 
 /**

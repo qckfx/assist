@@ -16,16 +16,44 @@ export async function withToolCall(
   exec: (ctx: ToolContext) => Promise<unknown>,
   context: ToolContext,
 ): Promise<unknown> {
+  console.log(`[withToolCall] Executing tool ${toolCall.toolId}, abortSignal=${context.abortSignal?.aborted}`);
   let result: unknown;
   let aborted = false;
 
   try {
-    result = await exec(context);
+    const execPromise = exec(context);
+
+    // If an abortSignal is provided, race the execution against it so we can
+    // resolve promptly when the caller aborts – even if the underlying tool
+    // ignores the signal.
+    if (context.abortSignal) {
+      result = await Promise.race([
+        execPromise,
+        new Promise<unknown>((_, reject) => {
+          const onAbort = () => {
+            console.log(`[withToolCall] AbortSignal 'abort' event received`);
+            context.abortSignal!.removeEventListener('abort', onAbort);
+            reject(new Error('AbortError'));
+          };
+          if (context.abortSignal!.aborted) {
+            console.log(`[withToolCall] AbortSignal was already aborted when Promise.race started`);
+            return onAbort();
+          }
+          context.abortSignal!.addEventListener('abort', onAbort);
+        }),
+      ]);
+    } else {
+      result = await execPromise;
+    }
   } catch (err) {
     if ((err as Error).message === 'AbortError') {
+      console.log(`[withToolCall] Caught AbortError, marking result as aborted`);
       aborted = true;
+      // Surface a simple aborted marker so tests (and callers) can detect it
+      result = { aborted: true };
+    } else {
+      result = { error: String(err) };
     }
-    result = { error: String(err) };
   }
 
   // Always append tool_result to conversation history.

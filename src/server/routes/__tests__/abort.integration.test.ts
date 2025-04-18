@@ -17,7 +17,10 @@ jest.mock('../../services/SessionManager', () => {
     id: '123e4567-e89b-12d3-a456-426614174001',
     createdAt: new Date('2023-01-01T00:00:00.000Z'),
     lastActiveAt: new Date('2023-01-01T01:00:00.000Z'),
-    state: { __aborted: false },
+    state: { 
+      abortController: new AbortController(),
+      contextWindow: { getMessages: () => [], getLength: () => 0, pushUser: jest.fn() }
+    },
     isProcessing: false,
   };
 

@@ -64,10 +64,10 @@ export interface SessionState {
   shouldExplore?: boolean;
   tokenUsage?: TokenUsage;
   historyTrimmed?: boolean;
-  /** Whether the session has been aborted */
-  __aborted?: boolean;
-  /** Timestamp when the session was aborted */
-  __abortTimestamp?: number;
+  /** Shared AbortController for the session - always present */
+  abortController: AbortController;
+  /** Optional timestamp when the session was aborted */
+  abortedAt?: number;
   /** Cache metrics for tracking prompt caching performance */
   cacheMetrics?: CacheMetricsTracking;
   /** Execution adapter type */

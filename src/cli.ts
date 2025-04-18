@@ -263,6 +263,7 @@ const startChat = async (options: {
   let conversationActive = true;
   let sessionState: SessionState = {
     contextWindow: createContextWindow(),
+    abortController: new AbortController(),
     agentServiceConfig: {
       defaultModel: options.model,
       permissionMode: 'interactive',
