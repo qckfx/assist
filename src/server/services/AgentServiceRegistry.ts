@@ -64,7 +64,6 @@ export class AgentServiceRegistry extends EventEmitter {
     const eventTypes = [
       AgentServiceEvent.TOOL_EXECUTION_STARTED,
       AgentServiceEvent.TOOL_EXECUTION,
-      AgentServiceEvent.TOOL_EXECUTION_COMPLETED,
       AgentServiceEvent.TOOL_EXECUTION_ERROR,
       AgentServiceEvent.TOOL_EXECUTION_ABORTED,
       AgentServiceEvent.PERMISSION_REQUESTED,
