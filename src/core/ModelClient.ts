@@ -183,19 +183,11 @@ export const createModelClient = (config: ModelClientConfig): ModelClient => {
         
         // Add the assistant's tool use response to the conversation history only if not aborted
         if (sessionState.contextWindow && toolUse && !isSessionAborted(getSessionId(sessionState))) {
-          const toolUseMessage: Anthropic.Messages.MessageParam = {
-            role: "assistant",
-            content: [
-              {
-                type: "tool_use" as const,
-                id: toolUse.id,
-                name: toolUse.name,
-                input: toolUse.input || {}
-              }
-            ]
-          };
-          
-          sessionState.contextWindow.push(toolUseMessage);
+          sessionState.contextWindow.pushToolUse({
+            id: toolUse.id,
+            name: toolUse.name,
+            input: (toolUse.input || {}) as Record<string, unknown>,
+          });
           console.log('⚠️ MODEL_CLIENT added tool use to context window:', {
             toolName: toolUse.name,
             historyLength: sessionState.contextWindow.getLength()
