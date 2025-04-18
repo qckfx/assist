@@ -17,15 +17,12 @@ import {
   isSessionAborted, 
   clearSessionAborted, 
   AgentEvents, 
-  AgentEventType,
-  formatGitInfoAsContextPrompt 
+  AgentEventType 
 } from '../utils/sessionUtils';
 import { withToolCall } from '../utils/withToolCall';
 import { FsmDriver } from './FsmDriver';
 import { getAbortSignal, resetAbort } from '../utils/sessionAbort';
 import { createContextWindow } from '../types/contextWindow';
-
-
 
 /**
  * Creates an agent runner to orchestrate the agent process
@@ -54,8 +51,6 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
     level: LogLevel.DEBUG,
     prefix: 'AgentRunner'
   });
-  
-  // No need for a separate helper function anymore
   
   // Return the public interface
   return {
