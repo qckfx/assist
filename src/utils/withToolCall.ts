@@ -30,17 +30,7 @@ export async function withToolCall(
 
   // Always append tool_result to conversation history.
   if (sessionState.contextWindow && toolCall.toolUseId) {
-    sessionState.contextWindow.push({
-      role: 'user',
-      content: [
-        {
-          // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-          type: 'tool_result' as const,
-          tool_use_id: toolCall.toolUseId,
-          content: JSON.stringify(result),
-        },
-      ],
-    });
+    sessionState.contextWindow.pushToolResult(toolCall.toolUseId, result);
   }
 
   toolResults.push({

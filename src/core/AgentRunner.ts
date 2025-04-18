@@ -179,11 +179,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
           }
           
           // Create properly typed message following Anthropic's expected structure
-          const userMessage: Anthropic.Messages.MessageParam = {
-            role: 'user',
-            content: [{ type: 'text', text: query }]
-          };
-          sessionState.contextWindow.push(userMessage);
+          sessionState.contextWindow.pushUser(query);
         }
         
         // Create the context for tool execution
@@ -260,18 +256,9 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 
                 // Create an aborted tool result message for the chosen tool
                 if (sessionState.contextWindow && toolCall.toolUseId) {
-                  sessionState.contextWindow.push({
-                    role: "user",
-                    content: [
-                      {
-                        type: "tool_result",
-                        tool_use_id: toolCall.toolUseId,
-                        content: JSON.stringify({
-                          aborted: true,
-                          message: "Operation aborted by user"
-                        })
-                      } 
-                    ]
+                  sessionState.contextWindow.pushToolResult(toolCall.toolUseId, {
+                    aborted: true,
+                    message: 'Operation aborted by user',
                   });
                   
                   // Add to the list of tool results
@@ -332,20 +319,11 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               });
               
               // Always add a tool_result message to the conversation history for this tool call
-              if (sessionState.contextWindow && toolCall.toolUseId) {
-                sessionState.contextWindow.push({
-                  role: "user",
-                  content: [
-                    {
-                      type: "tool_result",
-                      tool_use_id: toolCall.toolUseId,
-                      content: JSON.stringify({
-                        aborted: true,
-                        message: "Operation aborted by user"
-                      })
-                    } 
-                  ]
-                });
+                if (sessionState.contextWindow && toolCall.toolUseId) {
+                  sessionState.contextWindow.pushToolResult(toolCall.toolUseId, {
+                    aborted: true,
+                    message: 'Operation aborted by user',
+                  });
               }
               
               return createAbortResponse(toolResults, iterations, sessionState);
@@ -394,16 +372,10 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 
                 // Add this result to the conversation history as a proper tool result
                 if (sessionState.contextWindow && toolCall.toolUseId) {
-                  sessionState.contextWindow.push({
-                    role: "user",
-                    content: [
-                      {
-                        type: "tool_result" as const,
-                        tool_use_id: toolCall.toolUseId,
-                        content: JSON.stringify(permissionDeniedResult)
-                      } 
-                    ]
-                  });
+                  sessionState.contextWindow.pushToolResult(
+                    toolCall.toolUseId,
+                    permissionDeniedResult,
+                  );
                 }
                 
                 // Add to the list of tool results so the agent can continue
@@ -438,12 +410,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
                 // Modify the current query for the next iteration
                 currentQuery = fixPrompt;
 
-                sessionState.contextWindow.push({
-                  role: 'user',
-                  content: [
-                    { type: 'tool_result', tool_use_id: toolCall.toolUseId, content: fixPrompt } 
-                  ]
-                });
+                sessionState.contextWindow.pushToolResult(toolCall.toolUseId, fixPrompt);
                 
                 // Skip the rest of this iteration
                 continue;
@@ -479,16 +446,7 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
               // If for some reason the tool result wasn't added, add it now
               if (!hasToolResultMessage && sessionState.contextWindow && toolCall.toolUseId) {
                 logger.info('Adding tool result to conversation history', LogCategory.SYSTEM);
-                sessionState.contextWindow.push({
-                  role: "user",
-                  content: [
-                    {
-                      type: "tool_result" as const,
-                      tool_use_id: toolCall.toolUseId,
-                      content: JSON.stringify(result)
-                    } 
-                  ]
-                });
+                sessionState.contextWindow.pushToolResult(toolCall.toolUseId, result);
               }
               
               return createAbortResponse(toolResults, iterations, sessionState);
@@ -564,16 +522,15 @@ export const createAgentRunner = (config: AgentRunnerConfig): AgentRunner => {
         // Add the assistant's response to conversation history ONLY if not aborted
         if (!isSessionAborted(sessionId) && finalResponse && finalResponse.content && finalResponse.content.length > 0) {
           // Create properly typed message following Anthropic's expected structure
-          const assistantMessage: Anthropic.Messages.MessageParam = {
-            role: 'assistant',
-            content: finalResponse.content
-          };
-          sessionState.contextWindow.push(assistantMessage);
-          
+          sessionState.contextWindow.pushAssistant(finalResponse.content);
+
           // Emit message:added event for TimelineService to pick up
           AgentEvents.emit(MESSAGE_ADDED, {
             sessionId,
-            message: assistantMessage
+            message: {
+              role: 'assistant',
+              content: finalResponse.content,
+            },
           });
         } else if (isSessionAborted(sessionId)) {
           logger.info("Skipping assistant response because session was aborted", LogCategory.SYSTEM);
