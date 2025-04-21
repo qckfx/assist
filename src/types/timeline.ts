@@ -2,8 +2,8 @@
  * Types for the unified timeline feature
  */
 
-import { StoredMessage, ToolCallReference } from './session';
-import { ToolExecutionState, PermissionRequestState } from './tool-execution';
+import { StoredMessage } from './session';
+import { ToolExecutionState, PermissionRequestState } from './platform-types';
 import { ToolPreviewState } from './preview';
 
 /**

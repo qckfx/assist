@@ -18,8 +18,10 @@ import { WebSocketService } from './services/WebSocketService';
 import { createServer } from 'http';
 import swaggerUi from 'swagger-ui-express';
 import { apiDocumentation } from './docs/api';
-import { AgentServiceRegistry } from './container';
+import { AgentServiceRegistry, initializeContainer, TimelineService } from './container';
 import { LogCategory } from '../utils/logger';
+// Import AgentServiceRegistry related items
+import { createAgentServiceRegistry } from './services/AgentServiceRegistry';
 // Import preview generators
 import './services/preview';
 
@@ -256,7 +258,6 @@ export async function startServer(config: ServerConfig): Promise<{
           
           // First create the AgentServiceRegistry
           serverLogger.info('Creating AgentServiceRegistry...');
-          const { createAgentServiceRegistry, AgentServiceRegistry } = require('./services/AgentServiceRegistry');
           const agentServiceRegistry = createAgentServiceRegistry(sessionManager);
           
           // Initialize WebSocketService after server is listening
@@ -268,10 +269,6 @@ export async function startServer(config: ServerConfig): Promise<{
           serverLogger.info('Initializing dependency injection container...');
           
           try {
-            // Initialize the dependency injection container
-            // Using import instead of require for better error handling
-            const { initializeContainer, TimelineService } = require('./container');
-            
             // First check if sessionManager is available
             if (!sessionManager) {
               throw new Error('SessionManager not available for container initialization');
@@ -297,7 +294,7 @@ export async function startServer(config: ServerConfig): Promise<{
             serverLogger.error('Error during container initialization:', error);
             // Provide a better fallback container that returns proper errors
             app.locals.container = {
-              get: function(serviceType: any) {
+              get: function(serviceType: { name?: string } | null | undefined) {
                 serverLogger.error(`Failed to resolve service ${serviceType?.name || 'unknown'} - container init failed`);
                 return null;
               }
@@ -371,4 +368,44 @@ export async function startServer(config: ServerConfig): Promise<{
       error instanceof Error ? error : undefined
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry point
+// ---------------------------------------------------------------------------
+
+/* istanbul ignore if -- executed only when launched via ts-node or node */
+if (require.main === module) {
+  // Basic CLI handling so that `ts-node src/server/index.ts --port 3000` keeps
+  // working for development.  We intentionally keep the parser minimal to
+  // avoid pulling in an extra dependency.
+
+  // Default configuration – read from environment variables when possible.
+  const cfg: ServerConfig = {
+    enabled: true,
+    host: process.env.HOST || '0.0.0.0',
+    port:  Number(process.env.PORT) || 3000,
+    development: process.env.NODE_ENV !== 'production',
+  } as ServerConfig;
+
+  // Very small argv parse: look for --port and --host flags.
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--port' && argv[i + 1]) {
+      cfg.port = Number(argv[i + 1]);
+      i++;
+    } else if (arg === '--host' && argv[i + 1]) {
+      cfg.host = argv[i + 1];
+      i++;
+    } else if (arg === '--disable') {
+      cfg.enabled = false;
+    }
+  }
+
+  startServer(cfg).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error(err);
+    process.exit(1);
+  });
 }

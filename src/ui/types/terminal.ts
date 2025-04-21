@@ -1,5 +1,5 @@
 import { MessageType } from '../components/Message';
-import { StructuredContent } from '../../types/message';
+import { StructuredContent } from '../../types/platform-types';
 
 export interface TerminalMessage {
   id: string;

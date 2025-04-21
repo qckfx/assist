@@ -1,7 +1,7 @@
 // Basic API response and request types
 import { ToolPreviewData } from '../../types/preview';
 import { TimelineItem } from '../../types/timeline';
-import { StructuredContent } from '../../types/message';
+import { StructuredContent } from '../../types/platform-types';
 
 /**
  * Environment status enum for connection and initialization status
@@ -49,7 +49,7 @@ export interface SessionHistoryEntry {
 }
 
 // Import the SessionState type from model.ts
-import { SessionState } from '../../types/model';
+import { SessionState } from '../../types/platform-types';
 
 export interface SessionData {
   id: string;

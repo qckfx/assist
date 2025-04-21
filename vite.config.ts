@@ -43,8 +43,6 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src/ui'),
-        // Handle Node.js 'events' module with a browser polyfill
-        'events': 'events'
       },
       dedupe: ['react', 'react-dom'] // Ensure we only have one copy of React
     },

@@ -3,7 +3,7 @@ import path from 'path';
 import { 
   ToolExecutionState, 
   PermissionRequestState 
-} from '../../types/tool-execution';
+} from '../../types/platform-types';
 import { ToolPreviewState } from '../../types/preview';
 import { serverLogger } from '../logger';
 

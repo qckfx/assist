@@ -4,7 +4,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as permissionController from '../permissions';
 import { getAgentService } from '../../services/AgentService';
-import { NotFoundError } from '../../utils/errors';
+import { NotFoundError } from '@qckfx/agent/utils/errors';
 
 // Mock the agent service
 jest.mock('../../services/AgentService', () => ({

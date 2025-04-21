@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../../lib/utils';
 import { ToolVisualizationItem } from '../../hooks/useToolVisualization';
 import { ToolState } from '../../types/terminal';

@@ -3,133 +3,43 @@
  */
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
-import fs from 'fs';
-import { StoredMessage } from '../../types/session';
-import { 
-  ToolExecutionState, 
-  PermissionRequestState, 
+import {
+  MESSAGE_ADDED,
+  MESSAGE_UPDATED,
+} from '../../types/message';
+import {
+  onMessageAdded,
+  offMessageAdded,
+  MessageAddedEvent,
+} from '@qckfx/agent';
+import {
+  ToolExecutionState,
+  PermissionRequestState,
   ToolExecutionStatus,
-  ToolExecutionManager,
   PermissionRequestedEventData,
-  PermissionResolvedEventData
-} from '../../types/tool-execution';
-
-// Define local version of ToolState enum to match UI's definition
-enum ToolState {
-  PENDING = 'pending',
-  RUNNING = 'running',
-  COMPLETED = 'completed',
-  ERROR = 'error',
-  ABORTED = 'aborted'
-}
-
-/**
- * Helper function to truncate message content for logging
- */
-function truncateContent(content: any): string {
-  if (!content) return 'empty';
-  if (typeof content === 'string') {
-    return content.length > 30 ? content.substring(0, 30) + '...' : content;
-  }
-  if (Array.isArray(content)) {
-    return `array with ${content.length} items`;
-  }
-  return JSON.stringify(content).substring(0, 30) + '...';
-}
-
-// Import the enum with a different name to avoid conflicts
-import { ToolExecutionEvent as ToolExecEvent } from '../../types/tool-execution';
+  PermissionResolvedEventData,
+} from '../../types/platform-types';
+import { StoredMessage } from '../../types/session';
 
 // Import event data types from the implementation
-import { 
-  PreviewGeneratedEventData,
+import {
   ExecutionCompletedWithPreviewEventData
-} from './tool-execution/ToolExecutionManagerImpl';
-import { ToolPreviewState, PreviewContentType } from '../../types/preview';
+} from '../../types/tool-execution';
+import { ToolPreviewState } from '../../types/preview';
 import { 
-  TimelineItem, 
   TimelineItemType,
   TimelineResponse,
   TimelineParams,
   MessageTimelineItem,
   ToolExecutionTimelineItem,
-  PermissionRequestTimelineItem 
+  PermissionRequestTimelineItem,
 } from '../../types/timeline';
-import { TextContentPart } from '../../types/message';
 import { WebSocketEvent } from '../../types/websocket';
 import { WebSocketService } from './WebSocketService';
-import { SessionManager } from './SessionManager';
 import { serverLogger } from '../logger';
-import { AgentService, AgentServiceEvent } from './AgentService';
+import { AgentServiceEvent } from './AgentService';
 import { AgentServiceRegistry } from './AgentServiceRegistry';
-import { previewService } from './preview';
-import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { TimelineStatePersistence } from './TimelineStatePersistence';
-import { AgentEvents } from '../../utils/sessionUtils';
-
-import { Server as SocketIOServer } from 'socket.io';
-
-// Define interface for legacy tool execution event data
-interface LegacyToolExecutionEventData {
-  sessionId: string;
-  tool: {
-    id: string;
-    name: string;
-    executionId?: string;
-  };
-  args?: Record<string, unknown>;
-  result?: unknown;
-  paramSummary?: string;
-  executionTime?: number;
-  timestamp?: string;
-  startTime?: string;
-  abortTimestamp?: string;
-  preview?: {
-    contentType: string;
-    briefContent: string;
-    fullContent?: string;
-    metadata?: Record<string, unknown>;
-  };
-  error?: {
-    message: string;
-    stack?: string;
-  };
-}
-
-// Custom events for message handling that are not part of AgentServiceEvent enum
-export const MESSAGE_ADDED = 'message:added';
-export const MESSAGE_UPDATED = 'message:updated';
-
-// Define interfaces for the SessionData model
-interface SessionData {
-  messages: StoredMessage[];
-  toolExecutions: ToolExecutionState[];
-  permissionRequests: PermissionRequestState[];
-  previews: ToolPreviewState[];
-}
-
-// Define event interfaces based on AgentService events
-interface MessageAddedEvent {
-  sessionId: string;
-  message: StoredMessage;
-}
-
-// renamed to avoid conflicts with exported types
-interface InternalToolExecutionEventData {
-  sessionId: string;
-  execution: ToolExecutionState;
-  preview?: ToolPreviewState;
-}
-
-interface PermissionRequestEvent {
-  sessionId: string;
-  permissionRequest: PermissionRequestState;
-  preview?: ToolPreviewState;
-}
-
-interface SessionEvent {
-  sessionId: string;
-}
 
 export enum TimelineServiceEvent {
   ITEM_ADDED = 'item_added',
@@ -140,12 +50,9 @@ export enum TimelineServiceEvent {
 export class TimelineService extends EventEmitter {
   // No cache needed, using timeline persistence directly
   private cleanup: () => void = () => {};
-  private processingSessionIds: Map<string, number> = new Map();
-  private sessionProcessingThresholdMs = 2000; // 2 seconds
   private lastToolUpdates: Map<string, number> = new Map<string, number>();
 
   constructor(
-    private sessionManager: SessionManager,
     private webSocketService: WebSocketService,
     private timelinePersistence: TimelineStatePersistence,
     private agentServiceRegistry: AgentServiceRegistry
@@ -163,7 +70,7 @@ export class TimelineService extends EventEmitter {
     sessionId: string,
     params: TimelineParams = {}
   ): Promise<TimelineResponse> {
-    const { limit = 50, pageToken, types, includeRelated = true } = params;
+    const { limit = 50, pageToken, types } = params;
     
     // Log that we're retrieving timeline items
     serverLogger.debug(`Retrieving timeline items for session ${sessionId}`);
@@ -241,7 +148,7 @@ export class TimelineService extends EventEmitter {
     try {
       // Check if it's a valid timestamp
       new Date(timestamp).toISOString();
-    } catch (e) {
+    } catch {
       // If invalid, use current time
       validatedTimestamp = new Date().toISOString();
       serverLogger.warn(`Invalid timestamp detected for message ${message.id}, using current time instead`);
@@ -349,7 +256,7 @@ export class TimelineService extends EventEmitter {
     try {
       // Check if it's a valid timestamp
       new Date(startTime).toISOString();
-    } catch (e) {
+    } catch {
       // If invalid, use current time
       validatedStartTime = new Date().toISOString();
       serverLogger.warn(`Invalid timestamp detected for tool execution ${toolExecution.id}, using current time instead`);
@@ -385,14 +292,6 @@ export class TimelineService extends EventEmitter {
       });
     } else {
       // For completed/error/aborted tools
-      // Convert preview to the correct format for client consumption
-      const clientPreview = preview ? {
-        contentType: preview.contentType,
-        briefContent: preview.briefContent,
-        fullContent: preview.fullContent,
-        metadata: preview.metadata
-      } : undefined;
-      
       // Check if we have a valid preview with required content
       const hasValidPreview = !!(preview && preview.briefContent);
       
@@ -636,14 +535,7 @@ export class TimelineService extends EventEmitter {
     }
   }
   
-  // The getSocketIOServer and getAgentService methods have been removed
-  // as they're no longer needed with the new event propagation architecture
-  
-  // The getToolExecutionManager method has been removed as part of the refactoring
-  // to use AgentServiceRegistry for event propagation instead of directly 
-  // accessing ToolExecutionManager instances
-
-  /**
+ /**
    * Set up event listeners for session events
    */
   private setupEventListeners(): void {
@@ -678,13 +570,13 @@ export class TimelineService extends EventEmitter {
         serverLogger.error(`Error adding message to timeline from agent: ${err instanceof Error ? err.message : String(err)}`);
       }
     };
-    AgentEvents.on(MESSAGE_ADDED, handleAgentEventsMessage);
+    onMessageAdded(handleAgentEventsMessage);
     
     // Add cleanup handler for AgentEvents
     const originalCleanup = this.cleanup;
     this.cleanup = () => {
       // Remove listener from AgentEvents
-      AgentEvents.off(MESSAGE_ADDED, handleAgentEventsMessage);
+      offMessageAdded(handleAgentEventsMessage);
       // Call original cleanup if it exists
       if (typeof originalCleanup === 'function') {
         originalCleanup();
@@ -698,7 +590,6 @@ export class TimelineService extends EventEmitter {
     // Subscribe to registry events for tool execution completed
     this.agentServiceRegistry.on(AgentServiceEvent.TOOL_EXECUTION_COMPLETED, (data: ExecutionCompletedWithPreviewEventData) => {
      
-      console.log('🔴🔴🔴 TimelineService received TOOL_EXECUTION_COMPLETED event', JSON.stringify(data, null, 2));
       if (!data || !data.execution) {
         serverLogger.warn('Received TOOL_EXECUTION_COMPLETED event with missing data', data);
         return;
@@ -911,9 +802,6 @@ export class TimelineService extends EventEmitter {
       // Implementation removed to break the event chain
       serverLogger.warn(`[SESSION_LOADED] SESSION_LOADED event received for ${data.sessionId} but intentionally not processed to prevent infinite loops`);
     });
-    
-    
-    serverLogger.info('🟢🟢🟢 TimelineService: Set up to receive events from AgentServiceRegistry');
   }
   
     /**

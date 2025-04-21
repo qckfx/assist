@@ -1,18 +1,15 @@
 /**
  * Types and interfaces for the agent runner
+ * 
+ * Note: Most of these types are now provided by @qckfx/agent, 
+ * but we're keeping this file for compatibility and additional types
  */
 
-import { ModelClient } from './model';
-import { PermissionManager } from './permission';
-import { ToolRegistry } from './registry';
-import { ExecutionAdapter } from './tool';
-import { SessionState } from './model';
+import { SessionState } from './platform-types';
+
+// This interface is kept for reference but should not be used directly
+// Use the types from @qckfx/agent instead
 export interface AgentRunnerConfig {
-  modelClient: ModelClient;
-  toolRegistry: ToolRegistry;
-  permissionManager: PermissionManager;
-  executionAdapter: ExecutionAdapter;
-  promptManager?: import('../core/PromptManager').PromptManager;
   logger?: {
     debug: (message: string, ...args: unknown[]) => void;
     info: (message: string, ...args: unknown[]) => void;

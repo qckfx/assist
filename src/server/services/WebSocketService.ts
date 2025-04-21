@@ -4,18 +4,22 @@ import { AgentServiceEvent } from './AgentService';
 import { AgentServiceRegistry } from './AgentServiceRegistry';
 import { SessionManager, sessionManager } from './SessionManager';
 import { serverLogger } from '../logger';
-import { AgentEvents, AgentEventType, EnvironmentStatusEvent } from '../../utils/sessionUtils';
 import { 
   ToolPreviewData, 
   ToolPreviewState,
 } from '../../types/preview';
 import { WebSocketEvent } from '../../types/websocket';
-import { 
-  ToolExecutionState, 
-  ToolExecutionStatus,
+import {
+  EnvironmentStatusEvent
+} from '@qckfx/agent';
+import {
+  onEnvironmentStatusChanged,
+  onProcessingCompleted,
+} from '@qckfx/agent';
+import {
   PermissionRequestedEventData,
   PermissionResolvedEventData
-} from '../../types/tool-execution';
+} from '../../types/platform-types';
 
 
 /**
@@ -822,18 +826,18 @@ export class WebSocketService {
    */
   private setupEnvironmentEventListeners(): void {
     // Subscribe to environment status changed events
-    AgentEvents.on(AgentEventType.ENVIRONMENT_STATUS_CHANGED, (statusEvent: EnvironmentStatusEvent) => {
-      serverLogger.info(`Received environment status update: ${statusEvent.environmentType} -> ${statusEvent.status}, ready=${statusEvent.isReady}`);
+    onEnvironmentStatusChanged((event: EnvironmentStatusEvent) => {
+      serverLogger.info(`Received environment status update: ${event.environmentType} -> ${event.status}, ready=${event.isReady}`);
       
       // We don't need to store the execution adapter type anymore, 
       // as it's included in each status event
       
       // Broadcast to all connected clients
-      this.io.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, statusEvent);
+      this.io.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, event);
     });
     
     // Subscribe to processing completed events from AgentRunner
-    AgentEvents.on(AgentEventType.PROCESSING_COMPLETED, (data: { sessionId: string, response: string }) => {
+    onProcessingCompleted((data: { sessionId: string, response: string }) => {
       serverLogger.info(`⚠️ Received direct PROCESSING_COMPLETED event from AgentRunner for session ${data.sessionId}`);
       
       // Forward the event to clients in this session room

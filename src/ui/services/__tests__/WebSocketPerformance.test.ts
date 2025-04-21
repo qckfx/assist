@@ -2,7 +2,7 @@
  * Performance tests for WebSocketService message handling
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WebSocketEvent } from '../../types/api';
+import { WebSocketEvent } from '../../../types/websocket';
 import { MockWebSocketService } from '../implementations/MockWebSocketService';
 import { MessageBufferManager } from '../../utils/MessageBufferManager';
 

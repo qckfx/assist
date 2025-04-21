@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 
 echo "====== Docker Fix Script ======"
 echo "1. Stopping all containers..."
-npm run docker:stop
+docker compose -f docker/docker-compose.yml down
 
 # Clean up old containers
 echo "2. Cleaning up lingering containers..."
@@ -14,18 +14,18 @@ docker ps -a | grep agent-sandbox | awk '{print $1}' | xargs docker rm -f 2>/dev
 
 # Rebuild the Docker image
 echo "3. Rebuilding Docker image..."
-npm run docker:build
+docker compose -f docker/docker-compose.yml build
 
 # Start a fresh container
 echo "4. Starting fresh container..."
-npm run docker:start
+docker compose -f docker/docker-compose.yml up -d
 
 # Get the container ID
 echo "5. Getting running container ID..."
 CONTAINER_ID=$(docker ps -q --filter name=qckfx_agent-sandbox)
 if [ -z "$CONTAINER_ID" ]; then
-    echo "ERROR: No container found! Make sure the qckfx_agent-sandbox_1 container is running."
-    echo "Run 'npm run docker:start' first."
+    echo "ERROR: No container found! Make sure the qckfx_agent-sandbox container is running."
+    echo "Run 'docker compose -f docker/docker-compose.yml up -d' first."
     exit 1
 fi
 echo "Container ID: $CONTAINER_ID"
@@ -46,4 +46,4 @@ echo "====== Fix Applied ======"
 echo ""
 echo "The script has been copied directly to the container."
 echo "This container is now the active one for your application."
-echo "Run 'npm run dev' to test if it now works correctly."
+echo "Run your application to test if it now works correctly."

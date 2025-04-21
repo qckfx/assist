@@ -1,9 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  PreviewContentType, 
-  ToolPreviewState,
-  PreviewManager 
-} from '../../types/preview';
+import { PreviewContentType, PreviewManager, ToolPreviewState } from '../../types/preview';
 import { SessionStatePersistence } from './SessionStatePersistence';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { serverLogger } from '../logger';

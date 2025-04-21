@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useFastEditMode } from '../useFastEditMode';
 import apiClient from '../../services/apiClient';
-import { WebSocketEvent } from '../../types/api';
+import { WebSocketEvent } from '../../../types/websocket';
 
 // Mock dependencies
 vi.mock('../../services/apiClient', () => ({

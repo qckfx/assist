@@ -6,7 +6,7 @@ import { WebSocketService } from './services/WebSocketService';
 import { SessionManager } from './services/SessionManager';
 import { TimelineService } from './services/TimelineService';
 import { TimelineStatePersistence, createTimelineStatePersistence } from './services/TimelineStatePersistence';
-import { AgentServiceRegistry, createAgentServiceRegistry } from './services/AgentServiceRegistry';
+import { AgentServiceRegistry } from './services/AgentServiceRegistry';
 import { serverLogger } from './logger';
 
 // Create the container
@@ -70,7 +70,7 @@ function registerServices() {
         throw new Error('Failed to resolve TimelineService dependencies from container');
       }
       
-      const timelineService = new TimelineService(sessionManager, webSocketService, timelineStatePersistence, agentServiceRegistry);
+      const timelineService = new TimelineService(webSocketService, timelineStatePersistence, agentServiceRegistry);
       container.bind(TimelineService).toConstantValue(timelineService);
       serverLogger.debug('TimelineService registered in container');
     }

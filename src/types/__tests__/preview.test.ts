@@ -1,4 +1,4 @@
-import { PreviewMode, PreviewContentType, ToolPreviewData } from '../../types/preview';
+import { PreviewMode, PreviewContentType, ToolPreviewData } from '../preview';
 
 describe('Preview Types', () => {
   it('should define the correct preview modes', () => {

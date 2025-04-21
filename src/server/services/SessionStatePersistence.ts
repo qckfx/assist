@@ -2,21 +2,16 @@ import fs from 'fs/promises';
 import path from 'path';
 import { 
   ToolExecutionState,
-  PermissionRequestState
-} from '../../types/tool-execution';
-import { SessionState } from '../../types/model';
-import {
-  SavedSessionData,
-  SessionListEntry,
-  StoredMessage,
+  PermissionRequestState,
+  SessionState,
   RepositoryInfo,
-  SessionPersistenceEvent
-} from '../../types/session';
-import { TextContentPart } from '../../types/message';
+  TextContentPart,
+} from '../../types/platform-types';
+import { LogCategory } from '../../utils/logger';
 import { ToolPreviewState } from '../../types/preview';
+import { SessionPersistenceEvent, StoredMessage, SessionListEntry, SavedSessionData } from '../../types/session';
 import { serverLogger } from '../logger';
 import { EventEmitter } from 'events';
-import { LogCategory } from '../../utils/logger';
 
 /**
  * Service for persisting complete session state to disk
