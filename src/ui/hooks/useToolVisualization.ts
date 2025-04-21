@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { PreviewMode } from '../../types/preview';
 import { useTimelineContext } from '../context/TimelineContext';
 import { TimelineItemType } from '../../types/timeline';
+import { ToolExecutionStatus } from '../../types/platform-types';
 
 /**
  * Tool execution with UI-specific visualization state
@@ -111,7 +112,7 @@ export function useToolVisualization(): UseToolVisualizationResult {
         id: item.id,
         tool: item.toolExecution.toolId,
         toolName: item.toolExecution.toolName,
-        status: item.toolExecution.status as any, // Type is verified in the timeline
+        status: item.toolExecution.status as ToolExecutionStatus, // Type is verified in the timeline
         args: item.toolExecution.args,
         paramSummary: item.toolExecution.summary,
         startTime: new Date(item.toolExecution.startTime).getTime(),

@@ -4,7 +4,7 @@
 import { Request, Response } from 'express';
 import { TimelineQuery } from '../schemas/api';
 import { TimelineResponse } from '../../types/timeline';
-import { ValidationError, NotFoundError, ServerError } from '../utils/errors';
+import { ValidationError } from '../utils/errors';
 import { TimelineService } from '../services/TimelineService';
 
 /**

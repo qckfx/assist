@@ -3,7 +3,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { validateBody, validateQuery, validateParams } from '../validation';
-import { ValidationError } from '../../utils/errors';
+import { ValidationError } from '@qckfx/agent/utils/errors';
 import { z } from 'zod';
 
 describe('Validation Middleware', () => {

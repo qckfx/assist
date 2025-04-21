@@ -5,38 +5,42 @@ import { EventEmitter } from 'events';
 import { Anthropic } from '@anthropic-ai/sdk';
 import {
   createAgent,
-  createAnthropicProvider,
-  createLogger,
-  createPromptManager,
-  LogLevel,
-} from '../../index';
-import { Agent } from '../../types/main';
-import { 
-  ToolPreviewState, 
-  PreviewContentType, 
-} from '../../types/preview';
-import { ToolResultEntry } from '../../types';
-import { 
-  ToolExecutionState, 
+  Agent,
+} from '@qckfx/agent';
+import {
+  createPromptManager, 
   ToolExecutionStatus,
   ToolExecutionEvent,
+  ToolResultEntry,
   PermissionRequestState,
-} from '../../types/tool-execution';
-
-import { StoredMessage, RepositoryInfo, SessionListEntry } from '../../types/session';
+  RepositoryInfo, 
+  createExecutionAdapter,
+  ExecutionAdapter,
+  ExecutionAdapterFactoryOptions,
+  SessionState,
+  isSessionAborted,
+  setSessionAborted,
+  ToolExecutionState,
+} from '../../types/platform-types';
+import {
+  createAnthropicProvider,
+} from '@qckfx/agent/node/providers';
+import {
+  createLogger,
+  LogLevel
+} from '../../utils/logger';
+import { PreviewContentType, ToolPreviewState } from '../../types/preview';
+import { StoredMessage, SessionListEntry } from '../../types/session';
 import { createToolExecutionManager } from './tool-execution'; 
 import { ToolExecutionManagerImpl } from './tool-execution/ToolExecutionManagerImpl';
 import { createPreviewManager, PreviewManagerImpl } from './PreviewManagerImpl';
 import { sessionManager } from './SessionManager';
 import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
-import { ExecutionAdapterFactoryOptions, createExecutionAdapter } from '../../utils/ExecutionAdapterFactory';
 import { serverLogger } from '../logger';
-import { SessionState } from '../../types/model';
-import { setSessionAborted, isSessionAborted } from '../../utils/sessionUtils';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
-import { ExecutionAdapter } from '../../types/tool';
 import crypto from 'crypto';
+import { container, TimelineService } from '../container';
 
 // Default system prompt for the agent
 const DEFAULT_SYSTEM_PROMPT = "You are a precise, efficient AI assistant that helps users with software development tasks.";
@@ -749,6 +753,9 @@ export class AgentService extends EventEmitter {
       } else {
         const adapterResult = await createExecutionAdapter({
           type: executionAdapterType,
+          docker: {
+            projectRoot: process.cwd(),
+          },
           logger
         });
         executionAdapter = adapterResult.adapter;
@@ -924,16 +931,11 @@ export class AgentService extends EventEmitter {
         try {
           // Only create a timeline entry for non‑empty assistant responses
           if (result.response && result.response.trim().length > 0) {
-            // Resolve TimelineService from the DI container lazily to avoid
-            // hard dependencies / circular imports during construction.
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { container, TimelineService } = require('../container');
-
             if (container?.isBound?.(TimelineService)) {
-              const timelineServiceInstance = container.get(TimelineService) as any;
+              const timelineServiceInstance = container.get(TimelineService) as TimelineService;
 
               // Construct the assistant message compatible with StoredMessage
-              const assistantMessage = {
+              const assistantMessage: StoredMessage = {
                 id: crypto.randomUUID(),
                 role: 'assistant' as const,
                 timestamp: new Date().toISOString(),
@@ -1391,6 +1393,12 @@ export class AgentService extends EventEmitter {
       if (options.type === 'e2b' && options.e2bSandboxId) {
         adapterOptions.e2b = {
           sandboxId: options.e2bSandboxId
+        };
+      }
+
+      if (options.type === 'docker') {
+        adapterOptions.docker = {
+          projectRoot: process.cwd()
         };
       }
       

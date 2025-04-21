@@ -177,6 +177,11 @@ export interface ToolPreviewState {
    * Any additional metadata for the preview
    */
   metadata?: Record<string, unknown>;
+  
+  /**
+   * Whether the preview has actual content.
+   */
+  hasActualContent?: boolean;
 }
 
 /**

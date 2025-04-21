@@ -2,9 +2,9 @@
  * AgentService Registry - Manages per-session agent services
  */
 import { EventEmitter } from 'events';
-import { AgentService, createAgentService, AgentServiceConfig, AgentServiceEvent } from './AgentService';
+import { AgentService, createAgentService, AgentServiceEvent } from './AgentService';
 import { serverLogger } from '../logger';
-import { LogCategory } from '../../types/logger';
+import { LogCategory } from '../../utils/logger';
 import { SessionManager } from './SessionManager';
 
 /**

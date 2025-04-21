@@ -2,21 +2,10 @@
  * Types and interfaces for the main module
  */
 
-import { AgentRunner, ProcessQueryResult, ConversationResult } from './agent';
-import { ModelClient, SessionState } from './model';
-import { PermissionManager } from './permission';
-import { ToolRegistry } from './registry';
-import { Tool } from './tool';
-import { ModelProvider } from './model';
-
-// Define repository environment types
-export type RepositoryEnvironment = 
-  | { type: 'local' }
-  | { type: 'docker' }
-  | { type: 'e2b', sandboxId: string };
+import { Agent as QckfxAgent } from '@qckfx/agent';
+import { RepositoryEnvironment } from './platform-types';
 
 export interface AgentConfig {
-  modelProvider: ModelProvider;
   environment: RepositoryEnvironment;
   logger?: {
     debug: (message: string, ...args: unknown[]) => void;
@@ -27,25 +16,7 @@ export interface AgentConfig {
   permissionUIHandler?: {
     requestPermission: (toolId: string, args: Record<string, unknown>) => Promise<boolean>;
   };
-  promptManager?: import('../core/PromptManager').PromptManager;
 }
 
-export interface Agent {
-  // Core components
-  agentRunner: (env?: RepositoryEnvironment) => Promise<AgentRunner>;
-  toolRegistry: ToolRegistry;
-  permissionManager: PermissionManager;
-  modelClient: ModelClient;
-  environment?: RepositoryEnvironment;
-  logger: {
-    debug: (message: string, ...args: unknown[]) => void;
-    info: (message: string, ...args: unknown[]) => void;
-    warn: (message: string, ...args: unknown[]) => void;
-    error: (message: string, ...args: unknown[]) => void;
-  };
-  
-  // Helper methods
-  processQuery(query: string, sessionState?: SessionState): Promise<ProcessQueryResult>;
-  runConversation(initialQuery: string): Promise<ConversationResult>;
-  registerTool(tool: Tool): void;
-}
+// Re-export the Agent interface from the qckfx/agent module
+export type Agent = QckfxAgent;

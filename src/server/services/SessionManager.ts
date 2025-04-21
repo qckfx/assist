@@ -2,13 +2,11 @@
  * Session management service
  */
 import { v4 as uuidv4 } from 'uuid';
-import { SessionState } from '../../types/model';
+import { SessionState, ContextWindow, clearSessionAborted } from '../../types/platform-types';
 import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
 import { AgentServiceConfig } from './AgentService';
-import { ContextWindow } from '../../types/contextWindow';
-import { clearSessionAborted } from '../../utils/sessionUtils';
 
 /**
  * Session information

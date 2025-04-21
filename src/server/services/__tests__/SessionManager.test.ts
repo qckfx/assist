@@ -2,7 +2,7 @@
  * Session manager tests
  */
 import { SessionManager } from '../SessionManager';
-import { SessionNotFoundError } from '../../utils/errors';
+import { SessionNotFoundError } from '@qckfx/agent/utils/errors';
 
 // Mock serverLogger
 jest.mock('../../logger', () => ({

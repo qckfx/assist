@@ -3,7 +3,7 @@
  */
 import { AgentService, AgentServiceEvent, createAgentService } from '../AgentService';
 import { sessionManager } from '../SessionManager';
-import { AgentBusyError } from '../../utils/errors';
+import { AgentBusyError } from '@qckfx/agent/utils/errors';
 
 // Mock dependencies
 jest.mock('../../logger', () => ({

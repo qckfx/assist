@@ -2,40 +2,15 @@
  * Types and interfaces for session state persistence
  */
 
-import { SessionState } from './model';
-import { ToolExecutionState, PermissionRequestState } from './tool-execution';
+import { 
+  SessionState, 
+  StructuredContent, 
+  ToolExecutionState, 
+  PermissionRequestState,
+} from './platform-types';
+import { ToolCallReference } from '@qckfx/agent';
 import { ToolPreviewState } from './preview';
-import { StructuredContent } from './message';
 
-/**
- * Reference to a tool call in a stored message
- */
-export interface ToolCallReference {
-  /**
-   * Unique ID of the tool execution
-   */
-  executionId: string;
-  
-  /**
-   * Original tool use ID from the Anthropic API
-   */
-  toolUseId?: string;
-  
-  /**
-   * Display name of the tool
-   */
-  toolName: string;
-  
-  /**
-   * Whether the tool was invoked as part of a batch
-   */
-  isBatchedCall?: boolean;
-  
-  /**
-   * Index of this call in the original message
-   */
-  index: number;
-}
 
 /**
  * Normalized representation of a conversation message
@@ -74,7 +49,7 @@ export interface StoredMessage {
   /**
    * Ordering sequence in the conversation
    */
-  sequence: number;
+  sequence?: number;
   
   /**
    * Status indicating server confirmation state
@@ -308,3 +283,5 @@ export enum SessionPersistenceEvent {
   SESSION_DELETED = 'session_persistence:session_deleted',
   SESSION_UPDATED = 'session_persistence:session_updated'
 }
+
+export type { SessionState } from '@qckfx/agent/browser/internals';

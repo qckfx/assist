@@ -3,15 +3,8 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
-import { 
-  TimelineItem, 
-  TimelineItemType,
-  MessageTimelineItem,
-  ToolExecutionTimelineItem,
-  PermissionRequestTimelineItem
-} from '../../types/timeline';
+import { TimelineItem } from '../../types/timeline';
 import { serverLogger } from '../logger';
-import { LogCategory } from '../../utils/logger';
 import { EventEmitter } from 'events';
 
 /**

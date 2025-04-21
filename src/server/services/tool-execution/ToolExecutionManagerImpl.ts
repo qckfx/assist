@@ -2,28 +2,23 @@ import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
 import {
   ToolExecutionManager,
-  ToolExecutionState,
   ToolExecutionStatus,
+  PermissionResolvedEventData,
   ToolExecutionEvent,
-  PermissionRequestState,
+  ToolExecutionState,
   PermissionRequestedEventData,
-  PermissionResolvedEventData
-} from '../../../types/tool-execution';
+  PermissionRequestState
+} from '../../../types/platform-types';
 import { SessionStatePersistence } from '../SessionStatePersistence';
 import { getSessionStatePersistence } from '../sessionPersistenceProvider';
 
-// Define event data types locally
-export interface PreviewGeneratedEventData {
-  execution: ToolExecutionState;
-  preview: ToolPreviewState;
-}
+// Import event data types from local module
+import { 
+  PreviewGeneratedEventData,
+  ExecutionCompletedWithPreviewEventData 
+} from '../../../types/tool-execution';
 
-export interface ExecutionCompletedWithPreviewEventData {
-  execution: ToolExecutionState;
-  preview?: ToolPreviewState;
-}
 import { PreviewManager, ToolPreviewData, ToolPreviewState } from '../../../types/preview';
-import { createPreviewManager } from '../PreviewManagerImpl';
 import { previewService } from '../preview';
 import { serverLogger } from '../../logger';
 

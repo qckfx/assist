@@ -18,7 +18,7 @@ import {
 import { getSessionStatePersistence } from '../services/SessionStatePersistence';
 import { TimelineService } from '../container';
 import { AgentServiceConfig } from '../services/AgentService';
-import { createContextWindow } from '../../types/contextWindow';
+import { createContextWindow } from '../../types/platform-types';
 
 /**
  * Start a new agent session or reconnect to an existing one
@@ -218,7 +218,6 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
  */
 export async function abortOperation(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    console.log('🔴🔴🔴 AbortOperation', req.body);
     const { sessionId } = req.body as AbortRequest;
     
     // Get the agent service registry from the container

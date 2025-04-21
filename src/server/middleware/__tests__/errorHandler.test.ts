@@ -3,7 +3,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { errorHandler, notFoundHandler } from '../errorHandler';
-import { ApiError } from '../../utils/errors';
+import { ApiError } from '@qckfx/agent/utils/errors';
 
 // Mock E2B to avoid dependency issues
 jest.mock('../../../utils/E2BExecutionAdapter');

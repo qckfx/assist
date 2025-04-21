@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { StructuredContent, TextContentPart, parseStructuredContent } from '../../../types/message';
+import { StructuredContent, TextContentPart, parseStructuredContent } from '../../../types/content';
 
 export type MessageType = 'user' | 'assistant' | 'system' | 'error';
 

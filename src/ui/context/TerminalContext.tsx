@@ -4,7 +4,7 @@ import { MessageType } from '../components/Message';
 import { WebSocketEvent, SessionData } from '../types/api';
 import { useWebSocketContext } from './WebSocketContext';
 import { PreviewMode } from '../../types/preview';
-import { ContentPart } from '../../types/message';
+import { ContentPart } from '../../types/platform-types';
 
 // Initial state
 const initialState: TerminalState = {

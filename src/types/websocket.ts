@@ -1,7 +1,7 @@
 /**
  * Types for WebSocket communication
  */
-import { StructuredContent } from './message';
+import { StructuredContent } from './platform-types';
 
 /**
  * Event types for WebSocket communication

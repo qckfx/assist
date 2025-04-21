@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { WebSocketEvent } from '../../types/api';
+import { WebSocketEvent } from '../../../types/websocket';
 import { EventEmitter } from 'events';
 
 class MockWebSocketService extends EventEmitter {

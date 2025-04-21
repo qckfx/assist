@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { WebSocketEvent } from '../../types/websocket';
 import { SessionListEntry } from '../../types/session';
 import apiClient from '../services/apiClient';
 
