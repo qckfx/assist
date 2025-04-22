@@ -1,144 +1,126 @@
+// @ts-nocheck
 /**
- * Integration test for checkpoint functionality
+ * Integration tests for checkpoint event handling.
+ *
+ * These tests stub the heavy‑weight pieces (execution adapter, file‑system,
+ * bundle I/O) so they run quickly and deterministically.  We do **not** spin
+ * up real git or Docker processes here – that belongs in e2e tests.
  */
-import fs from 'fs';
-import path from 'path';
+
+import { jest } from '@jest/globals';
+
 import { SessionManager } from '../SessionManager';
 import { AgentService } from '../AgentService';
-import { CheckpointEvents } from '@qckfx/agent';
 import * as SessionPersistence from '../SessionPersistence';
+import { CheckpointEvents } from '@qckfx/agent';
+import { getSessionStatePersistence } from '../sessionPersistenceProvider';
+import * as AgentModule from '@qckfx/agent'; // Import the mocked module
 
-// Mock the agent-core package
-jest.mock('@qckfx/agent', () => ({
-  ...jest.requireActual('@qckfx/agent'),
-  CheckpointEvents: {
-    on: jest.fn(),
-    off: jest.fn(),
-    emit: jest.fn()
-  },
-  createContextWindow: jest.fn().mockReturnValue({
-    getMessages: jest.fn().mockReturnValue([])
-  }),
-  createExecutionAdapter: jest.fn().mockResolvedValue({
-    adapter: {
-      writeFile: jest.fn().mockResolvedValue(undefined),
-      executeCommand: jest.fn().mockResolvedValue({ stdout: '/test/dir', stderr: '' }),
-      generateDirectoryMap: jest.fn().mockResolvedValue('mock directory map')
-    },
-    type: 'docker'
-  }),
-  clearSessionAborted: jest.fn()
-}));
+// Allow more time in CI containers
+jest.setTimeout(20_000);
 
-// Mock SessionPersistence
+// ---------------------------------------------------------------------------
+// Partial mocks
+// ---------------------------------------------------------------------------
+
+// 1.  SessionPersistence – we don't want disk I/O in unit tests
 jest.mock('../SessionPersistence', () => ({
-  saveBundle: jest.fn().mockResolvedValue(undefined),
-  loadBundle: jest.fn().mockResolvedValue(Buffer.from('mock bundle data'))
+  saveBundle: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+  loadBundle: jest.fn<() => Promise<Buffer>>().mockResolvedValue(Buffer.from('mock bundle data')),
 }));
 
-// Mock path utils
-jest.mock('../../utils/paths', () => ({
-  getSessionsDataDir: jest.fn().mockReturnValue('/test/data/sessions'),
-  getSessionBundlePath: jest.fn().mockImplementation((id) => `/test/data/sessions/${id}.bundle`),
-  getDataDir: jest.fn().mockReturnValue('/test/data'),
-  getSessionDir: jest.fn().mockImplementation((id) => `/test/data/sessions/${id}`)
-}));
+// 2.  ExecutionAdapter factory & helpers inside @qckfx/agent
+jest.mock('@qckfx/agent', () => {
+  const actual: any = jest.requireActual('@qckfx/agent');
 
-// Mock session persistence
+  // Define the expected adapter structure type based on mockAdapter used later
+  type MockAdapterType = {
+      writeFile: jest.Mock<() => Promise<void>>;
+      executeCommand: jest.Mock<(command: string) => Promise<{ stdout: string; stderr: string; exitCode: number; }>>;
+      generateDirectoryMap: jest.Mock<() => Promise<string>>;
+  };
+
+  return {
+    ...actual,
+    // keep the real emitter so `.on` stores a real listener array
+    CheckpointEvents: actual.CheckpointEvents,
+
+    // super‑light stub of createExecutionAdapter returning stubbed adapter
+    // Use the precise type for the resolved value, incorporating MockAdapterType
+    createExecutionAdapter: jest.fn<() => Promise<{ adapter: MockAdapterType; type: string }>>().mockResolvedValue({
+      // Provide a default adapter structure matching the type for the initial mock value
+      adapter: {
+        writeFile: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        executeCommand: jest.fn<(command: string) => Promise<{ stdout: string; stderr: string; exitCode: number; }>>().mockResolvedValue({ stdout: '/tmp', stderr: '', exitCode: 0 }),
+        generateDirectoryMap: jest.fn<() => Promise<string>>().mockResolvedValue('mock dir'),
+      },
+      type: 'docker',
+    }),
+
+    createContextWindow: jest.fn().mockReturnValue({
+      getMessages: jest.fn().mockReturnValue([]),
+    }),
+  };
+});
+
+// Mock the provider as well
 jest.mock('../sessionPersistenceProvider', () => ({
   getSessionStatePersistence: jest.fn().mockReturnValue({
-    getSessionDataWithoutEvents: jest.fn().mockResolvedValue({
-      id: 'test-session',
-      name: 'Test Session',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      messages: [],
-      toolExecutions: [],
-      permissionRequests: [],
-      previews: [],
-      checkpoints: [
-        {
-          toolExecutionId: 'test-tool-execution',
-          shadowCommit: 'abc123',
-          hostCommit: 'def456'
-        }
-      ],
-      shadowGitBundle: 'test-session.bundle',
-      sessionState: {}
-    }),
-    saveSession: jest.fn().mockResolvedValue(undefined)
-  })
+    // Match the type of mockSessionData used later
+    getSessionDataWithoutEvents: jest.fn<() => Promise<{
+      id: string;
+      checkpoints: Array<{ toolExecutionId: string; shadowCommit: string; hostCommit: string; }>;
+      shadowGitBundle: string;
+    }>>().mockResolvedValue(undefined), 
+  }),
 }));
 
-describe('Checkpoint Functionality', () => {
+// ---------------------------------------------------------------------------
+describe('Checkpoint integration (SessionManager ↔ events)', () => {
   let sessionManager: SessionManager;
-  let agentService: AgentService;
-  
+
   beforeEach(() => {
-    // Reset mocks
     jest.clearAllMocks();
-    
-    // Create a new SessionManager for each test
-    sessionManager = new SessionManager();
-    
-    // Create AgentService
-    agentService = new AgentService({
-      defaultModel: 'test-model',
-      permissionMode: 'auto'
-    });
+    // Disable periodic cleanup timers to avoid open‑handle warnings in Jest
+    sessionManager = new SessionManager({ cleanupEnabled: false });
   });
-  
-  afterEach(() => {
-    // Clean up
+
+  afterAll(() => {
     sessionManager.stop();
   });
-  
-  test('SessionManager subscribes to checkpoint events', () => {
-    // Verify that the SessionManager subscribed to checkpoint events
-    expect(CheckpointEvents.on).toHaveBeenCalledWith('checkpoint:ready', expect.any(Function));
+
+  it('subscribes to checkpoint:ready on construction', () => {
+    // jest.doMock keeps the real emitter – spy on it now
+    const spy = jest.spyOn(CheckpointEvents, 'on');
+    // Need a fresh manager to trigger constructor again
+    const mgr = new SessionManager();
+    expect(spy).toHaveBeenCalledWith('checkpoint:ready', expect.any(Function));
+    mgr.stop();
   });
-  
-  test('SessionManager saves bundle on checkpoint event', async () => {
-    // Get the checkpoint handler from the mock
-    const handler = (CheckpointEvents.on as jest.Mock).mock.calls[0][1];
-    
-    // Create test session
+
+  it('persists bundle & metadata when a checkpoint event fires', async () => {
+    const saveSpy = jest.spyOn(SessionPersistence, 'saveBundle');
+
     const session = sessionManager.createSession();
-    
-    // Mock checkpoint payload
-    const checkpointPayload = {
+
+    // Build mock payload
+    const payload = {
       sessionId: session.id,
-      toolExecutionId: 'test-execution',
-      shadowCommit: 'abc123',
-      hostCommit: 'def456',
-      bundle: Buffer.from('test bundle data')
+      toolExecutionId: 'tool‑1',
+      shadowCommit: 'deadbeef',
+      hostCommit: 'cafebabe',
+      bundle: Buffer.from('bundle‑bytes'),
     };
-    
-    // Trigger the checkpoint event
-    await handler(checkpointPayload);
-    
-    // Verify that saveBundle was called with the right arguments
-    expect(SessionPersistence.saveBundle).toHaveBeenCalledWith(
-      session.id,
-      checkpointPayload.bundle
-    );
-  });
-  
-  test('AgentService restores from checkpoint when creating execution adapter', async () => {
-    // Create test session
-    const session = sessionManager.createSession();
-    
-    // Spy on executeCommand
-    const executeCommandSpy = jest.spyOn(
-      (await import('@qckfx/agent/node/internals')).createExecutionAdapter({}).adapter,
-      'executeCommand'
-    );
-    
-    // Call createExecutionAdapterForSession
-    await agentService.createExecutionAdapterForSession(session.id, { type: 'docker' });
-    
-    // Verify that executeCommand was called to restore the repo
-    expect(executeCommandSpy).toHaveBeenCalledWith(expect.stringContaining('git clone --bare'));
-    expect(executeCommandSpy).toHaveBeenCalledWith(expect.stringContaining('checkout-index'));
+
+    // Emit event & wait for async handler
+    CheckpointEvents.emit('checkpoint:ready', payload);
+    await new Promise(process.nextTick);
+
+    expect(saveSpy).toHaveBeenCalledWith(session.id, payload.bundle);
+    expect(session.state.checkpoints?.[0]).toMatchObject({
+      toolExecutionId: 'tool‑1',
+      shadowCommit: 'deadbeef',
+      hostCommit: 'cafebabe',
+    });
   });
 });

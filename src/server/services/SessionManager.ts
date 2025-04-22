@@ -7,6 +7,7 @@ import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
 import { AgentServiceConfig } from './AgentService';
+// Import CheckpointEvents from agent package
 import { CheckpointEvents, CheckpointPayload } from '@qckfx/agent';
 import * as SessionPersistence from './SessionPersistence';
 // Import session state extensions to ensure the CheckpointInfo type is available
@@ -151,7 +152,8 @@ export class SessionManager {
       state: { 
         contextWindow: new ContextWindow(),
         agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
-        abortController: new AbortController() // Always present as per the new design
+        abortController: new AbortController(), // Always present as per the new design
+        generateNewToolExecutionId: () => `tool_${uuidv4()}`
       },
       isProcessing: false,
       executionAdapterType: config?.executionAdapterType || 'docker',
