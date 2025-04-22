@@ -1,11 +1,9 @@
 /**
  * Types and interfaces for the agent runner
  * 
- * Note: Most of these types are now provided by @qckfx/agent, 
- * but we're keeping this file for compatibility and additional types
  */
 
-import { SessionState } from './platform-types';
+import { ProcessQueryResult, ConversationResult } from "@qckfx/agent";
 
 // This interface is kept for reference but should not be used directly
 // Use the types from @qckfx/agent instead
@@ -16,33 +14,6 @@ export interface AgentRunnerConfig {
     warn: (message: string, ...args: unknown[]) => void;
     error: (message: string, ...args: unknown[]) => void;
   };
-}
-
-export interface ToolResultEntry {
-  toolId: string;
-  args: Record<string, unknown>;
-  result: unknown;
-  toolUseId?: string;
-  /** Whether the tool execution was aborted */
-  aborted?: boolean;
-}
-
-export interface ProcessQueryResult {
-  result?: {
-    toolResults: ToolResultEntry[];
-    iterations: number;
-  };
-  response?: string;
-  sessionState: SessionState;
-  done: boolean;
-  error?: string;
-  /** Whether the operation was aborted */
-  aborted?: boolean;
-}
-
-export interface ConversationResult {
-  responses: string[];
-  sessionState: Record<string, unknown>;
 }
 
 export interface AgentRunner {

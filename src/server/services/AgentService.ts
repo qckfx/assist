@@ -1,23 +1,23 @@
 /**
  * Agent service for API integration
  */
+import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { EventEmitter } from 'events';
 import { Anthropic } from '@anthropic-ai/sdk';
 import {
   createAgent,
   Agent,
+  ToolResultEntry,
 } from '@qckfx/agent';
 import {
   createPromptManager, 
   ToolExecutionStatus,
   ToolExecutionEvent,
-  ToolResultEntry,
   PermissionRequestState,
   RepositoryInfo, 
   createExecutionAdapter,
   ExecutionAdapter,
   ExecutionAdapterFactoryOptions,
-  SessionState,
   isSessionAborted,
   setSessionAborted,
   ToolExecutionState,
@@ -25,6 +25,7 @@ import {
 import {
   createAnthropicProvider,
 } from '@qckfx/agent/node/providers';
+import { SessionState } from '../../types/session';
 import {
   createLogger,
   LogLevel
@@ -38,12 +39,9 @@ import { sessionManager } from './SessionManager';
 import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { serverLogger } from '../logger';
-import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import * as SessionPersistence from './SessionPersistence';
 import crypto from 'crypto';
 import { container, TimelineService } from '../container';
-// Import session state extensions to ensure the CheckpointInfo type is available
-import '../../types/session-extensions';
 
 // Default system prompt for the agent
 const DEFAULT_SYSTEM_PROMPT = "You are a precise, efficient AI assistant that helps users with software development tasks.";
@@ -686,12 +684,12 @@ export class AgentService extends EventEmitter {
       this.activeProcessingSessionIds.add(sessionId);
       
       // Create a new controller if none exists or if the current one is already used
-      if (!session.state.abortController) {
-        session.state.abortController = new AbortController();
+      if (!session.state.coreSessionState.abortController) {
+        session.state.coreSessionState.abortController = new AbortController();
         console.log(`[AgentService] Created new AbortController for session ${sessionId}`);
-      } else if (session.state.abortController.signal.aborted && !isSessionAborted(sessionId)) {
+      } else if (session.state.coreSessionState.abortController.signal.aborted && !isSessionAborted(sessionId)) {
         // We already processed the abort, safe to refresh
-        session.state.abortController = new AbortController();
+        session.state.coreSessionState.abortController = new AbortController();
         console.log(`[AgentService] Replaced used AbortController for session ${sessionId}`);
       }
       // Do NOT clearSessionAborted() here - that will be done in AgentRunner after abort is handled
@@ -751,8 +749,8 @@ export class AgentService extends EventEmitter {
       // Get execution adapter to generate directory structure
       let executionAdapter: ExecutionAdapter;
       
-      if (session.state.executionAdapter) {
-        executionAdapter = session.state.executionAdapter;
+      if (session.state.coreSessionState.executionAdapter) {
+        executionAdapter = session.state.coreSessionState.executionAdapter;
       } else {
         const adapterResult = await createExecutionAdapter({
           type: executionAdapterType,
@@ -765,10 +763,10 @@ export class AgentService extends EventEmitter {
       }
       
       // Generate directory structure map only if it hasn't been generated for this session yet
-      if (!session.state.directoryStructureGenerated) {
+      if (!session.state.coreSessionState.directoryStructureGenerated) {
         try {
           // Get the current working directory using the execution adapter
-          const cwdResult = await executionAdapter.executeCommand('pwd');
+          const cwdResult = await executionAdapter.executeCommand('agent-service-get-cwd', 'pwd');
           const cwd = cwdResult.stdout.trim() || process.cwd();
           
           // Use the execution adapter's generateDirectoryMap method directly
@@ -778,7 +776,7 @@ export class AgentService extends EventEmitter {
           promptManager.setDirectoryStructurePrompt(directoryStructure);
           
           // Mark that we've generated directory structure for this session
-          session.state.directoryStructureGenerated = true;
+          session.state.coreSessionState.directoryStructureGenerated = true;
           
         } catch (error) {
           console.warn(`AgentService: Failed to generate directory structure map: ${(error as Error).message}`);
@@ -881,10 +879,10 @@ export class AgentService extends EventEmitter {
       
       try {
         // Ensure the session state includes the sessionId for the new abort system
-        session.state.id = sessionId;
+        session.state.coreSessionState.id = sessionId;
         
         // Process the query with our registered callbacks
-        const result = await this.agent.processQuery(query, session.state);
+        const result = await this.agent.processQuery(query, session.state.coreSessionState);
   
         if (result.error) {
           throw new ServerError(`Agent error: ${result.error}`);
@@ -896,10 +894,13 @@ export class AgentService extends EventEmitter {
         }
         
         // Update the session with the new state, ensuring proper structure for conversationHistory
-        const sessionState = result.sessionState;
+        const coreSessionState = result.sessionState;
         
         sessionManager.updateSession(sessionId, {
-          state: sessionState,
+          state: {
+            coreSessionState: coreSessionState,
+            checkpoints: session.state.checkpoints,
+          },
           isProcessing: false,
         });
 
@@ -1071,20 +1072,20 @@ export class AgentService extends EventEmitter {
     const abortTimestamp = setSessionAborted(sessionId);
     
     // Store the timestamp in the session state
-    session.state.abortedAt = abortTimestamp;
+    session.state.coreSessionState.abortedAt = abortTimestamp;
     
     // Abort via the AbortController in the session state
-    if (session.state.abortController && !session.state.abortController.signal.aborted) {
+    if (session.state.coreSessionState.abortController && !session.state.coreSessionState.abortController.signal.aborted) {
       console.log(`[AgentService] Aborting operation for session ${sessionId} via AbortController`);
-      session.state.abortController.abort();
-      console.log(`[AgentService] AbortController.signal.aborted=${session.state.abortController.signal.aborted}`);
-    } else if (session.state.abortController) {
+      session.state.coreSessionState.abortController.abort();
+      console.log(`[AgentService] AbortController.signal.aborted=${session.state.coreSessionState.abortController.signal.aborted}`);
+    } else if (session.state.coreSessionState.abortController) {
       console.log(`[AgentService] AbortController for session ${sessionId} was already aborted`);
     } else {
       console.log(`[AgentService] No AbortController found for session ${sessionId}`);
       // Ensure we have an abortController even if it's missing
-      session.state.abortController = new AbortController();
-      session.state.abortController.abort();
+      session.state.coreSessionState.abortController = new AbortController();
+      session.state.coreSessionState.abortController.abort();
     }
 
     serverLogger.info('abortOperation', { sessionId, session });
@@ -1153,7 +1154,7 @@ export class AgentService extends EventEmitter {
   public getHistory(sessionId: string): Anthropic.Messages.MessageParam[] {
     // Get the session
     const session = sessionManager.getSession(sessionId);
-    return session.state.contextWindow?.getMessages() || [];
+    return session.state.coreSessionState.contextWindow?.getMessages() || [];
   }
   
   /**
@@ -1274,7 +1275,7 @@ export class AgentService extends EventEmitter {
       
       // Then try to get it from the session
       const session = sessionManager.getSession(sessionId);
-      return session.state.executionAdapterType;
+      return session.state.coreSessionState.executionAdapterType;
     } catch {
       return undefined;
     }
@@ -1296,7 +1297,10 @@ export class AgentService extends EventEmitter {
       sessionManager.updateSession(sessionId, {
         state: {
           ...session.state,
-          e2bSandboxId: sandboxId
+          coreSessionState: {
+            ...session.state.coreSessionState,
+            e2bSandboxId: sandboxId
+          }
         }
       });
       
@@ -1319,7 +1323,7 @@ export class AgentService extends EventEmitter {
       
       // Then try to get it from the session
       const session = sessionManager.getSession(sessionId);
-      return session.state.e2bSandboxId;
+      return session.state.coreSessionState.e2bSandboxId;
     } catch {
       return undefined;
     }
@@ -1460,7 +1464,7 @@ export class AgentService extends EventEmitter {
       if (adapter) {
         try {
           // Check if this session has checkpoints
-          const { getSessionStatePersistence } = await import('./sessionPersistenceProvider');
+          const executionId = 'agent-service-restore-from-checkpoint';
           const persistence = getSessionStatePersistence();
           const sessionData = await persistence.getSessionDataWithoutEvents(sessionId);
           
@@ -1476,10 +1480,10 @@ export class AgentService extends EventEmitter {
               await adapter.writeFile('/tmp/shadow.b64', base64, 'utf8');
               
               // Decode the base64 file back to binary
-              await adapter.executeCommand('base64 -d /tmp/shadow.b64 > /tmp/shadow.bundle && rm /tmp/shadow.b64');
+              await adapter.executeCommand(executionId, 'base64 -d /tmp/shadow.b64 > /tmp/shadow.bundle && rm /tmp/shadow.b64');
               
               // Get repo root
-              const cwdResult = await adapter.executeCommand('pwd');
+              const cwdResult = await adapter.executeCommand(executionId, 'pwd');
               const repoRoot = cwdResult.stdout.trim() || process.cwd();
               
               // Define the shadow repo directory
@@ -1501,7 +1505,7 @@ export class AgentService extends EventEmitter {
               `;
               
               // Execute the restore command
-              await adapter.executeCommand(cmd);
+              await adapter.executeCommand(executionId, cmd);
               serverLogger.info(`Restored shadow repo for session ${sessionId} to checkpoint ${toolExecutionId}`);
             }
           }
@@ -1518,8 +1522,11 @@ export class AgentService extends EventEmitter {
       sessionManager.updateSession(sessionId, {
         state: {
           ...session.state,
-          executionAdapter: adapter || undefined,
-          executionAdapterType: type
+          coreSessionState: {
+            ...session.state.coreSessionState,
+            executionAdapter: adapter || undefined,
+            executionAdapterType: type
+          }
         }
       });
       

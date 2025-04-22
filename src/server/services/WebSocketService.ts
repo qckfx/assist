@@ -752,7 +752,7 @@ export class WebSocketService {
       }
       
       // Get the execution adapter type, defaulting to 'docker' if not specified
-      const executionEnvironment = session.state.executionAdapterType || 
+      const executionEnvironment = session.state.coreSessionState.executionAdapterType || 
                                session.executionAdapterType || 
                                'docker';
       
@@ -760,7 +760,7 @@ export class WebSocketService {
       socket.emit('init', {
         sessionId,
         executionEnvironment: executionEnvironment,
-        e2bSandboxId: session.state.e2bSandboxId
+        e2bSandboxId: session.state.coreSessionState.e2bSandboxId
       });
       
       // For Docker sessions, initialize the container

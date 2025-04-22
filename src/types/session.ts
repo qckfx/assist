@@ -3,13 +3,13 @@
  */
 
 import { 
-  SessionState, 
   StructuredContent, 
   ToolExecutionState, 
   PermissionRequestState,
 } from './platform-types';
 import { ToolCallReference } from '@qckfx/agent';
 import { ToolPreviewState } from './preview';
+import { SessionState as CoreSessionState } from '@qckfx/agent/browser/internals';
 
 
 /**
@@ -309,4 +309,27 @@ export enum SessionPersistenceEvent {
   SESSION_UPDATED = 'session_persistence:session_updated'
 }
 
-export type { SessionState } from '@qckfx/agent/browser/internals';
+/**
+ * Extends the core SessionState interface to include checkpoint information
+ */
+export interface CheckpointInfo {
+  /**
+   * Tool execution ID associated with this checkpoint
+   */
+  toolExecutionId: string;
+  
+  /**
+   * Shadow repository commit hash
+   */
+  shadowCommit: string;
+  
+  /**
+   * Host repository commit hash
+   */
+  hostCommit: string;
+}
+
+export interface SessionState {
+  coreSessionState: CoreSessionState;
+  checkpoints?: CheckpointInfo[];
+}

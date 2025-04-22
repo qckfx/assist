@@ -63,7 +63,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
         };
         
         // Use saved agent service config if available or use defaults
-        const agentServiceConfig = savedSession.sessionState?.agentServiceConfig || defaultAgentServiceConfig;
+        const agentServiceConfig = savedSession.sessionState?.coreSessionState?.agentServiceConfig || defaultAgentServiceConfig;
         
         // Create a state object that includes the agentServiceConfig
         const state = savedSession.sessionState || { 
@@ -77,8 +77,8 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
           lastActiveAt: new Date(savedSession.updatedAt),
           state: state,
           isProcessing: false,
-          executionAdapterType: savedSession.sessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' || 'docker',
-          e2bSandboxId: savedSession.sessionState?.e2bSandboxId,
+          executionAdapterType: savedSession.sessionState?.coreSessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' || 'docker',
+          e2bSandboxId: savedSession.sessionState?.coreSessionState?.e2bSandboxId,
           agentServiceConfig: agentServiceConfig
         };
         

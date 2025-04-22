@@ -49,7 +49,7 @@ export interface SessionHistoryEntry {
 }
 
 // Import the SessionState type from model.ts
-import { SessionState } from '../../types/platform-types';
+import { SessionState } from '../../types/session';
 
 export interface SessionData {
   id: string;
