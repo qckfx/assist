@@ -3,7 +3,6 @@ import path from 'path';
 import { 
   ToolExecutionState,
   PermissionRequestState,
-  SessionState,
   RepositoryInfo,
   TextContentPart,
 } from '../../types/platform-types';
@@ -12,6 +11,7 @@ import { ToolPreviewState } from '../../types/preview';
 import { SessionPersistenceEvent, StoredMessage, SessionListEntry, SavedSessionData } from '../../types/session';
 import { serverLogger } from '../logger';
 import { EventEmitter } from 'events';
+import { SessionState } from '../../types/session';
 
 /**
  * Service for persisting complete session state to disk
@@ -108,7 +108,7 @@ export class SessionStatePersistence extends EventEmitter {
         // Update the session data with these messages
         sessionData.messages = messages;
         serverLogger.debug(`Loaded ${messages.length} messages from separate file for session ${sessionId}`);
-      } catch (err) {
+      } catch {
         // It's okay if the messages file doesn't exist - the session might be empty
         serverLogger.debug(`No separate messages file found for session ${sessionId}`);
       }
@@ -125,7 +125,7 @@ export class SessionStatePersistence extends EventEmitter {
         // Update the session data with these tool executions
         sessionData.toolExecutions = toolExecutions;
         serverLogger.debug(`Loaded ${toolExecutions.length} tool executions from separate file for session ${sessionId}`);
-      } catch (err) {
+      } catch {
         // It's okay if the tool executions file doesn't exist
         serverLogger.debug(`No separate tool executions file found for session ${sessionId}`);
       }
@@ -142,7 +142,7 @@ export class SessionStatePersistence extends EventEmitter {
         // Update the session data with these permission requests
         sessionData.permissionRequests = permissions;
         serverLogger.debug(`Loaded ${permissions.length} permission requests from separate file for session ${sessionId}`);
-      } catch (err) {
+      } catch {
         // It's okay if the permissions file doesn't exist
         serverLogger.debug(`No separate permissions file found for session ${sessionId}`);
       }
@@ -159,7 +159,7 @@ export class SessionStatePersistence extends EventEmitter {
         // Update the session data with these previews
         sessionData.previews = previews;
         serverLogger.debug(`Loaded ${previews.length} previews from separate file for session ${sessionId}`);
-      } catch (err) {
+      } catch {
         // It's okay if the previews file doesn't exist
         serverLogger.debug(`No separate previews file found for session ${sessionId}`);
       }
@@ -682,7 +682,7 @@ export class SessionStatePersistence extends EventEmitter {
     sessionState: SessionState, 
     toolExecutions: ToolExecutionState[]
   ): StoredMessage[] {
-    if (!sessionState.contextWindow) {
+    if (!sessionState.coreSessionState.contextWindow) {
       return [];
     }
     
@@ -696,7 +696,7 @@ export class SessionStatePersistence extends EventEmitter {
     const messages: StoredMessage[] = [];
     let sequence = 0;
     
-    for (const message of sessionState.contextWindow.getMessages()) {
+    for (const message of sessionState.coreSessionState.contextWindow.getMessages()) {
       if (!message.content || !Array.isArray(message.content)) {
         continue;
       }

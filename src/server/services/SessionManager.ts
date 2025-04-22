@@ -2,7 +2,8 @@
  * Session management service
  */
 import { v4 as uuidv4 } from 'uuid';
-import { SessionState, ContextWindow, clearSessionAborted } from '../../types/platform-types';
+import { ContextWindow, clearSessionAborted } from '../../types/platform-types';
+import { SessionState } from '../../types/session';
 import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
@@ -10,8 +11,7 @@ import { AgentServiceConfig } from './AgentService';
 // Import CheckpointEvents from agent package
 import { CheckpointEvents, CheckpointPayload } from '@qckfx/agent';
 import * as SessionPersistence from './SessionPersistence';
-// Import session state extensions to ensure the CheckpointInfo type is available
-import '../../types/session-extensions';
+import { getSessionStatePersistence } from './sessionPersistenceProvider';
 
 /**
  * Session information
@@ -150,10 +150,13 @@ export class SessionManager {
       createdAt: new Date(),
       lastActiveAt: new Date(),
       state: { 
-        contextWindow: new ContextWindow(),
-        agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
-        abortController: new AbortController(), // Always present as per the new design
-        generateNewToolExecutionId: () => `tool_${uuidv4()}`
+        coreSessionState: { 
+          contextWindow: new ContextWindow(),
+          agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
+          abortController: new AbortController(), // Always present as per the new design
+          generateNewToolExecutionId: () => `tool_${uuidv4()}`
+        },
+        checkpoints: []
       },
       isProcessing: false,
       executionAdapterType: config?.executionAdapterType || 'docker',
@@ -235,7 +238,6 @@ export class SessionManager {
   private async persistSessionMeta(session: Session): Promise<void> {
     try {
       // Get the persistence service
-      const { getSessionStatePersistence } = await import('./sessionPersistenceProvider');
       const persistence = getSessionStatePersistence();
       
       // Get existing session data
