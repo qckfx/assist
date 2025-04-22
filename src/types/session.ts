@@ -224,6 +224,31 @@ export interface SavedSessionData {
   repositoryInfo?: RepositoryInfo;
   
   /**
+   * Path to the shadow Git bundle file, if available
+   */
+  shadowGitBundle?: string;
+  
+  /**
+   * Checkpoints for repository snapshots
+   */
+  checkpoints?: Array<{
+    /**
+     * Tool execution ID associated with this checkpoint
+     */
+    toolExecutionId: string;
+    
+    /**
+     * Shadow repository commit hash
+     */
+    shadowCommit: string;
+    
+    /**
+     * Host repository commit hash
+     */
+    hostCommit: string;
+  }>;
+  
+  /**
    * Core session state
    */
   sessionState: SessionState;
