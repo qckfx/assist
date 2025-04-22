@@ -39,8 +39,11 @@ import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
+import * as SessionPersistence from './SessionPersistence';
 import crypto from 'crypto';
 import { container, TimelineService } from '../container';
+// Import session state extensions to ensure the CheckpointInfo type is available
+import '../../types/session-extensions';
 
 // Default system prompt for the agent
 const DEFAULT_SYSTEM_PROMPT = "You are a precise, efficient AI assistant that helps users with software development tasks.";
@@ -1451,6 +1454,61 @@ export class AgentService extends EventEmitter {
         const res = await createExecutionAdapter(adapterOptions);
         adapter = res.adapter;
         type = res.type;
+      }
+      
+      // Try to restore from checkpoint if available
+      if (adapter) {
+        try {
+          // Check if this session has checkpoints
+          const { getSessionStatePersistence } = await import('./sessionPersistenceProvider');
+          const persistence = getSessionStatePersistence();
+          const sessionData = await persistence.getSessionDataWithoutEvents(sessionId);
+          
+          if (sessionData?.checkpoints?.length) {
+            // Load the bundle if available
+            const bundle = await SessionPersistence.loadBundle(sessionId);
+            
+            if (bundle) {
+              serverLogger.info(`Restoring shadow repo for session ${sessionId}`);
+              
+              // Write the bundle to a temporary file using base64 encoding to avoid binary corruption
+              const base64 = Buffer.from(bundle).toString('base64');
+              await adapter.writeFile('/tmp/shadow.b64', base64, 'utf8');
+              
+              // Decode the base64 file back to binary
+              await adapter.executeCommand('base64 -d /tmp/shadow.b64 > /tmp/shadow.bundle && rm /tmp/shadow.b64');
+              
+              // Get repo root
+              const cwdResult = await adapter.executeCommand('pwd');
+              const repoRoot = cwdResult.stdout.trim() || process.cwd();
+              
+              // Define the shadow repo directory
+              const shadowDir = `${repoRoot}/.agent-shadow/${sessionId}`;
+              
+              // Create shadow repo and configure it to use the working tree
+              const lastCheckpoint = sessionData.checkpoints.at(-1);
+              const toolExecutionId = lastCheckpoint?.toolExecutionId || '';
+              
+              // Command to restore the state with proper error handling
+              const cmd = `
+                set -e &&
+                rm -rf "${shadowDir}" 2>/dev/null || true &&
+                git clone --bare /tmp/shadow.bundle "${shadowDir}" &&
+                git --git-dir="${shadowDir}" config core.worktree "${repoRoot}" &&
+                git --git-dir="${shadowDir}" checkout chkpt/${toolExecutionId} &&
+                git --git-dir="${shadowDir}" checkout-index -a -f &&
+                rm /tmp/shadow.bundle
+              `;
+              
+              // Execute the restore command
+              await adapter.executeCommand(cmd);
+              serverLogger.info(`Restored shadow repo for session ${sessionId} to checkpoint ${toolExecutionId}`);
+            }
+          }
+        } catch (error) {
+          // Log the error but continue - we can operate without a shadow repo
+          serverLogger.error('Failed to restore shadow repo from checkpoint:', error);
+        }
       }
       
       // Store the adapter type in the session

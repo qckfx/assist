@@ -7,6 +7,10 @@ import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
 import { AgentServiceConfig } from './AgentService';
+import { CheckpointEvents, CheckpointPayload } from '@qckfx/agent';
+import * as SessionPersistence from './SessionPersistence';
+// Import session state extensions to ensure the CheckpointInfo type is available
+import '../../types/session-extensions';
 
 /**
  * Session information
@@ -62,6 +66,7 @@ export class SessionManager {
   private config: Required<SessionManagerConfig>;
   private cleanupInterval?: NodeJS.Timeout;
   private eventListeners: Map<string, Array<(...args: any[]) => void>> = new Map();
+  private checkpointEventHandler: ((cp: CheckpointPayload) => Promise<void>) | null = null;
 
   constructor(config: SessionManagerConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -69,6 +74,38 @@ export class SessionManager {
     if (this.config.cleanupEnabled) {
       this.startCleanup();
     }
+    
+    // Create the checkpoint event handler
+    this.checkpointEventHandler = async (cp: CheckpointPayload) => {
+      try {
+        // Save the Git bundle to disk
+        await SessionPersistence.saveBundle(cp.sessionId, cp.bundle);
+        
+        // Update the session state with checkpoint information
+        const session = this.sessions.get(cp.sessionId);
+        if (session) {
+          // Initialize checkpoints array if needed
+          session.state.checkpoints ??= [];
+          
+          // Add the new checkpoint
+          session.state.checkpoints.push({
+            toolExecutionId: cp.toolExecutionId,
+            shadowCommit: cp.shadowCommit,
+            hostCommit: cp.hostCommit
+          });
+          
+          // Persist session metadata
+          this.persistSessionMeta(session);
+          
+          serverLogger.info(`Saved checkpoint for session ${cp.sessionId}`, LogCategory.SESSION);
+        }
+      } catch (error) {
+        serverLogger.error(`Failed to process checkpoint for session ${cp.sessionId}:`, error);
+      }
+    };
+    
+    // Subscribe to checkpoint events
+    CheckpointEvents.on('checkpoint:ready', this.checkpointEventHandler);
   }
 
   /**
@@ -190,6 +227,34 @@ export class SessionManager {
   }
 
   /**
+   * Persist session metadata to disk
+   * @param session The session to persist
+   */
+  private async persistSessionMeta(session: Session): Promise<void> {
+    try {
+      // Get the persistence service
+      const { getSessionStatePersistence } = await import('./sessionPersistenceProvider');
+      const persistence = getSessionStatePersistence();
+      
+      // Get existing session data
+      const sessionData = await persistence.getSessionDataWithoutEvents(session.id);
+      if (sessionData) {
+        // Update the data
+        sessionData.updatedAt = new Date().toISOString();
+        // Store the full path to the bundle file relative to the data root
+        sessionData.shadowGitBundle = `${session.id}.bundle`;
+        sessionData.checkpoints = session.state.checkpoints;
+        
+        // Save the updated session data
+        await persistence.saveSession(sessionData);
+        serverLogger.debug(`Updated session metadata for session ${session.id}`);
+      }
+    } catch (error) {
+      serverLogger.error(`Failed to persist session metadata for session ${session.id}:`, error);
+    }
+  }
+  
+  /**
    * Delete a session
    */
   public deleteSession(sessionId: string): void {
@@ -265,6 +330,12 @@ export class SessionManager {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;
+    }
+    
+    // Remove checkpoint event listener to prevent memory leaks
+    if (this.checkpointEventHandler) {
+      CheckpointEvents.off('checkpoint:ready', this.checkpointEventHandler);
+      this.checkpointEventHandler = null;
     }
   }
 
