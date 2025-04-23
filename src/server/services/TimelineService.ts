@@ -54,6 +54,51 @@ export class TimelineService extends EventEmitter {
     // Set up event handlers
     this.setupEventListeners();
   }
+  
+  /**
+   * Truncate timeline at a specific tool execution ID for rollback
+   * @param sessionId The session ID
+   * @param toolExecutionId The tool execution ID to truncate at
+   * @returns Promise resolving to boolean indicating success
+   */
+  public async truncateTimelineAtToolExecution(
+    sessionId: string,
+    toolExecutionId: string
+  ): Promise<boolean> {
+    try {
+      serverLogger.info(`Truncating timeline at tool execution ${toolExecutionId} for session ${sessionId}`);
+      
+      // Get the current timeline items
+      const allItems = await this.timelinePersistence.loadTimelineItems(sessionId);
+      
+      // Find the index of the tool execution in the timeline
+      const toolIndex = allItems.findIndex(
+        item => item.type === TimelineItemType.TOOL_EXECUTION && item.id === toolExecutionId
+      );
+      
+      if (toolIndex === -1) {
+        serverLogger.warn(`Tool execution ${toolExecutionId} not found in timeline for session ${sessionId}`);
+        return false;
+      }
+      
+      // Get the truncated timeline (items before the tool execution)
+      // We exclude the tool execution itself from the timeline
+      const truncatedTimeline = allItems.slice(0, toolIndex);
+      
+      // Save the truncated timeline
+      await this.timelinePersistence.replaceTimeline(sessionId, truncatedTimeline);
+      
+      serverLogger.info(
+        `Timeline truncated successfully at tool execution ${toolExecutionId} for session ${sessionId}. ` +
+        `${allItems.length - truncatedTimeline.length} items removed.`
+      );
+      
+      return true;
+    } catch (error) {
+      serverLogger.error(`Error truncating timeline at tool execution ${toolExecutionId}:`, error);
+      return false;
+    }
+  }
 
   /**
    * Get timeline items for a session
