@@ -18,7 +18,6 @@ import {
   RollbackRequestBody,
 } from '../schemas/api';
 import { getSessionStatePersistence } from '../services/SessionStatePersistence';
-import { TimelineService } from '../services/TimelineService';
 import { TimelineService as TimelineServiceToken } from '../container';
 import { AgentServiceConfig } from '../services/AgentService';
 import { createContextWindow } from '../../types/platform-types';
@@ -93,7 +92,8 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       // Extract environment settings from request if provided
       const executionAdapterType = body?.config?.executionAdapterType || 'docker';
       const e2bSandboxId = body?.config?.e2bSandboxId;
-      
+     
+      console.log('🚩🚩🚩executionAdapterType', executionAdapterType);
       // Create a new session with provided environment settings
       session = sessionManager.createSession({
         executionAdapterType,
@@ -111,6 +111,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       e2bSandboxId: session.e2bSandboxId
     });
     
+    console.log('🚩🚩🚩session', JSON.stringify(session, null, 2));
     // Return the session info with environment details
     res.status(201).json({
       sessionId: session.id,
@@ -148,16 +149,12 @@ export async function rollbackSessionToCheckpoint(
     // Get the agent service registry from the container
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
-    const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
     
-    // Get the specific agent service for this session
-    const agentService = agentServiceRegistry.getServiceForSession(sessionId);
-
     // Retrieve the session (throws if not found)
     const session = sessionManager.getSession(sessionId);
 
     // The coreSessionState houses the adapter used by agent‑core utilities
-    const coreState: any = session.state.coreSessionState ?? session.state;
+    const coreState = session.state.coreSessionState;
 
     if (!coreState.executionAdapter) {
       res.status(400).json({ success: false, message: 'Execution adapter not initialised for this session' });
@@ -201,7 +198,7 @@ export async function rollbackSessionToCheckpoint(
       }
       
       serverLogger.info(`Rollback successful for session ${sessionId}, commit: ${commitSha}`, LogCategory.SESSION);
-      res.status(200).json({ success: true, sessionId, commitSha });
+      res.status(200).json({ success: true, sessionId, toolExecutionId });
     } catch (error) {
       serverLogger.error(`Rollback failed for session ${sessionId}:`, error, LogCategory.SESSION);
       res.status(500).json({ success: false, message: (error as Error).message || 'Rollback failed' });

@@ -190,6 +190,18 @@ export const timelineQuerySchema = z.object({
 });
 
 /**
+ * Schema for rollback request
+ */
+export const rollbackRequestSchema = z.object({
+  toolExecutionId: z.string().optional()
+});
+
+/**
+ * Type for rollback request
+ */
+export type RollbackRequestBody = z.infer<typeof rollbackRequestSchema>;
+
+/**
  * Type for timeline query
  */
 export type TimelineQuery = z.infer<typeof timelineQuerySchema>;

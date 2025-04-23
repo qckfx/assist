@@ -82,3 +82,10 @@ export function useSessionHistory(options = {}) {
 export function useAgentStatus(options = {}) {
   return useApi(apiClient.getStatus, options);
 }
+
+export function useRollback(options = {}) {
+  return useApi<{success: boolean; sessionId: string; toolExecutionId: string}, [string, string]>(
+    apiClient.rollbackToToolExecution,
+    options
+  );
+}

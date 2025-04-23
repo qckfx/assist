@@ -26,6 +26,8 @@ interface TimelineContextType {
   getToolExecutionItems: () => TimelineItem[];
   /** Function to get message items */
   getMessageItems: () => TimelineItem[];
+  /** Function to truncate timeline at a specific item (removing it and all items after it) */
+  truncateTimelineAt: (itemId: string) => void;
 }
 
 // Create the context with undefined default
@@ -53,7 +55,8 @@ export const TimelineProvider: React.FC<TimelineProviderProps> = ({
     hasMore,
     totalCount,
     loadMore,
-    reload: refreshTimeline
+    reload: refreshTimeline,
+    truncateTimelineAt
   } = useTimeline(sessionId, {
     limit: 100,
     includeRelated: true
@@ -85,7 +88,8 @@ export const TimelineProvider: React.FC<TimelineProviderProps> = ({
     refreshTimeline,
     getItemById,
     getToolExecutionItems,
-    getMessageItems
+    getMessageItems,
+    truncateTimelineAt
   }), [
     timeline, 
     isLoading, 
@@ -96,7 +100,8 @@ export const TimelineProvider: React.FC<TimelineProviderProps> = ({
     refreshTimeline, 
     getItemById, 
     getToolExecutionItems, 
-    getMessageItems
+    getMessageItems,
+    truncateTimelineAt
   ]);
   
   return (

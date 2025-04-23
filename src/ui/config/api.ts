@@ -26,6 +26,8 @@ export const API_ENDPOINTS = {
   SESSIONS_VALIDATE: '/sessions/validate',
   // Timeline endpoint
   TIMELINE: '/sessions/:sessionId/timeline',
+  // Rollback endpoint
+  ROLLBACK: '/sessions/:sessionId/rollback',
 };
 
 // API request timeout in milliseconds

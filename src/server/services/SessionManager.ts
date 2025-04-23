@@ -153,8 +153,8 @@ export class SessionManager {
         coreSessionState: { 
           contextWindow: new ContextWindow(),
           agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
-          abortController: new AbortController(), // Always present as per the new design
-          generateNewToolExecutionId: () => `tool_${uuidv4()}`
+          abortController: new AbortController(),
+          executionAdapterType: config?.executionAdapterType || 'docker',
         },
         checkpoints: []
       },

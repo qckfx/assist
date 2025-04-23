@@ -3,7 +3,7 @@ import { cn } from '../../lib/utils';
 import { ToolVisualizationItem } from '../../hooks/useToolVisualization';
 import { ToolState } from '../../types/terminal';
 import { PreviewMode, PreviewContentType } from '../../../types/preview';
-import { ChevronDown, Minimize2 } from 'lucide-react';
+import { ChevronDown, Minimize2, RotateCcw } from 'lucide-react';
 import MonacoDiffViewer from '../DiffViewer';
 
 // Helper function to truncate strings
@@ -132,6 +132,7 @@ export interface ToolVisualizationProps {
   isDarkTheme?: boolean;
   defaultViewMode?: PreviewMode;
   onViewModeChange?: (toolId: string, mode: PreviewMode) => void;
+  onRollback?: (toolId: string) => void;
 }
 
 export function ToolVisualization({
@@ -142,6 +143,7 @@ export function ToolVisualization({
   isDarkTheme = false,
   defaultViewMode = PreviewMode.BRIEF,
   onViewModeChange,
+  onRollback,
 }: ToolVisualizationProps) {
   // Determine the tool state from the status
   const toolState = 
@@ -243,14 +245,13 @@ export function ToolVisualization({
 
   // Use multiple methods to detect valid preview
   const hasPreview = (
-    // Check for explicit flags
-    tool.hasPreview === true ||
-    // Or check for actual preview content
-    (!!tool.preview && (
+    // Check for actual preview content
+    !!tool.preview && (
       !!tool.preview.briefContent || 
       !!tool.preview.fullContent || 
-      tool.preview.hasActualContent === true
-    ))
+      // Additional safety check for any custom properties
+      (tool.preview as any).hasActualContent === true
+    )
   );
   
   // Can expand/collapse if there's a preview and tool is complete, running, or awaiting permission
@@ -306,20 +307,38 @@ export function ToolVisualization({
           )}
         </div>
         
-        {/* Minimize button - only shown when preview is not retracted */}
-        {canExpandCollapse && viewMode !== PreviewMode.RETRACTED && (
-          <button
-            onClick={minimizePreview}
-            className={cn(
-              'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700',
-              'transition-colors duration-200'
-            )}
-            aria-label="Minimize preview"
-            data-testid="tool-minimize-button"
-          >
-            <Minimize2 size={14} />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {/* Rollback button - only shown for completed tools when handler is provided */}
+          {onRollback && toolState === ToolState.COMPLETED && (
+            <button
+              onClick={() => onRollback(tool.id)}
+              className={cn(
+                'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-red-500 dark:text-red-400',
+                'transition-colors duration-200'
+              )}
+              aria-label="Rollback to this point"
+              title="Rollback to this point"
+              data-testid="tool-rollback-button"
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
+          
+          {/* Minimize button - only shown when preview is not retracted */}
+          {canExpandCollapse && viewMode !== PreviewMode.RETRACTED && (
+            <button
+              onClick={minimizePreview}
+              className={cn(
+                'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700',
+                'transition-colors duration-200'
+              )}
+              aria-label="Minimize preview"
+              data-testid="tool-minimize-button"
+            >
+              <Minimize2 size={14} />
+            </button>
+          )}
+        </div>
       </div>
       
       {/* Tool description - using break-all for paths */}
