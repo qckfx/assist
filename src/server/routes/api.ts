@@ -18,6 +18,7 @@ import {
   fastEditModeQuerySchema,
   timelineQuerySchema,
   sessionValidationSchema,
+  rollbackRequestSchema,
 } from '../schemas/api';
 import { apiDocumentation } from '../docs/api';
 
@@ -106,6 +107,12 @@ router.post('/sessions/validate', validateBody(sessionValidationSchema), apiCont
  * @desc    Get timeline for a session
  */
 router.get('/sessions/:sessionId/timeline', validateQuery(timelineQuerySchema), timelineController.getSessionTimeline);
+
+/**
+ * @route   POST /api/sessions/:sessionId/rollback
+ * @desc    Rollback session to a previous checkpoint
+ */
+router.post('/sessions/:sessionId/rollback', validateBody(rollbackRequestSchema), apiController.rollbackSessionToCheckpoint);
 
 /**
  * @route   GET /api/docs

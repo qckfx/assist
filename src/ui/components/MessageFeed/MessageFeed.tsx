@@ -1,10 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import Message from '@/components/Message';
 import ToolVisualization from '@/components/ToolVisualization/ToolVisualization';
 import { TimelineItemType } from '../../../types/timeline';
 import { useTimelineContext } from '../../context/TimelineContext';
 import { useToolVisualization } from '../../hooks/useToolVisualization';
+import { useRollback } from '../../hooks/useApi';
 
 export interface MessageFeedProps {
   sessionId: string | null;
@@ -30,10 +31,29 @@ export function MessageFeed({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Use the timeline context to access timeline data
-  const { timeline, isLoading, error } = useTimelineContext();
+  const { timeline, isLoading, error, truncateTimelineAt } = useTimelineContext();
   
   // Use the tool visualization hook for view mode management
   const { setToolViewMode, defaultViewMode } = useToolVisualization();
+  
+  // Use the rollback API hook
+  const { execute: executeRollback } = useRollback({
+    onSuccess: (data: { toolExecutionId?: string }) => {
+      // When rollback is successful, use the toolExecutionId from the response
+      if (data.toolExecutionId) {
+        // Truncate the timeline at the rollback target
+        truncateTimelineAt(data.toolExecutionId);
+      }
+    }
+  });
+  
+  // Handle rollback for a specific tool execution
+  const handleRollback = useCallback((toolId: string) => {
+    if (!sessionId) return;
+    
+    // Execute the rollback
+    executeRollback(sessionId, toolId);
+  }, [sessionId, executeRollback]);
   
   // Auto-scroll effect
   useEffect(() => {
@@ -245,6 +265,7 @@ export function MessageFeed({
               isDarkTheme={isDarkTheme}
               defaultViewMode={defaultViewMode}
               onViewModeChange={setToolViewMode}
+              onRollback={handleRollback}
             />
           </div>
         );

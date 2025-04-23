@@ -245,6 +245,17 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
     fetchTimeline();
   }, [fetchTimeline]);
   
+  // Truncate timeline at a specific item id (remove that item and all after it)
+  const truncateTimelineAt = useCallback((itemId: string) => {
+    setTimeline(prevTimeline => {
+      const itemIndex = prevTimeline.findIndex(item => item.id === itemId);
+      if (itemIndex === -1) return prevTimeline;
+      
+      // Return only items before the specified item
+      return prevTimeline.slice(0, itemIndex);
+    });
+  }, []);
+
   return {
     timeline,
     isLoading,
@@ -252,6 +263,7 @@ export const useTimeline = (sessionId: string | null, options: TimelineOptions =
     hasMore,
     totalCount,
     loadMore,
-    reload
+    reload,
+    truncateTimelineAt
   };
 };
