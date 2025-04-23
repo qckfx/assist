@@ -136,6 +136,24 @@ export class TimelineStatePersistence extends EventEmitter {
   }
   
   /**
+   * Replace the entire timeline for a session with new items
+   * Used for operations like rollback where we need to truncate the timeline
+   */
+  async replaceTimeline(sessionId: string, items: TimelineItem[]): Promise<void> {
+    await this.initialize();
+    
+    try {
+      // Directly save the new items, overwriting any existing timeline
+      await this.saveTimelineItems(sessionId, items);
+      
+      serverLogger.debug(`Replaced timeline for session ${sessionId} with ${items.length} items`);
+    } catch (error) {
+      serverLogger.error(`Failed to replace timeline for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
    * Get the file path for a session's timeline
    */
   private getTimelineFilePath(sessionId: string): string {
