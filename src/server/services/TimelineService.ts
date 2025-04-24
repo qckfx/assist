@@ -2,16 +2,9 @@
  * Timeline Service for unified chronological feeds of messages and tool executions
  */
 import { EventEmitter } from 'events';
-import crypto from 'crypto';
 import {
-  MESSAGE_ADDED,
   MESSAGE_UPDATED,
 } from '../../types/message';
-import {
-  onMessageAdded,
-  offMessageAdded,
-  MessageAddedEvent,
-} from '@qckfx/agent';
 import {
   ToolExecutionState,
   PermissionRequestState,
@@ -49,7 +42,6 @@ export enum TimelineServiceEvent {
 
 export class TimelineService extends EventEmitter {
   // No cache needed, using timeline persistence directly
-  private cleanup: () => void = () => {};
   private lastToolUpdates: Map<string, number> = new Map<string, number>();
 
   constructor(
@@ -61,6 +53,51 @@ export class TimelineService extends EventEmitter {
     
     // Set up event handlers
     this.setupEventListeners();
+  }
+  
+  /**
+   * Truncate timeline at a specific tool execution ID for rollback
+   * @param sessionId The session ID
+   * @param toolExecutionId The tool execution ID to truncate at
+   * @returns Promise resolving to boolean indicating success
+   */
+  public async truncateTimelineAtToolExecution(
+    sessionId: string,
+    toolExecutionId: string
+  ): Promise<boolean> {
+    try {
+      serverLogger.info(`Truncating timeline at tool execution ${toolExecutionId} for session ${sessionId}`);
+      
+      // Get the current timeline items
+      const allItems = await this.timelinePersistence.loadTimelineItems(sessionId);
+      
+      // Find the index of the tool execution in the timeline
+      const toolIndex = allItems.findIndex(
+        item => item.type === TimelineItemType.TOOL_EXECUTION && item.id === toolExecutionId
+      );
+      
+      if (toolIndex === -1) {
+        serverLogger.warn(`Tool execution ${toolExecutionId} not found in timeline for session ${sessionId}`);
+        return false;
+      }
+      
+      // Get the truncated timeline (items before the tool execution)
+      // We exclude the tool execution itself from the timeline
+      const truncatedTimeline = allItems.slice(0, toolIndex);
+      
+      // Save the truncated timeline
+      await this.timelinePersistence.replaceTimeline(sessionId, truncatedTimeline);
+      
+      serverLogger.info(
+        `Timeline truncated successfully at tool execution ${toolExecutionId} for session ${sessionId}. ` +
+        `${allItems.length - truncatedTimeline.length} items removed.`
+      );
+      
+      return true;
+    } catch (error) {
+      serverLogger.error(`Error truncating timeline at tool execution ${toolExecutionId}:`, error);
+      return false;
+    }
   }
 
   /**
@@ -540,49 +577,6 @@ export class TimelineService extends EventEmitter {
    */
   private setupEventListeners(): void {
     
-    // Listen for message events from AgentEvents (from AgentRunner)
-    // This is a one-way flow: Agent -> Timeline -> UI WebSocket
-    const handleAgentEventsMessage = (data: MessageAddedEvent) => {
-      // Still add the message to timeline for UI to display
-      // BUT don't emit back to the agent service to avoid feedback loops
-      const storedMessage: StoredMessage = {
-        id: data.message.id || crypto.randomUUID(),
-        role: data.message.role as 'user' | 'assistant',
-        timestamp: new Date().toISOString(),
-        content: data.message.content,
-        sequence: 0, // Will be set properly by addMessageToTimeline
-      };
-      
-      // Add to timeline without emitting back to the agent
-      try {
-        // Call a special internal version of addMessageToTimeline that doesn't emit events
-        this.addMessageToTimelineInternal(data.sessionId, storedMessage)
-          .then(timelineItem => {
-            // Explicitly emit the WebSocket event to the frontend
-            this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
-              sessionId: data.sessionId,
-              message: timelineItem.message
-            });
-            serverLogger.debug(`Emitted WebSocket message for ${data.message.role} message from AgentEvents`);
-          })
-          .catch(err => serverLogger.error(`Error adding message to timeline from agent: ${err.message}`));
-      } catch (err) {
-        serverLogger.error(`Error adding message to timeline from agent: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    };
-    onMessageAdded(handleAgentEventsMessage);
-    
-    // Add cleanup handler for AgentEvents
-    const originalCleanup = this.cleanup;
-    this.cleanup = () => {
-      // Remove listener from AgentEvents
-      offMessageAdded(handleAgentEventsMessage);
-      // Call original cleanup if it exists
-      if (typeof originalCleanup === 'function') {
-        originalCleanup();
-      }
-    };
-    
     // Listen for permission request events - use a debounce mechanism to prevent cascading permission events
     const permissionDebounce = new Map<string, number>();
     const permissionThresholdMs = 1000; // 1 second
@@ -751,28 +745,6 @@ export class TimelineService extends EventEmitter {
       setTimeout(() => permissionDebounce.delete(permissionId), 2000);
     });
     
-    // Subscribe to message events from registry
-    this.agentServiceRegistry.on(MESSAGE_ADDED, (data: any) => {
-      
-      if (!data || !data.sessionId || !data.message) {
-        serverLogger.warn('Received MESSAGE_ADDED event with missing data', data);
-        return;
-      }
-      
-      // Use the internal method to add to timeline without emitting events back to agent
-      this.addMessageToTimelineInternal(data.sessionId, data.message)
-        .then(() => {
-          // Emit to WebSocket clients only
-          this.emitToSession(data.sessionId, WebSocketEvent.MESSAGE_RECEIVED, {
-            sessionId: data.sessionId,
-            message: data.message
-          });
-        })
-        .catch(err => {
-          serverLogger.error(`Error adding message to timeline from MESSAGE_ADDED: ${err.message}`);
-        });
-    });
-    
     this.agentServiceRegistry.on(MESSAGE_UPDATED, (data: any) => {
       
       if (!data || !data.sessionId || !data.message) {
@@ -823,75 +795,5 @@ export class TimelineService extends EventEmitter {
     }
     
     return undefined;
-  }
-
-  /**
-   * Update the preview for an existing timeline item
-   * This is used when a preview is generated asynchronously after the timeline item was created
-   */
-  private async updateTimelineItemPreview(
-    sessionId: string,
-    executionId: string,
-    preview: ToolPreviewState
-  ): Promise<void> {
-    // Load timeline items
-    const timelineItems = await this.timelinePersistence.loadTimelineItems(sessionId);
-    
-    // Find the existing timeline item
-    const item = timelineItems.find(
-      item => item.type === TimelineItemType.TOOL_EXECUTION && item.id === executionId
-    ) as ToolExecutionTimelineItem | undefined;
-    
-    if (item) {
-      // Update the preview in the timeline item
-      item.preview = preview;
-      
-      // Save back to persistence
-      await this.timelinePersistence.addTimelineItem(sessionId, item);
-      
-      // Emit events
-      this.emit(TimelineServiceEvent.ITEM_UPDATED, item);
-      
-      // Check if we have a valid preview with required content
-      const hasValidPreview = !!(preview && preview.briefContent);
-      
-      // Only log if debug preview is enabled
-      if (preview && process.env.DEBUG_PREVIEW) {
-        serverLogger.info(`Preview data for timeline item update ${executionId}:`, {
-          hasPreview: !!preview,
-          hasValidPreview,
-          contentType: preview.contentType,
-          briefContentLength: preview.briefContent?.length || 0
-        });
-      }
-      
-      // IMPORTANT: Use a copy of the preview object to avoid reference issues
-      // This ensures a complete copy of the preview data is sent
-      const previewToSend = {
-        contentType: preview.contentType,
-        briefContent: preview.briefContent,
-        fullContent: preview.fullContent,
-        metadata: preview.metadata ? {...preview.metadata} : undefined,
-        // Add extra fields to ensure client gets all the data
-        hasActualContent: true
-      };
-      
-      // Send the execution update with preview directly in the toolExecution object
-      this.emitToSession(sessionId, WebSocketEvent.TOOL_EXECUTION_UPDATED, {
-        sessionId,
-        toolExecution: {
-          id: item.toolExecution.id,
-          toolId: item.toolExecution.toolId,
-          toolName: item.toolExecution.toolName,
-          status: item.toolExecution.status,
-          preview: previewToSend,
-          // Add these flags to help client-side detection
-          hasPreview: true,
-          previewContentType: preview.contentType
-        }
-      });
-    } else {
-      serverLogger.warn(`Cannot update timeline item with invalid preview for ${executionId}`);
-    }
   }
 }

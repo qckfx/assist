@@ -277,6 +277,18 @@ export const apiClient = {
       (queryParams ? `?${queryParams}` : '');
     return apiRequest<T>(endpoint);
   },
+
+  /**
+   * Rollback repository state to just before a specific tool execution
+   */
+  rollbackToToolExecution: (sessionId: string, toolExecutionId: string) => {
+    const endpoint = API_ENDPOINTS.ROLLBACK.replace(':sessionId', sessionId);
+    return apiRequest<{success: boolean; sessionId: string; toolExecutionId: string}>(
+      endpoint,
+      'POST',
+      { toolExecutionId }
+    );
+  },
 };
 
 export default apiClient;

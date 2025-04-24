@@ -7,6 +7,7 @@ import { AgentServiceRegistry } from '../container';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
 import crypto from 'crypto';
+import { rollbackSession as performRollback } from '@qckfx/agent';
 import {
   StartSessionRequest,
   QueryRequest,
@@ -14,9 +15,10 @@ import {
   HistoryRequest,
   StatusRequest,
   SessionValidationRequest,
+  RollbackRequestBody,
 } from '../schemas/api';
 import { getSessionStatePersistence } from '../services/SessionStatePersistence';
-import { TimelineService } from '../container';
+import { TimelineService as TimelineServiceToken } from '../container';
 import { AgentServiceConfig } from '../services/AgentService';
 import { createContextWindow } from '../../types/platform-types';
 
@@ -63,7 +65,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
         };
         
         // Use saved agent service config if available or use defaults
-        const agentServiceConfig = savedSession.sessionState?.agentServiceConfig || defaultAgentServiceConfig;
+        const agentServiceConfig = savedSession.sessionState?.coreSessionState?.agentServiceConfig || defaultAgentServiceConfig;
         
         // Create a state object that includes the agentServiceConfig
         const state = savedSession.sessionState || { 
@@ -77,8 +79,8 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
           lastActiveAt: new Date(savedSession.updatedAt),
           state: state,
           isProcessing: false,
-          executionAdapterType: savedSession.sessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' || 'docker',
-          e2bSandboxId: savedSession.sessionState?.e2bSandboxId,
+          executionAdapterType: savedSession.sessionState?.coreSessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' || 'docker',
+          e2bSandboxId: savedSession.sessionState?.coreSessionState?.e2bSandboxId,
           agentServiceConfig: agentServiceConfig
         };
         
@@ -90,7 +92,8 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       // Extract environment settings from request if provided
       const executionAdapterType = body?.config?.executionAdapterType || 'docker';
       const e2bSandboxId = body?.config?.e2bSandboxId;
-      
+     
+      console.log('🚩🚩🚩executionAdapterType', executionAdapterType);
       // Create a new session with provided environment settings
       session = sessionManager.createSession({
         executionAdapterType,
@@ -108,6 +111,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       e2bSandboxId: session.e2bSandboxId
     });
     
+    console.log('🚩🚩🚩session', JSON.stringify(session, null, 2));
     // Return the session info with environment details
     res.status(201).json({
       sessionId: session.id,
@@ -117,6 +121,88 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       executionAdapterType: session.executionAdapterType,
       e2bSandboxId: session.e2bSandboxId
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rollback endpoint
+// ---------------------------------------------------------------------------
+/**
+ * Roll back repository state to just before a specific tool execution.
+ */
+export async function rollbackSessionToCheckpoint(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { sessionId } = req.params;
+    const body = req.body as RollbackRequestBody;
+
+    if (!sessionId) {
+      res.status(400).json({ success: false, message: 'sessionId param is required' });
+      return;
+    }
+    
+    // Get the agent service registry from the container
+    const appInstance = req.app;
+    const containerInstance = appInstance.locals.container;
+    
+    // Retrieve the session (throws if not found)
+    const session = sessionManager.getSession(sessionId);
+
+    // The coreSessionState houses the adapter used by agent‑core utilities
+    const coreState = session.state.coreSessionState;
+
+    if (!coreState.executionAdapter) {
+      res.status(400).json({ success: false, message: 'Execution adapter not initialised for this session' });
+      return;
+    }
+
+    const adapter = coreState.executionAdapter;
+
+    // Attempt to derive repository root from inside the execution environment.
+    let repoRoot = process.cwd();
+    try {
+      if (typeof adapter.executeCommand === 'function') {
+        const pwdResult = await adapter.executeCommand('rollback-get-cwd', 'pwd');
+        if (pwdResult?.stdout) {
+          repoRoot = pwdResult.stdout.trim() || repoRoot;
+        }
+      }
+    } catch {
+      // Fallback to default repoRoot
+    }
+
+    const toolExecutionId = body?.toolExecutionId ?? '';
+
+    serverLogger.info(`Rolling back session ${sessionId} to tool execution ${toolExecutionId || 'latest'}`, LogCategory.SESSION);
+    
+    try {
+      // Use the SDK's rollbackSession function
+      const commitSha = await performRollback(sessionId, coreState, repoRoot, toolExecutionId);
+      
+      // Get the TimelineService from the container to update the timeline
+      const timelineService = containerInstance.get(TimelineServiceToken);
+      
+      // Truncate the timeline if a specific tool execution ID was provided
+      if (toolExecutionId) {
+        try {
+          await timelineService.truncateTimelineAtToolExecution(sessionId, toolExecutionId);
+        } catch (timelineError) {
+          // Continue even if timeline truncation fails, just log the error
+          serverLogger.error(`Timeline truncation failed for rollback: ${(timelineError as Error).message}`, LogCategory.SESSION);
+        }
+      }
+      
+      serverLogger.info(`Rollback successful for session ${sessionId}, commit: ${commitSha}`, LogCategory.SESSION);
+      res.status(200).json({ success: true, sessionId, toolExecutionId });
+    } catch (error) {
+      serverLogger.error(`Rollback failed for session ${sessionId}:`, error, LogCategory.SESSION);
+      res.status(500).json({ success: false, message: (error as Error).message || 'Rollback failed' });
+    }
   } catch (error) {
     next(error);
   }
@@ -142,11 +228,11 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
     const appForTimeline = req.app;
     const containerForTimeline = appForTimeline.locals.container;
     
-    // Use the imported TimelineService as the token for container.get
+    // Use the imported TimelineServiceToken as the token for container.get
     let timelineService;
     try {
       if (containerForTimeline) {
-        timelineService = containerForTimeline.get(TimelineService);
+        timelineService = containerForTimeline.get(TimelineServiceToken);
       }
     } catch (err) {
       serverLogger.error('Error getting TimelineService from container:', err);

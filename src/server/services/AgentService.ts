@@ -1,23 +1,23 @@
 /**
  * Agent service for API integration
  */
+import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { EventEmitter } from 'events';
 import { Anthropic } from '@anthropic-ai/sdk';
 import {
   createAgent,
   Agent,
+  ToolResultEntry,
 } from '@qckfx/agent';
 import {
   createPromptManager, 
   ToolExecutionStatus,
   ToolExecutionEvent,
-  ToolResultEntry,
   PermissionRequestState,
   RepositoryInfo, 
   createExecutionAdapter,
   ExecutionAdapter,
   ExecutionAdapterFactoryOptions,
-  SessionState,
   isSessionAborted,
   setSessionAborted,
   ToolExecutionState,
@@ -25,6 +25,7 @@ import {
 import {
   createAnthropicProvider,
 } from '@qckfx/agent/node/providers';
+import { SessionState } from '../../types/session';
 import {
   createLogger,
   LogLevel
@@ -38,7 +39,7 @@ import { sessionManager } from './SessionManager';
 import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { serverLogger } from '../logger';
-import { getSessionStatePersistence } from './sessionPersistenceProvider';
+import * as SessionPersistence from './SessionPersistence';
 import crypto from 'crypto';
 import { container, TimelineService } from '../container';
 
@@ -683,12 +684,12 @@ export class AgentService extends EventEmitter {
       this.activeProcessingSessionIds.add(sessionId);
       
       // Create a new controller if none exists or if the current one is already used
-      if (!session.state.abortController) {
-        session.state.abortController = new AbortController();
+      if (!session.state.coreSessionState.abortController) {
+        session.state.coreSessionState.abortController = new AbortController();
         console.log(`[AgentService] Created new AbortController for session ${sessionId}`);
-      } else if (session.state.abortController.signal.aborted && !isSessionAborted(sessionId)) {
+      } else if (session.state.coreSessionState.abortController.signal.aborted && !isSessionAborted(sessionId)) {
         // We already processed the abort, safe to refresh
-        session.state.abortController = new AbortController();
+        session.state.coreSessionState.abortController = new AbortController();
         console.log(`[AgentService] Replaced used AbortController for session ${sessionId}`);
       }
       // Do NOT clearSessionAborted() here - that will be done in AgentRunner after abort is handled
@@ -745,38 +746,34 @@ export class AgentService extends EventEmitter {
         environment = { type: 'local' as const };
       }
       
-      // Get execution adapter to generate directory structure
-      let executionAdapter: ExecutionAdapter;
-      
-      if (session.state.executionAdapter) {
-        executionAdapter = session.state.executionAdapter;
-      } else {
+      if (!session.state.coreSessionState.executionAdapter) {
         const adapterResult = await createExecutionAdapter({
           type: executionAdapterType,
           docker: {
             projectRoot: process.cwd(),
           },
-          logger
+          logger,
+          sessionId
         });
-        executionAdapter = adapterResult.adapter;
+        session.state.coreSessionState.executionAdapter = adapterResult.adapter;
       }
       
       // Generate directory structure map only if it hasn't been generated for this session yet
-      if (!session.state.directoryStructureGenerated) {
+      if (!session.state.coreSessionState.directoryStructureGenerated) {
         try {
           // Get the current working directory using the execution adapter
-          const cwdResult = await executionAdapter.executeCommand('pwd');
+          const cwdResult = await session.state.coreSessionState.executionAdapter.executeCommand('agent-service-get-cwd', 'pwd');
           const cwd = cwdResult.stdout.trim() || process.cwd();
           
           // Use the execution adapter's generateDirectoryMap method directly
-          const directoryStructure = await executionAdapter.generateDirectoryMap(cwd, 10);
+          const directoryStructure = await session.state.coreSessionState.executionAdapter.generateDirectoryMap(cwd, 10);
           
           // Set the directory structure in the prompt manager
           promptManager.setDirectoryStructurePrompt(directoryStructure);
           
           // Mark that we've generated directory structure for this session
-          session.state.directoryStructureGenerated = true;
-          
+          session.state.coreSessionState.directoryStructureGenerated = true;
+          console.log('[dir-map] generated for session ' + sessionId);
         } catch (error) {
           console.warn(`AgentService: Failed to generate directory structure map: ${(error as Error).message}`);
         }
@@ -878,10 +875,10 @@ export class AgentService extends EventEmitter {
       
       try {
         // Ensure the session state includes the sessionId for the new abort system
-        session.state.id = sessionId;
+        session.state.coreSessionState.id = sessionId;
         
         // Process the query with our registered callbacks
-        const result = await this.agent.processQuery(query, session.state);
+        const result = await this.agent.processQuery(query, session.state.coreSessionState);
   
         if (result.error) {
           throw new ServerError(`Agent error: ${result.error}`);
@@ -893,10 +890,13 @@ export class AgentService extends EventEmitter {
         }
         
         // Update the session with the new state, ensuring proper structure for conversationHistory
-        const sessionState = result.sessionState;
+        const coreSessionState = result.sessionState;
         
         sessionManager.updateSession(sessionId, {
-          state: sessionState,
+          state: {
+            coreSessionState: coreSessionState,
+            checkpoints: session.state.checkpoints,
+          },
           isProcessing: false,
         });
 
@@ -1068,20 +1068,20 @@ export class AgentService extends EventEmitter {
     const abortTimestamp = setSessionAborted(sessionId);
     
     // Store the timestamp in the session state
-    session.state.abortedAt = abortTimestamp;
+    session.state.coreSessionState.abortedAt = abortTimestamp;
     
     // Abort via the AbortController in the session state
-    if (session.state.abortController && !session.state.abortController.signal.aborted) {
+    if (session.state.coreSessionState.abortController && !session.state.coreSessionState.abortController.signal.aborted) {
       console.log(`[AgentService] Aborting operation for session ${sessionId} via AbortController`);
-      session.state.abortController.abort();
-      console.log(`[AgentService] AbortController.signal.aborted=${session.state.abortController.signal.aborted}`);
-    } else if (session.state.abortController) {
+      session.state.coreSessionState.abortController.abort();
+      console.log(`[AgentService] AbortController.signal.aborted=${session.state.coreSessionState.abortController.signal.aborted}`);
+    } else if (session.state.coreSessionState.abortController) {
       console.log(`[AgentService] AbortController for session ${sessionId} was already aborted`);
     } else {
       console.log(`[AgentService] No AbortController found for session ${sessionId}`);
       // Ensure we have an abortController even if it's missing
-      session.state.abortController = new AbortController();
-      session.state.abortController.abort();
+      session.state.coreSessionState.abortController = new AbortController();
+      session.state.coreSessionState.abortController.abort();
     }
 
     serverLogger.info('abortOperation', { sessionId, session });
@@ -1150,7 +1150,7 @@ export class AgentService extends EventEmitter {
   public getHistory(sessionId: string): Anthropic.Messages.MessageParam[] {
     // Get the session
     const session = sessionManager.getSession(sessionId);
-    return session.state.contextWindow?.getMessages() || [];
+    return session.state.coreSessionState.contextWindow?.getMessages() || [];
   }
   
   /**
@@ -1244,14 +1244,25 @@ export class AgentService extends EventEmitter {
   public setExecutionAdapterType(sessionId: string, type: 'local' | 'docker' | 'e2b'): boolean {
     try {
       // Verify the session exists (will throw if not found)
-      sessionManager.getSession(sessionId);
-      
-      // Update the session with the execution adapter type
+      const session = sessionManager.getSession(sessionId);
+
+      // Track it in the AgentService‑local cache that some callers use
       this.sessionExecutionAdapterTypes.set(sessionId, type);
-      
-      // Also update the session object
+
+      // Update the top‑level session property so that callers like the REST
+      // controller return the correct environment to the front‑end.
       sessionManager.updateSession(sessionId, { executionAdapterType: type });
-      
+
+      // Keep the nested coreSessionState in sync as well.  This is the value
+      // consumed by agent‑core utilities and some WebSocket initialisation
+      // logic.  Previously this property was only set when the session was
+      // first created which meant that if `createExecutionAdapter()` fell back
+      // from Docker → Local (or E2B → Local) the two locations could diverge
+      // leading to confusing diagnostics like the ones reported (🚩 logs).
+      if (session.state && session.state.coreSessionState) {
+        session.state.coreSessionState.executionAdapterType = type;
+      }
+
       return true;
     } catch {
       return false;
@@ -1265,13 +1276,14 @@ export class AgentService extends EventEmitter {
     try {
       // First check our map for the most current value
       const typeFromMap = this.sessionExecutionAdapterTypes.get(sessionId);
+      console.log('🚩🚩🚩typeFromMap', typeFromMap);
       if (typeFromMap) {
         return typeFromMap;
       }
       
       // Then try to get it from the session
       const session = sessionManager.getSession(sessionId);
-      return session.state.executionAdapterType;
+      return session.state.coreSessionState.executionAdapterType;
     } catch {
       return undefined;
     }
@@ -1293,7 +1305,10 @@ export class AgentService extends EventEmitter {
       sessionManager.updateSession(sessionId, {
         state: {
           ...session.state,
-          e2bSandboxId: sandboxId
+          coreSessionState: {
+            ...session.state.coreSessionState,
+            e2bSandboxId: sandboxId
+          }
         }
       });
       
@@ -1316,7 +1331,7 @@ export class AgentService extends EventEmitter {
       
       // Then try to get it from the session
       const session = sessionManager.getSession(sessionId);
-      return session.state.e2bSandboxId;
+      return session.state.coreSessionState.e2bSandboxId;
     } catch {
       return undefined;
     }
@@ -1382,11 +1397,21 @@ export class AgentService extends EventEmitter {
       // Get the current session
       const session = sessionManager.getSession(sessionId);
       
-      // Prepare options for execution adapter
+      /*
+       * Prepare options for the execution‑adapter factory.
+       *
+       * If the caller explicitly asked for a concrete adapter type (e.g.
+       * `docker`) we disable the built‑in auto‑fallback mechanism so that the
+       * server surfaces an error instead of silently downgrading to `local`.
+       * This prevents confusing situations where a user selects Docker in the
+       * UI but the backend later reports that the session is running locally
+       * because Docker was unavailable.
+       */
       const adapterOptions: ExecutionAdapterFactoryOptions = {
         type: options.type,
-        autoFallback: true,
+        autoFallback: options.type ? false : true,
         logger: serverLogger,
+        sessionId,
       };
       
       // Add E2B-specific options if needed
@@ -1401,6 +1426,8 @@ export class AgentService extends EventEmitter {
           projectRoot: process.cwd()
         };
       }
+
+      console.log('🚩🚩🚩adapterOptions', JSON.stringify(adapterOptions, null, 2));
       
       // For Docker, check if we need to initialize the container right away
       // This is a performance optimization for the first tool call
@@ -1415,24 +1442,23 @@ export class AgentService extends EventEmitter {
             (async () => {
               try {
                 // Use the containerManager directly for faster initialization
-                serverLogger.info(`Pre-initializing Docker container for session ${sessionId}...`, 'system');
+                console.log(`Pre-initializing Docker container for session ${sessionId}...`, 'system');
                 
                 // Create temp adapter and initialize container (returns immediately with background task)
-                const { adapter: dockerAdapter } = await createExecutionAdapter({
+                const res = await createExecutionAdapter({
                   type: 'docker',
                   autoFallback: false,
-                  logger: serverLogger
+                  logger: serverLogger,
+                  sessionId,
+                  docker: {
+                    projectRoot: process.cwd()
+                  }
                 });
+                console.log('🚩🚩🚩pre-init adapter', res.adapter);
                 
-                // Force container initialization to complete before first tool call
-                if ('initializeContainer' in dockerAdapter) {
-                  await (dockerAdapter as { initializeContainer: () => Promise<unknown> }).initializeContainer();
-                  serverLogger.info('Docker container pre-initialization complete', 'system');
-                }
-                
-                resolve(dockerAdapter as ExecutionAdapter);
+                resolve(res.adapter);
               } catch (error) {
-                serverLogger.warn(`Docker pre-initialization failed: ${(error as Error).message}`, 'system');
+                console.error(`Docker pre-initialization failed: ${(error as Error).message}`, 'system');
                 resolve(null);
               }
             })();
@@ -1441,27 +1467,101 @@ export class AgentService extends EventEmitter {
       }
       
       // Wait for Docker initialization if it's in progress and we're using Docker
-      let adapter: ExecutionAdapter | null;
-      let type: 'local' | 'docker' | 'e2b' | undefined;
-      if ((options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) && 
-          this.dockerInitializationPromise) {
-        adapter = await this.dockerInitializationPromise;
-        type = 'docker';
-      } else {
-        const res = await createExecutionAdapter(adapterOptions);
-        adapter = res.adapter;
-        type = res.type;
+      if (!session.state.coreSessionState.executionAdapter) {
+        let adapter: ExecutionAdapter | null;
+        let type: 'local' | 'docker' | 'e2b';
+        if ((options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) && 
+            this.dockerInitializationPromise) {
+          console.log('🚩🚩🚩dockerInitializationPromise', this.dockerInitializationPromise);
+          adapter = await this.dockerInitializationPromise;
+          console.log('🚩🚩🚩adapter', adapter);
+          type = 'docker';
+        } else {
+          const res = await createExecutionAdapter(adapterOptions);
+          adapter = res.adapter;
+          type = res.type;
+          console.log('🚩🚩🚩res', res);
+        }
+
+        console.log('🚩🚩🚩adapter-type', type);
+
+        // Store the adapter type in the session
+        this.setExecutionAdapterType(sessionId, type);
+
+        if (adapter) {
+          session.state.coreSessionState.executionAdapter = adapter;
+        }
+      }
+
+      if (!session.state.coreSessionState.executionAdapter) {
+        console.log('🚩🚩🚩no execution adapter found for session ' + sessionId);
+        throw new Error('No execution adapter found for session ' + sessionId);
       }
       
-      // Store the adapter type in the session
-      this.setExecutionAdapterType(sessionId, type);
+      // Try to restore from checkpoint if available
+      try {
+        // Check if this session has checkpoints
+        const executionId = 'agent-service-restore-from-checkpoint';
+        const persistence = getSessionStatePersistence();
+        const sessionData = await persistence.getSessionDataWithoutEvents(sessionId);
+        
+        if (sessionData?.checkpoints?.length) {
+          // Load the bundle if available
+          const bundle = await SessionPersistence.loadBundle(sessionId);
+          
+          if (bundle) {
+            serverLogger.info(`Restoring shadow repo for session ${sessionId}`);
+            
+            // Write the bundle to a temporary file using base64 encoding to avoid binary corruption
+            const base64 = Buffer.from(bundle).toString('base64');
+            await session.state.coreSessionState.executionAdapter.writeFile('/tmp/shadow.b64', base64, 'utf8');
+            
+            // Decode the base64 file back to binary
+            await session.state.coreSessionState.executionAdapter.executeCommand(executionId, 'base64 -d /tmp/shadow.b64 > /tmp/shadow.bundle && rm /tmp/shadow.b64');
+            
+            // Get repo root
+            const cwdResult = await session.state.coreSessionState.executionAdapter.executeCommand(executionId, 'pwd');
+            const repoRoot = cwdResult.stdout.trim() || process.cwd();
+            
+            // Define the shadow repo directory
+            const shadowDir = `${repoRoot}/.agent-shadow/${sessionId}`;
+            
+            // Create shadow repo and configure it to use the working tree
+            const lastCheckpoint = sessionData.checkpoints.at(-1);
+            const toolExecutionId = lastCheckpoint?.toolExecutionId || '';
+            
+            // Command to restore the state with proper error handling
+            const cmd = `
+              set -e &&
+              rm -rf "${shadowDir}" 2>/dev/null || true &&
+              git clone --bare /tmp/shadow.bundle "${shadowDir}" &&
+              git --git-dir="${shadowDir}" config core.worktree "${repoRoot}" &&
+              git --git-dir="${shadowDir}" checkout chkpt/${toolExecutionId} &&
+              git --git-dir="${shadowDir}" checkout-index -a -f &&
+              rm /tmp/shadow.bundle
+            `;
+            
+            // Execute the restore command
+            await session.state.coreSessionState.executionAdapter?.executeCommand(executionId, cmd);
+            serverLogger.info(`Restored shadow repo for session ${sessionId} to checkpoint ${toolExecutionId}`);
+          }
+        }
+      } catch (error) {
+        // Log the error but continue - we can operate without a shadow repo
+        serverLogger.error('Failed to restore shadow repo from checkpoint:', error);
+      }
       
+      const type = this.getExecutionAdapterType(sessionId);
+      console.log('🚩🚩🚩type', type);
       // Update the session object with the execution adapter
       sessionManager.updateSession(sessionId, {
         state: {
           ...session.state,
-          executionAdapter: adapter || undefined,
-          executionAdapterType: type
+          coreSessionState: {
+            ...session.state.coreSessionState,
+            executionAdapter: session.state.coreSessionState.executionAdapter || undefined,
+            executionAdapterType: type
+          }
         }
       });
       
