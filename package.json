@@ -29,8 +29,8 @@
     "typecheck": "npm run typecheck && npm run typecheck:ui",
     "ui:generate": "npx shadcn-ui@latest add",
     "start:dist": "node dist/server/index.js",
-    "start:dev": "npm run build:complete && npm run start:dist -- --port 3000",
-    "prepublishOnly": "npm run build:complete"
+    "start:dev": "npm run build && npm run start:dist -- --port 3000",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "ai",
