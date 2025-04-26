@@ -10,6 +10,7 @@ import type {
   AgentStatus,
   PermissionRequest,
   PermissionResolveRequest,
+  ModelInfo,
 } from '../types/api';
 
 /**
@@ -294,7 +295,7 @@ export const apiClient = {
    * Fetch available AI models
    */
   fetchModels: () => 
-    apiRequest<ModelInfo[]>(API_ENDPOINTS.MODELS),
+    apiRequest<ModelInfo>(API_ENDPOINTS.MODELS),
 };
 
 export default apiClient;

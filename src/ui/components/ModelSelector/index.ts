@@ -1,2 +1,2 @@
 export { ModelSelector } from './ModelSelector';
-export default ModelSelector;
+export { ModelSelector as default } from './ModelSelector';

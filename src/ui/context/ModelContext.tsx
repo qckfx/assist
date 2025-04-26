@@ -15,10 +15,8 @@ interface ModelContextType {
   error: Error | null;
 }
 
-const defaultModel = process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219';
-
 const ModelContext = createContext<ModelContextType>({
-  selectedModel: defaultModel,
+  selectedModel: '',
   setSelectedModel: () => {},
   availableModels: {},
   isLoading: false,
@@ -26,7 +24,7 @@ const ModelContext = createContext<ModelContextType>({
 });
 
 export function ModelProvider({ children, sessionId }: { children: ReactNode; sessionId?: string }) {
-  const [selectedModel, setSelectedModel] = useState<string>(defaultModel);
+  const [selectedModel, setSelectedModel] = useState<string>('');
   const [availableModels, setAvailableModels] = useState<ModelInfo>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
@@ -64,11 +62,21 @@ export function ModelProvider({ children, sessionId }: { children: ReactNode; se
         setIsLoading(true);
         const response = await apiClient.fetchModels();
         if (response.success && response.data) {
-          setAvailableModels(response.data);
+          // Convert the response data to the expected ModelInfo format
+          const modelData = response.data as ModelInfo;
+          setAvailableModels(modelData);
           
-          // If it's a new session, use the default model
-          if (!sessionId) {
-            setSelectedModel(defaultModel);
+          // Always pick the first available model if no model is selected
+          // This ensures we never have an empty selectedModel
+          if (!selectedModel) {
+            // Find the first model from the first provider
+            const providers = Object.keys(modelData);
+            if (providers.length > 0) {
+              const models = modelData[providers[0]];
+              if (models && models.length > 0) {
+                setSelectedModel(models[0]);
+              }
+            }
           }
         } else {
           throw new Error('Failed to fetch models');

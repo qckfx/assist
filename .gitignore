@@ -53,3 +53,8 @@ Thumbs.db
 evaluation-results/
 app/.eval-data/
 .eval-data/
+
+# A real "@" directory should never be committed – "@" is just a path alias
+# resolved by the tooling.  Prevent regressions caused by accidental creation
+# (e.g. from badly-configured code generators).
+/@/

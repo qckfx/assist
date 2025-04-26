@@ -23,7 +23,7 @@ import {
   ToolExecutionState,
 } from '../../types/platform-types';
 import {
-  createAnthropicProvider,
+  LLMFactory,
 } from '@qckfx/agent/node/providers';
 import { SessionState } from '../../types/session';
 import {
@@ -200,7 +200,7 @@ export class AgentService extends EventEmitter {
     super();
     this.config = {
       ...config,
-      defaultModel: config.defaultModel || 'claude-3-7-sonnet-20250219',
+      defaultModel: config.defaultModel,
       permissionMode: config.permissionMode || 'interactive',
       allowedTools: config.allowedTools || ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
       cachingEnabled: config.cachingEnabled !== undefined ? config.cachingEnabled : true,
@@ -643,7 +643,7 @@ export class AgentService extends EventEmitter {
           toolExecutions: [],
           permissionRequests: [],
           previews: [],
-          sessionState 
+          sessionState
         };
       }
       
@@ -713,8 +713,8 @@ export class AgentService extends EventEmitter {
       this.emit(AgentServiceEvent.PROCESSING_STARTED, { sessionId });
 
       // Create the model provider with the specified model
-      const modelProvider = createAnthropicProvider({
-        model: model || this.config.defaultModel,
+      const modelProvider = LLMFactory.createProvider({
+        model: model,
         cachingEnabled: this.config.cachingEnabled,
       });
 
@@ -882,7 +882,7 @@ export class AgentService extends EventEmitter {
         session.state.coreSessionState.id = sessionId;
         
         // Process the query with our registered callbacks
-        const result = await this.agent.processQuery(query, session.state.coreSessionState);
+        const result = await this.agent.processQuery(query, model, session.state.coreSessionState);
   
         if (result.error) {
           throw new ServerError(`Agent error: ${result.error}`);

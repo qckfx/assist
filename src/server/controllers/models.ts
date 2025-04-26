@@ -10,8 +10,10 @@ import { LLMFactory } from '@qckfx/agent';
  */
 export async function getAvailableModels(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    console.log('getAvailableModels');
     // Get available models from the LLM Factory
     const allModels = await LLMFactory.getAvailableModels();
+    console.log('allModels', allModels);
     
     // Group models by provider
     const modelsByProvider = allModels.reduce((acc, model) => {

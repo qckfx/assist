@@ -91,6 +91,11 @@ Session Information:
         throw new Error('No active session. Please create a new session.');
       }
       
+      // Check if a model is selected
+      if (!selectedModel) {
+        throw new Error('No model available. This may be due to network issues or a server configuration problem.');
+      }
+      
       // Set both processing and typing indicator states
       setProcessing(true);
       
