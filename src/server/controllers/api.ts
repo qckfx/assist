@@ -214,7 +214,7 @@ export async function rollbackSessionToCheckpoint(
  */
 export async function submitQuery(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { sessionId, query } = req.body as QueryRequest;
+    const { sessionId, query, model } = req.body as QueryRequest;
     
     // Get the agent service registry from the container
     const appInstance = req.app;
@@ -262,8 +262,8 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
       
       // Start agent processing in the background 
       // AgentRunner will add the user message to contextWindow itself
-      serverLogger.info(`Starting agent processing for session ${sessionId}`);
-      agentService.processQuery(sessionId, query)
+      serverLogger.info(`Starting agent processing for session ${sessionId} with model ${model}`);
+      agentService.processQuery(sessionId, query, model)
         .catch((error: unknown) => {
           serverLogger.error('Error processing query:', error, LogCategory.AGENT);
         });

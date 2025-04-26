@@ -27,7 +27,12 @@
 
 ### Testing Best Practices
 
-For detailed testing guidelines, see [docs/testing-best-practices.md](docs/testing-best-practices.md)
+For detailed testing guidelines, see [docs/testing-best-practices.md](docs/testing-best-practices.md). This document includes comprehensive guidance on:
+- Using the `TestProviders` wrapper for React Context provider chains
+- Centralized mock controllers for testing
+- Asynchronous code testing
+- Session management testing
+- Path alias resolution
 
 #### Key Testing Principles
 

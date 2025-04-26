@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Web UI server
  */

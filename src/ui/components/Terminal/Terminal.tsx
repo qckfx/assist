@@ -23,6 +23,9 @@ import { PreviewMode } from '../../../types/preview';
 import { useNavigate } from 'react-router-dom';
 // Import the SessionManager
 import { SessionManager } from '../SessionManagement';
+// Import the ModelSelector
+import ModelSelector from '@/components/ModelSelector';
+// Import the ModelProvider
 // Import the API client
 import apiClient from '@/services/apiClient';
 // Import timeline types
@@ -420,24 +423,24 @@ export function Terminal({
 
   return (
     <div
-      ref={terminalRef}
-      className={cn(
-        'terminal flex flex-col rounded-md overflow-hidden',
-        colorSchemeClass,
-        fullScreen ? 'h-full w-full' : 'h-[500px] w-full min-w-[95%] max-w-[95%]',
-        !fullScreen && 'max-h-[90vh]', // Add maximum height to prevent expansion off-screen
-        'min-h-[500px]', // Add minimum height to prevent layout shifts
-        {
-          'terminal-text-xs': themeToUse.fontSize === 'xs',
-          'terminal-text-sm': themeToUse.fontSize === 'sm',
-          'terminal-text-md': themeToUse.fontSize === 'md',
-          'terminal-text-lg': themeToUse.fontSize === 'lg',
-          'terminal-text-xl': themeToUse.fontSize === 'xl',
-        },
-        mobileFullScreen && isSmallScreen && 'terminal-mobile-full',
-        reducedMotion && 'reduce-motion',
-        className
-      )}
+        ref={terminalRef}
+        className={cn(
+          'terminal flex flex-col rounded-md overflow-hidden',
+          colorSchemeClass,
+          fullScreen ? 'h-full w-full' : 'h-[500px] w-full min-w-[95%] max-w-[95%]',
+          !fullScreen && 'max-h-[90vh]', // Add maximum height to prevent expansion off-screen
+          'min-h-[500px]', // Add minimum height to prevent layout shifts
+          {
+            'terminal-text-xs': themeToUse.fontSize === 'xs',
+            'terminal-text-sm': themeToUse.fontSize === 'sm',
+            'terminal-text-md': themeToUse.fontSize === 'md',
+            'terminal-text-lg': themeToUse.fontSize === 'lg',
+            'terminal-text-xl': themeToUse.fontSize === 'xl',
+          },
+          mobileFullScreen && isSmallScreen && 'terminal-mobile-full',
+          reducedMotion && 'reduce-motion',
+          className
+        )}
       style={{ 
         ...terminalVars, // Apply all theme variables directly
         fontFamily: themeToUse.fontFamily,
@@ -479,24 +482,29 @@ export function Terminal({
           className="flex-1 flex items-center justify-center gap-2 text-sm"
           id={`${ids.terminal}-title`}
         >
-          qckfx Terminal
-          {showConnectionIndicator && sessionId && (
-            <span 
-              className="ml-2 flex items-center" 
-              data-testid="environment-connection-container"
-            >
-              <EnvironmentConnectionIndicator className="scale-75" />
-            </span>
-          )}
+          <div className="flex-1"></div>
+          <div className="flex items-center gap-2 justify-center">
+            <span>qckfx Terminal</span>
+            {sessionId && showConnectionIndicator && (
+              <span 
+                className="flex items-center" 
+                data-testid="environment-connection-container"
+              >
+                <EnvironmentConnectionIndicator className="scale-75" />
+              </span>
+            )}
+          </div>
+          <div className="flex-1"></div>
         </div>
         <div className="flex items-center space-x-2">
            <button
-            className="hover:text-white text-sm group relative bg-blue-600 text-white px-2 py-1 rounded"
+            className="hover:bg-gray-600/90 hover:shadow-sm text-sm group relative bg-gradient-to-b from-gray-600 to-gray-700 text-gray-100 px-3 py-1.5 rounded-md transition-all duration-150 flex items-center gap-2 border border-gray-600/20"
             onClick={handleNewSession}
             aria-label="New Session"
             data-testid="new-session"
           >
-            ➕ New Session
+            <span className="inline-flex items-center justify-center rounded-full bg-gray-500/50 w-4 h-4 text-[11px] font-semibold backdrop-blur-sm">+</span>
+            <span className="font-medium">New Session</span>
             <span className="absolute top-full right-0 mt-2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
               New Session ({isMac ? 'Cmd' : 'Ctrl'}+.)
             </span>
@@ -590,8 +598,13 @@ export function Terminal({
         <div className="flex-shrink-0 border-t border-gray-700/30">
           {/* Status indicators container - fixed at bottom above input */}
           <div className="flex justify-between items-center py-1">
-            {/* Typing indicator (left-aligned) */}
-            <div className="flex-1">
+            {/* Model selector (left-aligned) */}
+            <div className="flex-1 flex items-center">
+              {sessionId && !terminalContext.state.isProcessing && (
+                <ModelSelector className="ml-4" />
+              )}
+              
+              {/* Typing indicator (left-aligned) */}
               {showTypingIndicator && terminalContext.typingIndicator && (
                 <>
                   <TypingIndicator className="mx-4" />
@@ -626,6 +639,8 @@ export function Terminal({
         </div>
         
         {/* Input field area */}
+        {/* Model selector is shown left-aligned in the same container as fast edit mode indicator and abort button */}
+
         <div className="flex-shrink-0" style={{ height: '40px', maxHeight: '40px', minHeight: '40px' }}>
           <InputField 
             ref={inputRef}
@@ -679,7 +694,7 @@ export function Terminal({
         Press {isMac ? 'Command+K' : 'Control+K'} to clear the terminal.
         Press Shift+Tab to toggle Fast Edit Mode.
       </div>
-    </div>
+      </div>
   );
 }
 

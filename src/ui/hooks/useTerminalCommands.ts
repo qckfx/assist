@@ -3,6 +3,7 @@
  */
 import { useCallback } from 'react';
 import { useTerminal } from '@/context/TerminalContext';
+import { useModelContext } from '@/context/ModelContext';
 import apiClient from '@/services/apiClient';
 
 interface UseTerminalCommandsOptions {
@@ -22,6 +23,9 @@ export function useTerminalCommands({ sessionId }: UseTerminalCommandsOptions = 
     addToHistory,
     dispatch,  // Get the dispatch function for direct state updates
   } = useTerminal();
+  
+  // Get the selected model from context
+  const { selectedModel } = useModelContext();
 
   // Process a terminal command
   const handleCommand = useCallback(async (command: string) => {
@@ -87,6 +91,11 @@ Session Information:
         throw new Error('No active session. Please create a new session.');
       }
       
+      // Check if a model is selected
+      if (!selectedModel) {
+        throw new Error('No model available. This may be due to network issues or a server configuration problem.');
+      }
+      
       // Set both processing and typing indicator states
       setProcessing(true);
       
@@ -98,8 +107,9 @@ Session Information:
       // Debug message for development
       console.log(`Sending query to API for session ${sessionId}: ${command}`);
       
-      // Send the query to the API with sessionId included
-      const response = await apiClient.sendQuery(sessionId, command);
+      // Send the query to the API with sessionId and model
+      console.log(`Using model: ${selectedModel}`);
+      const response = await apiClient.sendQuery(sessionId, command, selectedModel);
       
       // Check for success and handle error if present
       if (!response.success) {
@@ -124,6 +134,7 @@ Session Information:
     }
   }, [
     sessionId,
+    selectedModel,
     clearMessages,
     addUserMessage,
     addSystemMessage,

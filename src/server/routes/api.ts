@@ -5,6 +5,7 @@ import { Router } from 'express';
 import * as apiController from '../controllers/api';
 import * as permissionController from '../controllers/permissions';
 import * as timelineController from '../controllers/timeline';
+import * as modelsController from '../controllers/models';
 import { validateBody, validateQuery } from '../middleware/validation';
 import {
   startSessionSchema,
@@ -113,6 +114,12 @@ router.get('/sessions/:sessionId/timeline', validateQuery(timelineQuerySchema), 
  * @desc    Rollback session to a previous checkpoint
  */
 router.post('/sessions/:sessionId/rollback', validateBody(rollbackRequestSchema), apiController.rollbackSessionToCheckpoint);
+
+/**
+ * @route   GET /api/models
+ * @desc    Get available AI models
+ */
+router.get('/models', modelsController.getAvailableModels);
 
 /**
  * @route   GET /api/docs

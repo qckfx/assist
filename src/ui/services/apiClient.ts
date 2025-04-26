@@ -10,6 +10,7 @@ import type {
   AgentStatus,
   PermissionRequest,
   PermissionResolveRequest,
+  ModelInfo,
 } from '../types/api';
 
 /**
@@ -146,8 +147,8 @@ export const apiClient = {
   /**
    * Send a query to the agent
    */
-  sendQuery: (sessionId: string, query: string) => 
-    apiRequest<void>(API_ENDPOINTS.QUERY, 'POST', { sessionId, query }),
+  sendQuery: (sessionId: string, query: string, model: string) => 
+    apiRequest<void>(API_ENDPOINTS.QUERY, 'POST', { sessionId, query, model }),
   
   /**
    * Abort the current operation
@@ -289,6 +290,12 @@ export const apiClient = {
       { toolExecutionId }
     );
   },
+  
+  /**
+   * Fetch available AI models
+   */
+  fetchModels: () => 
+    apiRequest<ModelInfo>(API_ENDPOINTS.MODELS),
 };
 
 export default apiClient;

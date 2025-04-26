@@ -23,7 +23,7 @@ import {
   ToolExecutionState,
 } from '../../types/platform-types';
 import {
-  createAnthropicProvider,
+  LLMFactory,
 } from '@qckfx/agent/node/providers';
 import { SessionState } from '../../types/session';
 import {
@@ -200,7 +200,7 @@ export class AgentService extends EventEmitter {
     super();
     this.config = {
       ...config,
-      defaultModel: config.defaultModel || 'claude-3-7-sonnet-20250219',
+      defaultModel: config.defaultModel,
       permissionMode: config.permissionMode || 'interactive',
       allowedTools: config.allowedTools || ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
       cachingEnabled: config.cachingEnabled !== undefined ? config.cachingEnabled : true,
@@ -643,7 +643,7 @@ export class AgentService extends EventEmitter {
           toolExecutions: [],
           permissionRequests: [],
           previews: [],
-          sessionState 
+          sessionState
         };
       }
       
@@ -662,10 +662,14 @@ export class AgentService extends EventEmitter {
 
   /**
    * Process a query for a specific session
+   * @param sessionId The session ID to process the query for
+   * @param query The query text to process
+   * @param model Model name to use for this query
    */
   public async processQuery(
     sessionId: string,
-    query: string
+    query: string,
+    model: string
   ): Promise<{
     response: string;
     toolResults: ToolResultEntry[];
@@ -708,9 +712,9 @@ export class AgentService extends EventEmitter {
       // Emit event for processing started
       this.emit(AgentServiceEvent.PROCESSING_STARTED, { sessionId });
 
-      // Create the model provider
-      const modelProvider = createAnthropicProvider({
-        model: this.config.defaultModel,
+      // Create the model provider with the specified model
+      const modelProvider = LLMFactory.createProvider({
+        model: model,
         cachingEnabled: this.config.cachingEnabled,
       });
 
@@ -878,7 +882,7 @@ export class AgentService extends EventEmitter {
         session.state.coreSessionState.id = sessionId;
         
         // Process the query with our registered callbacks
-        const result = await this.agent.processQuery(query, session.state.coreSessionState);
+        const result = await this.agent.processQuery(query, model, session.state.coreSessionState);
   
         if (result.error) {
           throw new ServerError(`Agent error: ${result.error}`);

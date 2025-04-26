@@ -28,6 +28,8 @@ export const API_ENDPOINTS = {
   TIMELINE: '/sessions/:sessionId/timeline',
   // Rollback endpoint
   ROLLBACK: '/sessions/:sessionId/rollback',
+  // Models endpoint
+  MODELS: '/models',
 };
 
 // API request timeout in milliseconds
