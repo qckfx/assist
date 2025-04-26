@@ -4,6 +4,44 @@ This document outlines best practices for testing components in the QckFx codeba
 
 ## React Component and Hook Testing
 
+### Centralised Provider Wrapper (`TestProviders`)
+
+Most UI components rely on a deep chain of React Context providers
+
+```
+ThemeProvider → WebSocketProvider → TerminalProvider → WebSocketTerminalProvider → ModelProvider → TimelineProvider → ToolPreferencesProvider → YourComponent
+```
+
+Mounting this stack by hand in every test was tedious and error–prone ("dependency-hell").
+
+We now expose a **single** wrapper that contains the full hierarchy with safe defaults:
+
+```tsx
+import { render } from '@/test/utils';
+
+// automatically wrapped with TestProviders
+render(<MyComponent />);
+
+// optional overrides
+render(<MyComponent />, {
+  wrapper: ({ children }) => (
+    <TestProviders websocketTestMode={false} sessionId="abc123">
+      {children}
+    </TestProviders>
+  )
+});
+```
+
+Location: `src/ui/test/TestProviders.tsx`
+
+Props you can tweak:
+
+* **websocketTestMode** (default `true`) – keeps `WebSocketProvider` in stub mode, so no actual network traffic is made inside tests.
+* **sessionId** – forwards a predictable session id to providers that accept one (`ModelProvider`, `WebSocketTerminalProvider`, `TimelineProvider`). Leave blank for most situations.
+
+If you add a new top-level provider in the app, remember to include it in `TestProviders` so tests continue to work out of the box.
+
+
 ### 1. Centralized Mock Controllers
 
 For components or hooks that interact with services or contexts, use centralized mock controllers:

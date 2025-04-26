@@ -23,6 +23,10 @@ import { PreviewMode } from '../../../types/preview';
 import { useNavigate } from 'react-router-dom';
 // Import the SessionManager
 import { SessionManager } from '../SessionManagement';
+// Import the ModelSelector
+import ModelSelector from '@/components/ModelSelector';
+// Import the ModelProvider
+import { ModelProvider } from '@/context/ModelContext';
 // Import the API client
 import apiClient from '@/services/apiClient';
 // Import timeline types
@@ -419,25 +423,26 @@ export function Terminal({
   }, [setToolViewMode, setDefaultViewMode, preferences.persistPreferences]);
 
   return (
-    <div
-      ref={terminalRef}
-      className={cn(
-        'terminal flex flex-col rounded-md overflow-hidden',
-        colorSchemeClass,
-        fullScreen ? 'h-full w-full' : 'h-[500px] w-full min-w-[95%] max-w-[95%]',
-        !fullScreen && 'max-h-[90vh]', // Add maximum height to prevent expansion off-screen
-        'min-h-[500px]', // Add minimum height to prevent layout shifts
-        {
-          'terminal-text-xs': themeToUse.fontSize === 'xs',
-          'terminal-text-sm': themeToUse.fontSize === 'sm',
-          'terminal-text-md': themeToUse.fontSize === 'md',
-          'terminal-text-lg': themeToUse.fontSize === 'lg',
-          'terminal-text-xl': themeToUse.fontSize === 'xl',
-        },
-        mobileFullScreen && isSmallScreen && 'terminal-mobile-full',
-        reducedMotion && 'reduce-motion',
-        className
-      )}
+    <ModelProvider sessionId={sessionId}>
+      <div
+        ref={terminalRef}
+        className={cn(
+          'terminal flex flex-col rounded-md overflow-hidden',
+          colorSchemeClass,
+          fullScreen ? 'h-full w-full' : 'h-[500px] w-full min-w-[95%] max-w-[95%]',
+          !fullScreen && 'max-h-[90vh]', // Add maximum height to prevent expansion off-screen
+          'min-h-[500px]', // Add minimum height to prevent layout shifts
+          {
+            'terminal-text-xs': themeToUse.fontSize === 'xs',
+            'terminal-text-sm': themeToUse.fontSize === 'sm',
+            'terminal-text-md': themeToUse.fontSize === 'md',
+            'terminal-text-lg': themeToUse.fontSize === 'lg',
+            'terminal-text-xl': themeToUse.fontSize === 'xl',
+          },
+          mobileFullScreen && isSmallScreen && 'terminal-mobile-full',
+          reducedMotion && 'reduce-motion',
+          className
+        )}
       style={{ 
         ...terminalVars, // Apply all theme variables directly
         fontFamily: themeToUse.fontFamily,
@@ -479,14 +484,19 @@ export function Terminal({
           className="flex-1 flex items-center justify-center gap-2 text-sm"
           id={`${ids.terminal}-title`}
         >
-          qckfx Terminal
-          {showConnectionIndicator && sessionId && (
-            <span 
-              className="ml-2 flex items-center" 
-              data-testid="environment-connection-container"
-            >
-              <EnvironmentConnectionIndicator className="scale-75" />
-            </span>
+          <div className="flex-1 text-center">qckfx Terminal</div>
+          {sessionId && (
+            <div className="flex items-center space-x-2">
+              {showConnectionIndicator && (
+                <span 
+                  className="flex items-center" 
+                  data-testid="environment-connection-container"
+                >
+                  <EnvironmentConnectionIndicator className="scale-75" />
+                </span>
+              )}
+              <ModelSelector showProvider={true} />
+            </div>
           )}
         </div>
         <div className="flex items-center space-x-2">
@@ -679,7 +689,8 @@ export function Terminal({
         Press {isMac ? 'Command+K' : 'Control+K'} to clear the terminal.
         Press Shift+Tab to toggle Fast Edit Mode.
       </div>
-    </div>
+      </div>
+    </ModelProvider>
   );
 }
 

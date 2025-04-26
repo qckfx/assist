@@ -1,21 +1,26 @@
 import { render, RenderOptions } from '@testing-library/react';
 import { ReactElement, ReactNode } from 'react';
-import { ThemeProvider } from '@/components/ThemeProvider';
-import { WebSocketProvider } from '@/context/WebSocketContext';
+import { TestProviders } from './TestProviders';
 
 // Provider wrapper for testing
+
 interface ProvidersProps {
   children: ReactNode;
+  /** When true WebSocketProvider runs in test mode (default: true). */
   useTestMode?: boolean;
+  /** Optional session id passed to ModelProvider / WebSocketTerminalProvider. */
+  sessionId?: string;
 }
 
-export function Providers({ children, useTestMode = true }: ProvidersProps) {
+export function Providers({
+  children,
+  useTestMode = true,
+  sessionId,
+}: ProvidersProps) {
   return (
-    <ThemeProvider defaultTheme="dark">
-      <WebSocketProvider testMode={useTestMode}>
-        {children}
-      </WebSocketProvider>
-    </ThemeProvider>
+    <TestProviders websocketTestMode={useTestMode} sessionId={sessionId}>
+      {children}
+    </TestProviders>
   );
 }
 

@@ -27,6 +27,7 @@ export const startSessionSchema = z.object({
 export const querySchema = z.object({
   sessionId: z.string().uuid(),
   query: z.string().min(1),
+  model: z.string().min(1),
 });
 
 /**

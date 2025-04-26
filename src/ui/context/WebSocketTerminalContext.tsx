@@ -16,6 +16,7 @@ import { ConnectionStatus, WebSocketEvent } from '@/types/api';
 import apiClient from '@/services/apiClient';
 import { getWebSocketService } from '@/services/WebSocketService';
 import { getSocketConnectionManager } from '@/utils/websocket';
+import { useModelContext } from './ModelContext';
 
 interface WebSocketTerminalContextProps {
   // Connection state

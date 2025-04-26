@@ -662,10 +662,14 @@ export class AgentService extends EventEmitter {
 
   /**
    * Process a query for a specific session
+   * @param sessionId The session ID to process the query for
+   * @param query The query text to process
+   * @param model Model name to use for this query
    */
   public async processQuery(
     sessionId: string,
-    query: string
+    query: string,
+    model: string
   ): Promise<{
     response: string;
     toolResults: ToolResultEntry[];
@@ -708,9 +712,9 @@ export class AgentService extends EventEmitter {
       // Emit event for processing started
       this.emit(AgentServiceEvent.PROCESSING_STARTED, { sessionId });
 
-      // Create the model provider
+      // Create the model provider with the specified model
       const modelProvider = createAnthropicProvider({
-        model: this.config.defaultModel,
+        model: model || this.config.defaultModel,
         cachingEnabled: this.config.cachingEnabled,
       });
 

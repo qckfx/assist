@@ -35,8 +35,11 @@ export interface SessionStartRequest {
   };
 }
 
+export type ModelInfo = Record<string, string[]>;
+
 export interface QueryRequest {
   query: string;
+  model?: string;
 }
 
 export interface SessionHistoryEntry {
