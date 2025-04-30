@@ -7,7 +7,10 @@ import { SessionManager } from './services/SessionManager';
 import { TimelineService } from './services/TimelineService';
 import { TimelineStatePersistence, createTimelineStatePersistence } from './services/TimelineStatePersistence';
 import { AgentServiceRegistry } from './services/AgentServiceRegistry';
+import { AuthService, AuthServiceToken } from './services/AuthService';
+import { InMemoryUserManager, SingleUserManager, UserManagerToken, IUserManager } from './services/UserManager';
 import { serverLogger } from './logger';
+import { LogCategory } from '../utils/logger';
 
 // Create the container
 const container = new Container({ defaultScope: 'Singleton' });
@@ -18,6 +21,10 @@ const singletons: Record<string, any> = {};
 // Register existing services
 function registerServices() {
   try {
+    // Determine multi-user mode
+    const multiUser = !!process.env.AUTH_URL;
+    serverLogger.info(`Authentication mode: ${multiUser ? 'multi-user' : 'single-user'}`, LogCategory.AUTH);
+    
     // Register WebSocketService
     if (!container.isBound(WebSocketService)) {
       if (!singletons.webSocketService) {
@@ -50,6 +57,29 @@ function registerServices() {
       }
       container.bind(AgentServiceRegistry).toConstantValue(singletons.agentServiceRegistry);
       serverLogger.debug('AgentServiceRegistry registered in container');
+    }
+    
+    // Register UserManager based on authentication mode
+    if (!container.isBound(UserManagerToken)) {
+      container.bind<IUserManager>(UserManagerToken)
+        .to(multiUser ? InMemoryUserManager : SingleUserManager)
+        .inSingletonScope();
+      serverLogger.debug(`${multiUser ? 'InMemoryUserManager' : 'SingleUserManager'} registered in container`);
+    }
+    
+    // Register AuthService
+    if (!container.isBound(AuthServiceToken)) {
+      // Get UserManager instance first since AuthService needs it
+      const userManager = container.get<IUserManager>(UserManagerToken);
+      
+      if (!userManager) {
+        throw new Error('UserManager not available for AuthService initialization');
+      }
+      
+      // Create AuthService instance manually since it requires userManager
+      const authService = new AuthService(userManager);
+      container.bind<AuthService>(AuthServiceToken).toConstantValue(authService);
+      serverLogger.debug('AuthService registered in container with UserManager dependency');
     }
     
     // Register TimelineService as a singleton
@@ -111,4 +141,4 @@ export function initializeContainer(services: {
 }
 
 // Export for direct import
-export { container, TimelineService, TimelineStatePersistence, AgentServiceRegistry };
+export { container, TimelineService, TimelineStatePersistence, AgentServiceRegistry, AuthServiceToken };

@@ -3,6 +3,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { LLMFactory } from '@qckfx/agent';
+import { AuthenticatedRequest } from '../middleware/userContext';
 
 /**
  * Get all available AI models grouped by provider
@@ -11,8 +12,13 @@ import { LLMFactory } from '@qckfx/agent';
 export async function getAvailableModels(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     console.log('getAvailableModels');
+    
+    // Get the user's llmApiKey from the request
+    const { user } = req as AuthenticatedRequest;
+    const llmApiKey = user?.llmApiKey;
+    
     // Get available models from the LLM Factory
-    const allModels = await LLMFactory.getAvailableModels();
+    const allModels = await LLMFactory.getAvailableModels(llmApiKey);
     console.log('allModels', allModels);
     
     // Group models by provider

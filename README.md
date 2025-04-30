@@ -260,7 +260,7 @@ The web UI can be configured using the following command-line options:
 Alternatively, you can use environment variables:
 
 - `QCKFX_DISABLE_WEB=true` - Disable the web UI
-- `QCKFX_PORT=<port>` - Specify the port for the web UI
+- `AGENT_PORT=<port>` - Specify the port for the web UI and backend server (default: 3000)
 - `QCKFX_HOST=<host>` - Specify the host to bind to (default: localhost)
 
 ### Terminal UI Documentation

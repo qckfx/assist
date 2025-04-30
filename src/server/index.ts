@@ -13,18 +13,21 @@ import { ServerConfig, getServerUrl } from './config';
 import { findAvailablePort } from './utils';
 import { serverLogger } from './logger';
 import apiRoutes from './routes/api';
+import authRoutes from './routes/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { userContext } from './middleware/userContext';
 import { sessionManager } from './services/SessionManager';
 import { WebSocketService } from './services/WebSocketService';
 import { createServer } from 'http';
 import swaggerUi from 'swagger-ui-express';
 import { apiDocumentation } from './docs/api';
-import { AgentServiceRegistry, initializeContainer, TimelineService } from './container';
+import { AgentServiceRegistry, initializeContainer, TimelineService, AuthServiceToken } from './container';
 import { LogCategory } from '../utils/logger';
 // Import AgentServiceRegistry related items
 import { createAgentServiceRegistry } from './services/AgentServiceRegistry';
 // Import preview generators
 import './services/preview';
+import cookieParser from 'cookie-parser';
 
 /**
  * Error class for server-related errors
@@ -61,12 +64,17 @@ export async function startServer(config: ServerConfig): Promise<{
       url: '',
     };
   }
+  
+  // Check if authentication is required (but don't block server startup)
+  // Wait for container to be initialized before checking auth
+  const multiUser = !!process.env.AUTH_URL;
+  console.log(`Authentication mode: ${multiUser ? 'multi-user' : 'single-user'}`, LogCategory.AUTH);
 
   try {
     // Find an available port if the configured port is not available
     const actualPort = await findAvailablePort(config.port);
     if (actualPort !== config.port) {
-      serverLogger.info(`Port ${config.port} is not available, using port ${actualPort} instead`);
+      console.log(`Port ${config.port} is not available, using port ${actualPort} instead`);
       config = { ...config, port: actualPort };
     }
 
@@ -76,10 +84,34 @@ export async function startServer(config: ServerConfig): Promise<{
     app.use(cors());
     app.use(json());
     app.use(urlencoded({ extended: true }));
+    app.use(cookieParser()); // Add cookie parsing middleware
     
-    // Add health check endpoint
+    // Add health check endpoint with authentication status
     app.get('/health', (req, res) => {
-      res.status(200).json({ status: 'ok' });
+      let authStatus = 'unknown';
+      
+      try {
+        // Safely get authService, handling both missing container and missing binding
+        const authService = app.locals.container?.get(AuthServiceToken);
+        
+        if (authService) {
+          authStatus = authService.isAuthRequired() 
+            ? (authService.hasValidToken() ? 'authenticated' : 'not_authenticated')
+            : 'not_required';
+        } else {
+          console.log('[health] AuthService not available');
+          authStatus = 'service_unavailable';
+        }
+      } catch (error) {
+        console.error('[health] Error getting auth status:', error);
+        authStatus = 'error';
+      }
+        
+      res.status(200).json({ 
+        status: 'ok',
+        auth: authStatus,
+        containerInitialized: !!app.locals.container
+      });
     });
     
     // Set up Swagger documentation UI
@@ -89,7 +121,26 @@ export async function startServer(config: ServerConfig): Promise<{
     // IMPORTANT: Register API routes BEFORE history API fallback
     // This ensures API requests are handled properly and not redirected to index.html
     // =====================================
+    
+    // Determine multi-user mode
+    const multiUser = !!process.env.AUTH_URL;
+    
+    if (multiUser) {
+      // In multi-user mode, apply user context middleware to all routes
+      // This ensures authentication is enforced everywhere
+      app.use('/', userContext);
+      serverLogger.info('User context middleware applied to all routes (multi-user mode)', LogCategory.AUTH);
+    } else {
+      // In single-user mode, only apply to API routes (which include auth)
+      app.use(['/api'], userContext);
+      serverLogger.info('User context middleware applied to API routes only (single-user mode)', LogCategory.AUTH);
+    }
+    
+    // Register API routes (including auth routes)
     app.use('/api', apiRoutes);
+    
+    // Register auth routes under /api
+    app.use('/api/auth', authRoutes);
     
     // Add route not found handler for API routes
     app.use('/api/*', notFoundHandler);
@@ -267,6 +318,8 @@ export async function startServer(config: ServerConfig): Promise<{
           app.locals.webSocketService = webSocketService;
           serverLogger.info('WebSocketService initialized');
           
+          // Authentication is now handled on a per-user basis through the auth routes
+          
           serverLogger.info('Initializing dependency injection container...');
           
           try {
@@ -385,7 +438,7 @@ if (require.main === module) {
   const cfg: ServerConfig = {
     enabled: true,
     host: process.env.HOST || '0.0.0.0',
-    port:  Number(process.env.PORT) || 3000,
+    port:  Number(process.env.AGENT_PORT) || 3000,
     development: process.env.NODE_ENV !== 'production',
   } as ServerConfig;
 
