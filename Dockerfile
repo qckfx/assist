@@ -48,12 +48,10 @@ RUN chown -R qckfx:qckfx ./docker ./scripts
 # Switch to non-root user
 USER qckfx
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=8080
 
 # Expose the web server port
-EXPOSE 3000
+EXPOSE 8080 
 
 # Start the web server
-CMD ["node", "dist/server/index.js", "--port", "3000"]
+CMD ["node", "dist/server/index.js", "--port", "8080"]
