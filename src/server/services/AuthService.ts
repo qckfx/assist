@@ -211,11 +211,13 @@ async function openBrowser(url: string): Promise<void> {
  */
 export class AuthService {
   private authUrl: string | null = null;
+  private providerToken: string | null = null;
   private pendingTokens: Map<string, string> = new Map(); // deviceCode → token
   
   constructor(private userManager: IUserManager) {
-    // Get the AUTH_URL from environment
+    // Get the AUTH_URL and provider token from environment
     this.authUrl = process.env.AUTH_URL || null;
+    this.providerToken = process.env.QCKFX_PROVIDER_TOKEN || null;
     
     // Create the .agent directory if it doesn't exist
     if (this.authUrl && !fs.existsSync(AGENT_DIR)) {
@@ -225,6 +227,7 @@ export class AuthService {
     // Log initialization
     serverLogger.info(`AuthService initialized with auth URL: ${this.authUrl || 'none'}`, LogCategory.AUTH);
     serverLogger.info(`AuthService initialized with UserManager: ${!!userManager}`, LogCategory.AUTH);
+    serverLogger.info(`Provider token: ${this.providerToken ? 'configured' : 'not configured'}`, LogCategory.AUTH);
   }
 
   /**
@@ -305,13 +308,20 @@ export class AuthService {
       // Request the LiteLLM key using the access token
       const litellmKeyUrl = `${this.authUrl}/api/auth/device/llm_key`;
       console.log(`[AuthService] Requesting LiteLLM key from: ${litellmKeyUrl}`);
+      
+      // Create headers with access token and provider token
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${accessToken}`
+      };
+      
+      // Add provider token if available
+      if (this.providerToken) {
+        headers['x-provider-token'] = this.providerToken;
+      }
+      
       const liteLLMKeyResponse = await axios.get<LiteLLMKeyResponse>(
         litellmKeyUrl,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`
-          }
-        }
+        { headers }
       );
       
       return liteLLMKeyResponse.data.data.key;
@@ -352,7 +362,14 @@ export class AuthService {
       // Step 1: Get device code
       const deviceCodeUrl = `${this.authUrl}/api/auth/device`;
       console.log(`[AuthService] Requesting device code from: ${deviceCodeUrl}`);
-      const deviceCodeResponse = await axios.post<DeviceCodeResponse>(deviceCodeUrl);
+      
+      // Create headers with provider token if available
+      const headers: Record<string, string> = {};
+      if (this.providerToken) {
+        headers['x-provider-token'] = this.providerToken;
+      }
+      
+      const deviceCodeResponse = await axios.post<DeviceCodeResponse>(deviceCodeUrl, {}, { headers });
       console.log('Device code response:', deviceCodeResponse.data);
       const { device_code, user_code, verification_uri, interval, expires_in } = deviceCodeResponse.data.data;
 
@@ -419,10 +436,20 @@ export class AuthService {
             await new Promise(resolve => setTimeout(resolve, interval * 1000));
             
             try {
-              const tokenResponse = await axios.post<TokenResponse>(tokenUrl, {
-                device_code,
-                grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
-              });
+              // Create headers with provider token if available
+              const tokenHeaders: Record<string, string> = {};
+              if (this.providerToken) {
+                tokenHeaders['x-provider-token'] = this.providerToken;
+              }
+              
+              const tokenResponse = await axios.post<TokenResponse>(
+                tokenUrl, 
+                {
+                  device_code,
+                  grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+                },
+                { headers: tokenHeaders }
+              );
               
               accessToken = tokenResponse.data.data.access_token;
               console.log('Access token:', accessToken);
@@ -501,7 +528,14 @@ export class AuthService {
       // Step 1: Get device code
       const deviceCodeUrl = `${this.authUrl}/api/auth/device`;
       console.log(`[AuthService] Requesting device code from: ${deviceCodeUrl}`);
-      const deviceCodeResponse = await axios.post<DeviceCodeResponse>(deviceCodeUrl);
+      
+      // Create headers with provider token if available
+      const headers: Record<string, string> = {};
+      if (this.providerToken) {
+        headers['x-provider-token'] = this.providerToken;
+      }
+      
+      const deviceCodeResponse = await axios.post<DeviceCodeResponse>(deviceCodeUrl, {}, { headers });
       const { 
         device_code, 
         user_code, 
@@ -563,14 +597,24 @@ export class AuthService {
       let attempts = 0;
       const maxAttempts = Math.floor(expiresIn / interval) + 1;
 
+      // Create headers with provider token if available
+      const headers: Record<string, string> = {};
+      if (this.providerToken) {
+        headers['x-provider-token'] = this.providerToken;
+      }
+
       while (!accessToken && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, interval * 1000));
         
         try {
-          const tokenResponse = await axios.post<TokenResponse>(tokenUrl, {
-            device_code: deviceCode,
-            grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
-          });
+          const tokenResponse = await axios.post<TokenResponse>(
+            tokenUrl, 
+            {
+              device_code: deviceCode,
+              grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+            },
+            { headers }
+          );
           
           accessToken = tokenResponse.data.data.access_token;
           console.log('Token response:', tokenResponse.data);

@@ -121,6 +121,17 @@ ANTHROPIC_API_KEY=your_key_here npx qckfx
 
 This will start an interactive session where you can chat with Claude. The agent can use a variety of tools to assist you with software development tasks.
 
+### Using with qckfx Authentication Server
+
+If you want to use the qckfx authentication server instead of directly providing your own LLM API key, you'll need a provider token. This token verifies that your self-hosted agent server is authorized to interact with the qckfx authentication service.
+
+```bash
+# Using qckfx auth server with provider token
+AUTH_URL=https://app.qckfx.com QCKFX_PROVIDER_TOKEN=your_provider_token qckfx
+```
+
+To obtain a provider token, please contact qckfx. This is necessary to ensure secure interactions between self-hosted agent instances and the qckfx authentication service.
+
 ### Execution Environments
 
 qckfx supports multiple execution environments for running commands:
@@ -262,6 +273,8 @@ Alternatively, you can use environment variables:
 - `QCKFX_DISABLE_WEB=true` - Disable the web UI
 - `AGENT_PORT=<port>` - Specify the port for the web UI and backend server (default: 3000)
 - `QCKFX_HOST=<host>` - Specify the host to bind to (default: localhost)
+- `AUTH_URL=<url>` - URL of the authentication server (e.g., https://app.qckfx.com)
+- `QCKFX_PROVIDER_TOKEN=<token>` - Provider token for authenticating with the qckfx auth server
 
 ### Terminal UI Documentation
 
