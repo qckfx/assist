@@ -14,9 +14,11 @@ import {
   Route, 
   Navigate, 
   useParams, 
-  useNavigate 
+  useNavigate,
+  useLocation 
 } from 'react-router-dom';
 import apiClient from '@/services/apiClient';
+import Login from '@/pages/Login';
 
 // Session component that loads a specific session from URL parameter
 function SessionComponent() {
@@ -146,29 +148,85 @@ function SessionWrapper() {
   );
 }
 
+// Authentication check component
+function AuthChecker({ children }: { children: React.ReactNode }) {
+  const [checking, setChecking] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/status');
+        const data = await response.json();
+        
+        // Handle both single-user and multi-user modes with 200 response
+        setAuthRequired(data.authRequired === true);
+        setAuthenticated(data.authenticated);
+        setChecking(false);
+        
+        if (data.authRequired && !data.authenticated && location.pathname !== '/login') {
+          // Not authenticated and auth required - redirect to login
+          navigate('/login');
+        }
+      } catch (err) {
+        console.error('Auth check error:', err);
+        // On error, allow access to avoid blocking the app completely
+        setChecking(false);
+        setAuthenticated(true);
+      }
+    };
+    
+    checkAuth();
+  }, [navigate, location.pathname]);
+
+  // Show minimal loading state while checking
+  if (checking) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin text-blue-500 text-2xl">⟳</div>
+      </div>
+    );
+  }
+
+  // If authentication is required but not authenticated, and not on login page, show nothing
+  // (the effect will redirect to login)
+  if (authRequired && !authenticated && location.pathname !== '/login') {
+    return null;
+  }
+
+  // Otherwise render children
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <ThemeProvider defaultTheme="dark">
         <WebSocketProvider>
           <TerminalProvider>
-            <Routes>
-              <Route path="/" element={
-                <TimelineProvider sessionId={null}>
-                  <ModelProvider>
-                    <WebSocketTerminalProvider>
-                      <ToolPreferencesProvider>
-                        <Layout>
-                          <NewSessionComponent />
-                        </Layout>
-                      </ToolPreferencesProvider>
-                    </WebSocketTerminalProvider>
-                  </ModelProvider>
-                </TimelineProvider>
-              } />
-              <Route path="/sessions/:sessionId" element={<SessionWrapper />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+            <AuthChecker>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={
+                  <TimelineProvider sessionId={null}>
+                    <ModelProvider>
+                      <WebSocketTerminalProvider>
+                        <ToolPreferencesProvider>
+                          <Layout>
+                            <NewSessionComponent />
+                          </Layout>
+                        </ToolPreferencesProvider>
+                      </WebSocketTerminalProvider>
+                    </ModelProvider>
+                  </TimelineProvider>
+                } />
+                <Route path="/sessions/:sessionId" element={<SessionWrapper />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </AuthChecker>
           </TerminalProvider>
         </WebSocketProvider>
       </ThemeProvider>

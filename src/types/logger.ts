@@ -25,7 +25,8 @@ export enum LogCategory {
   UI = 'ui',
   STATIC = 'static',
   SESSION = 'session',
-  AGENT = 'agent'
+  AGENT = 'agent',
+  AUTH = 'auth'
 }
 
 /**

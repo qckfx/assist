@@ -332,4 +332,12 @@ export interface CheckpointInfo {
 export interface SessionState {
   coreSessionState: CoreSessionState;
   checkpoints?: CheckpointInfo[];
+  /**
+   * LLM API key expiration timestamp (if one exists)
+   */
+  llmKeyExpiresAt?: number;
+  /**
+   * User ID associated with the authenticated session (if one exists)
+   */
+  userId?: string;
 }

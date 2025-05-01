@@ -74,6 +74,17 @@ async function apiRequest<T = unknown, D = unknown>(
       console.log('Response headers:', Object.fromEntries([...response.headers.entries()]));
     }
     
+    // Handle 401 unauthorized errors by redirecting to login page
+    if (response.status === 401) {
+      console.error('Authentication required - redirecting to login page');
+      window.location.href = '/login';
+      throw {
+        message: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        status: 401,
+      };
+    }
+    
     if (!response.ok) {
       await handleApiError(response);
     }

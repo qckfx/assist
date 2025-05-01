@@ -6,6 +6,7 @@ import { Session, sessionManager } from '../services/SessionManager';
 import { AgentServiceRegistry } from '../container';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
+import { AuthenticatedRequest } from '../middleware/userContext';
 import crypto from 'crypto';
 import { rollbackSession as performRollback } from '@qckfx/agent';
 import {
@@ -32,9 +33,23 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
     let session: Session;
     
     // Get the agent service registry from the container
+    console.log('🚩 API Request: startSession');
     const appInstance = req.app;
+    console.log('🚩 Got app instance:', !!appInstance);
     const containerInstance = appInstance.locals.container;
+    console.log('🚩 Got container instance:', !!containerInstance);
+    
+    if (!containerInstance) {
+      console.error('🚩 Container instance is missing from app.locals');
+      res.status(500).json({
+        success: false,
+        message: 'Server misconfiguration: container not initialized'
+      });
+      return;
+    }
+    
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
+    console.log('🚩 Got agentServiceRegistry:', !!agentServiceRegistry);
     
     // Check if sessionId is provided for reconnection
     if (body.sessionId) {
@@ -104,6 +119,13 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
     
     // Initialize an agent service for this session (lazy loading)
     const agentService = agentServiceRegistry.getServiceForSession(session.id);
+    
+    // Add user's LLM API key to session state if authenticated
+    const user = (req as AuthenticatedRequest).user;
+    if (user?.llmApiKey && session.state.coreSessionState) {
+      session.state.coreSessionState.llmApiKey = user.llmApiKey;
+      serverLogger.debug(`Added user-specific LLM API key to session ${session.id}`, LogCategory.AUTH);
+    }
     
     // Initialize the execution environment for this session
     await agentService.createExecutionAdapterForSession(session.id, {
@@ -259,6 +281,17 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
       
       // IMPORTANT: The AgentRunner now handles the contextWindow updates
       // so we need to ensure we don't create a race condition with the timeline
+      
+      // Get user's LLM API key if authenticated and add it to session state
+      const user = (req as AuthenticatedRequest).user;
+      if (user?.llmApiKey) {
+        // Get the session
+        const session = sessionManager.getSession(sessionId);
+        if (session.state.coreSessionState) {
+          session.state.coreSessionState.llmApiKey = user.llmApiKey;
+          serverLogger.debug(`Added user-specific LLM API key to session ${sessionId}`, LogCategory.AUTH);
+        }
+      }
       
       // Start agent processing in the background 
       // AgentRunner will add the user message to contextWindow itself

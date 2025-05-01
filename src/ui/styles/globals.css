@@ -1,11 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Import terminal styles */
 @import './terminal.css';
 @import './themes/dark.css';
 @import './themes/light.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* App theme utilities */
 [data-theme="light"] body {
@@ -130,4 +129,59 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Login page styles */
+.login-container {
+  @apply flex items-center justify-center min-h-screen bg-background p-4;
+}
+
+.login-card {
+  @apply bg-card max-w-md w-full p-8 rounded-lg shadow-lg border border-border;
+}
+
+.login-card h1 {
+  @apply text-2xl font-semibold mb-6 text-center text-foreground;
+}
+
+.login-button {
+  @apply w-full py-2 px-4 bg-primary text-primary-foreground rounded-md 
+    hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 
+    disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.error-message {
+  @apply mb-4 p-3 bg-destructive text-destructive-foreground rounded-md text-sm opacity-90;
+}
+
+.auth-in-progress {
+  @apply space-y-6;
+}
+
+.verification-link {
+  @apply p-3 bg-card border border-border rounded-md break-all text-center;
+}
+
+.verification-link a {
+  @apply text-primary hover:underline;
+}
+
+.user-code {
+  @apply text-center;
+}
+
+.code-display {
+  @apply font-mono text-xl bg-muted p-3 rounded-md tracking-wide;
+}
+
+.auth-status {
+  @apply text-center space-y-2;
+}
+
+.spinner {
+  @apply w-8 h-8 rounded-full border-4 border-muted border-t-primary animate-spin mx-auto;
+}
+
+.expires-in {
+  @apply text-xs text-muted-foreground;
 }

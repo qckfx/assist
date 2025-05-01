@@ -881,6 +881,7 @@ export class AgentService extends EventEmitter {
         // Ensure the session state includes the sessionId for the new abort system
         session.state.coreSessionState.id = sessionId;
         
+        console.log('session state', session.state.coreSessionState);
         // Process the query with our registered callbacks
         const result = await this.agent.processQuery(query, model, session.state.coreSessionState);
   

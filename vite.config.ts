@@ -58,12 +58,12 @@ export default defineConfig(({ command, mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: 'http://localhost:3000',
+          target: `http://localhost:${process.env.AGENT_PORT || 3002}`,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, '/api'),
         },
         '/socket.io': {
-          target: 'ws://localhost:3000',
+          target: `ws://localhost:${process.env.AGENT_PORT || 3002}`,
           rewriteWsOrigin: true,
           ws: true,
         },

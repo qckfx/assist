@@ -12,6 +12,8 @@ interface ServerConfig {
   development: boolean;
   /** The environment type to use for the agent */
   agentEnvironment: 'local' | 'docker' | 'e2b';
+  /** Provider token for authenticating with the qckfx server */
+  providerToken?: string;
 }
 
 /**
@@ -19,10 +21,11 @@ interface ServerConfig {
  */
 const defaultConfig: ServerConfig = {
   enabled: true,
-  port: 3000,
+  port: parseInt(process.env.AGENT_PORT || '3000', 10),
   host: 'localhost',
   development: process.env.NODE_ENV === 'development',
   agentEnvironment: 'docker',
+  providerToken: process.env.QCKFX_PROVIDER_TOKEN,
 };
 
 /**
@@ -33,13 +36,15 @@ export function createServerConfig(options: {
   port?: number;
   development?: boolean;
   agentEnvironment?: 'local' | 'docker' | 'e2b';
+  providerToken?: string;
 }): ServerConfig {
   return {
     enabled: options.web !== undefined ? options.web : (process.env.QCKFX_DISABLE_WEB !== 'true'),
-    port: options.port ?? (parseInt(process.env.QCKFX_PORT ?? '', 10) || defaultConfig.port),
+    port: options.port ?? (parseInt(process.env.AGENT_PORT ?? '', 10) || defaultConfig.port),
     host: process.env.QCKFX_HOST ?? defaultConfig.host,
     development: options.development ?? process.env.NODE_ENV === 'development' ?? defaultConfig.development,
     agentEnvironment: options.agentEnvironment ?? defaultConfig.agentEnvironment,
+    providerToken: options.providerToken ?? process.env.QCKFX_PROVIDER_TOKEN ?? defaultConfig.providerToken,
   };
 }
 
