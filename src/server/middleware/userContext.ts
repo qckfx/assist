@@ -125,9 +125,16 @@ export function userContext(req: Request, res: Response, next: NextFunction) {
     // Multi-user mode requires authentication for all protected routes,
     // unless it's an authentication-related route
     if (multiUser) {
-      // Allow unauthenticated access only to auth routes and the health check
-      // This ensures users can access the login page and auth endpoints
-      const isAuthRoute = req.path.startsWith('/api/auth/');
+      // Allow unauthenticated access only to authentication endpoints (which are
+      // mounted at `/api/auth/*` **before** this middleware) and the health
+      // check.  Because the middleware itself is already mounted at `/api`,
+      // `req.path` no longer contains the `/api` prefix – Express strips the
+      // mount point.  Therefore we must check for the sub-path that remains
+      // ("/auth/*"), not the full original route.  Failing to do so results in
+      // the middleware mistakenly blocking requests such as `/api/auth/status`
+      // or `/api/auth/login`, producing a 401 that causes the front-end to
+      // bounce between the login and home pages.
+      const isAuthRoute = req.path.startsWith('/auth/');
       const isHealthCheck = req.path === '/health';
       
       if (!isAuthRoute && !isHealthCheck) {
