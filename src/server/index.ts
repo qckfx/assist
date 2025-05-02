@@ -65,10 +65,9 @@ export async function startServer(config: ServerConfig): Promise<{
     };
   }
   
-  // Check if authentication is required (but don't block server startup)
-  // Wait for container to be initialized before checking auth
-  const multiUser = !!process.env.AUTH_URL;
-  console.log(`Authentication mode: ${multiUser ? 'multi-user' : 'single-user'}`, LogCategory.AUTH);
+  // Check if authentication URL is configured (but don't block server startup)
+  const authUrlConfigured = !!process.env.AUTH_URL;
+  console.log(`Auth URL configured: ${authUrlConfigured ? 'yes' : 'no'}`, LogCategory.AUTH);
 
   try {
     // Find an available port if the configured port is not available
@@ -122,19 +121,20 @@ export async function startServer(config: ServerConfig): Promise<{
     // This ensures API requests are handled properly and not redirected to index.html
     // =====================================
     
-    // Determine multi-user mode
-    const multiUser = !!process.env.AUTH_URL;
+    // ------------------------------------------------------------
+    // User authentication middleware
+    // ------------------------------------------------------------
+    //
+    // Static UI assets (HTML, JS, CSS, etc.) must always be served so
+    // that the login page can load properly.
+    // We *only* protect the JSON API (and related websocket endpoints) 
+    // with the userContext middleware. This prevents authentication errors
+    // when the browser tries to download index.html, which would 
+    // otherwise show up to end-users as a blank page.
     
-    if (multiUser) {
-      // In multi-user mode, apply user context middleware to all routes
-      // This ensures authentication is enforced everywhere
-      app.use('/', userContext);
-      serverLogger.info('User context middleware applied to all routes (multi-user mode)', LogCategory.AUTH);
-    } else {
-      // In single-user mode, only apply to API routes (which include auth)
-      app.use(['/api'], userContext);
-      serverLogger.info('User context middleware applied to API routes only (single-user mode)', LogCategory.AUTH);
-    }
+    // Apply authentication middleware only to API routes.
+    // This includes /api/auth so the login / token exchange flow remains guarded.
+    app.use('/api', userContext);
     
     // Register API routes (including auth routes)
     app.use('/api', apiRoutes);
