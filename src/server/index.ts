@@ -15,7 +15,6 @@ import { serverLogger } from './logger';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
-import { userContext } from './middleware/userContext';
 import { sessionManager } from './services/SessionManager';
 import { WebSocketService } from './services/WebSocketService';
 import { createServer } from 'http';
@@ -28,6 +27,7 @@ import { createAgentServiceRegistry } from './services/AgentServiceRegistry';
 // Import preview generators
 import './services/preview';
 import cookieParser from 'cookie-parser';
+import { userContext } from './middleware/userContext';
 
 /**
  * Error class for server-related errors
@@ -134,10 +134,7 @@ export async function startServer(config: ServerConfig): Promise<{
     
     // Apply authentication middleware only to API routes.
     // This includes /api/auth so the login / token exchange flow remains guarded.
-    app.use('/api', userContext);
-    
-    // Register API routes (including auth routes)
-    app.use('/api', apiRoutes);
+    app.use('/api', userContext, apiRoutes);
     
     // Register auth routes under /api
     app.use('/api/auth', authRoutes);

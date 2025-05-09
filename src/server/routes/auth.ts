@@ -7,7 +7,7 @@ import { AuthService, AuthServiceToken } from '../services/AuthService';
 import { IUserManager, UserManagerToken } from '../services/UserManager';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
-import { AuthenticatedRequest } from '../middleware/userContext';
+import { AuthenticatedRequest, userContext } from '../middleware/userContext';
 
 const router = Router();
 
