@@ -9,7 +9,7 @@ import {
 } from './platform-types';
 import { ToolCallReference } from '@qckfx/agent';
 import { ToolPreviewState } from './preview';
-import { SessionState as CoreSessionState } from '@qckfx/agent/browser/internals';
+import { SessionState as CoreSessionState } from '@qckfx/agent';
 
 
 /**

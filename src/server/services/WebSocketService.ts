@@ -10,13 +10,6 @@ import {
 } from '../../types/preview';
 import { WebSocketEvent } from '../../types/websocket';
 import {
-  EnvironmentStatusEvent
-} from '@qckfx/agent';
-import {
-  onEnvironmentStatusChanged,
-  onProcessingCompleted,
-} from '@qckfx/agent';
-import {
   PermissionRequestedEventData,
   PermissionResolvedEventData
 } from '../../types/platform-types';
@@ -40,7 +33,7 @@ interface ActiveToolExecution {
  * Service to manage WebSocket connections and events
  */
 export class WebSocketService {
-  private io: SocketIOServer;
+  io: SocketIOServer;
   private sessionManager: SessionManager;
   private agentServiceRegistry: AgentServiceRegistry;
   
@@ -89,7 +82,6 @@ export class WebSocketService {
     this.setupSocketHandlers();
     this.setupAgentEventListeners();
     this.setupSessionEventForwarding();
-    this.setupEnvironmentEventListeners();
 
     serverLogger.info('WebSocketService initialized');
   }
@@ -303,7 +295,9 @@ export class WebSocketService {
               });
             });
           }
-          
+         
+          // TODO: Is this safe? Are we broadcasting to everyone?
+          // TODO: Do we need/use this?
           // Send list of persisted sessions
           try {
             // Use the instance property instead of container.get
@@ -382,6 +376,7 @@ export class WebSocketService {
         }
       });
       
+      // TODO: Is broadcasting this correct? Do we use this?
       // Session list request
       socket.on('list_sessions', async (data, callback) => {
         try {
@@ -816,40 +811,6 @@ export class WebSocketService {
     }
   }
   
-  
-  // Note: Direct emission of status events removed.
-  // Environment status is now emitted directly by the execution adapters via AgentEvents
-  // and received by the setupEnvironmentEventListeners method.
-  
-  /**
-   * Set up listeners for environment status events
-   */
-  private setupEnvironmentEventListeners(): void {
-    // Subscribe to environment status changed events
-    onEnvironmentStatusChanged((event: EnvironmentStatusEvent) => {
-      serverLogger.info(`Received environment status update: ${event.environmentType} -> ${event.status}, ready=${event.isReady}`);
-      
-      // We don't need to store the execution adapter type anymore, 
-      // as it's included in each status event
-      
-      // Broadcast to all connected clients
-      this.io.emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, event);
-    });
-    
-    // Subscribe to processing completed events from AgentRunner
-    onProcessingCompleted((data: { sessionId: string, response: string }) => {
-      serverLogger.info(`⚠️ Received direct PROCESSING_COMPLETED event from AgentRunner for session ${data.sessionId}`);
-      
-      // Forward the event to clients in this session room
-      this.io.to(data.sessionId).emit(WebSocketEvent.PROCESSING_COMPLETED, { 
-        sessionId: data.sessionId,
-        result: data.response
-      });
-      
-      serverLogger.info(`⚠️ Forwarded PROCESSING_COMPLETED for session ${data.sessionId}`);
-    });
-  }
-
   /**
    * Handle permission requested event
    */

@@ -13,34 +13,69 @@ import type {
   StructuredContent,
   ContentPart,
   TextContentPart,
-  ImageContentPart,
-  CodeBlockContentPart,
-  RepositoryEnvironment,
+  ContextWindow
+} from '@qckfx/agent';
+import type {
   ExecutionAdapter,
-  RepositoryInfo,
-  GitRepositoryInfo,
-  ToolExecutionManager,
   ExecutionAdapterFactoryOptions,
-  ExecutionAdapterType,
-  PromptManager,
-} from '@qckfx/agent/node/internals';
+  ToolExecutionManager,
+  PromptManager
+} from '@qckfx/agent/internals';
 import { 
   parseStructuredContent,
-  createContextWindow,
-  isSessionAborted,
-  setSessionAborted,
-  clearSessionAborted,
+  ToolExecutionStatus
+} from '@qckfx/agent';
+import {
   createExecutionAdapter,
-  createDefaultPromptManager,
   createPromptManager,
-  createPermissionManager,
-  createToolRegistry,
-  createAgentRunner,
-  ToolExecutionStatus,
-  ContextWindow
-} from '@qckfx/agent/node/internals';
+} from '@qckfx/agent/internals';
 
 import type { PreviewContentType, ToolPreviewState } from '../types/preview';
+
+/**
+ * Repository information for a session
+ */
+export interface RepositoryInfo {
+  /**
+   * Working directory path
+   */
+  workingDirectory: string;
+  
+  /**
+   * Whether the directory is a git repository
+   */
+  isGitRepository: boolean;
+  
+  /**
+   * Current branch name (if git repository)
+   */
+  currentBranch?: string;
+  
+  /**
+   * Whether the repository has uncommitted changes
+   */
+  hasUncommittedChanges?: boolean;
+  
+  /**
+   * Hash of the most recent commit (if git repository)
+   */
+  latestCommitHash?: string;
+  
+  /**
+   * Warning flags for the repository state
+   */
+  warnings?: {
+    /**
+     * Whether there are uncommitted changes (which won't be included in the saved state)
+     */
+    uncommittedChanges?: boolean;
+    
+    /**
+     * Whether there are untracked files (which won't be included in the saved state)
+     */
+    untrackedFiles?: boolean;
+  };
+}
 
 /**
  * Extended execution record used by the platform layer.
@@ -118,30 +153,16 @@ export interface PermissionResolvedEventData {
 export { 
   ToolExecutionStatus,
   parseStructuredContent,
-  createContextWindow,
-  isSessionAborted,
-  setSessionAborted,
-  clearSessionAborted,
   createExecutionAdapter,
-  createDefaultPromptManager,
   createPromptManager,
-  createPermissionManager,
-  createToolRegistry,
-  createAgentRunner,
   ContextWindow,
 };
 export type {
   StructuredContent,
   ContentPart,
   TextContentPart,
-  ImageContentPart,
-  CodeBlockContentPart,
-  RepositoryEnvironment,
   ExecutionAdapter,
-  RepositoryInfo,
-  GitRepositoryInfo,
   ToolExecutionManager,
   ExecutionAdapterFactoryOptions,
-  ExecutionAdapterType,
   PromptManager,
 };

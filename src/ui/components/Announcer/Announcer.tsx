@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StructuredContent, TextContentPart } from '../../../types/content';
+import type { StructuredContent, TextContentPart } from '../../../types/platform-types';
 
 interface AnnouncerProps {
   messages: { id: string; content: StructuredContent; role?: string }[];

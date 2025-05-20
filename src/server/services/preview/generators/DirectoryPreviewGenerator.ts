@@ -9,7 +9,7 @@ import {
   DirectoryPreviewData
 } from '../../../../types/preview';
 import { PreviewGenerator, PreviewOptions } from '../PreviewGenerator';
-import { LSToolResult } from '@qckfx/agent/node/tools';
+import type { LSToolResult } from '@qckfx/agent/internals';
 import { serverLogger } from '../../../logger';
 
 export class DirectoryPreviewGenerator extends PreviewGenerator {

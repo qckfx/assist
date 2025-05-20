@@ -2,7 +2,7 @@
  * Models controller for available AI models
  */
 import { Request, Response, NextFunction } from 'express';
-import { LLMFactory } from '@qckfx/agent';
+import { Agent } from '@qckfx/agent';
 import { AuthenticatedRequest } from '../middleware/userContext';
 
 /**
@@ -18,7 +18,7 @@ export async function getAvailableModels(req: Request, res: Response, next: Next
     const llmApiKey = user?.llmApiKey;
     
     // Get available models from the LLM Factory
-    const allModels = await LLMFactory.getAvailableModels(llmApiKey);
+    const allModels = await Agent.getAvailableModels(llmApiKey);
     console.log('allModels', allModels);
     
     // Group models by provider

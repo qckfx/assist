@@ -4,6 +4,7 @@
 import { AgentService, AgentServiceEvent, createAgentService } from '../AgentService';
 import { sessionManager } from '../SessionManager';
 import { AgentBusyError } from '@qckfx/agent/utils/errors';
+import { Agent } from '@qckfx/agent';
 
 // Mock dependencies
 jest.mock('../../logger', () => ({
@@ -29,7 +30,7 @@ jest.mock('../SessionManager', () => {
 });
 
 // Mock the agent
-jest.mock('../../../index', () => {
+jest.mock('@qckfx/agent', () => {
   // Create a mock tool registry with callback system
   const callbacks: {
     startCallback: ((toolId: string, args: Record<string, unknown>, context: unknown) => void) | null;
@@ -108,7 +109,10 @@ jest.mock('../../../index', () => {
   };
   
   return {
-    createAgent: jest.fn(() => mockAgent),
+    Agent: {
+      create: jest.fn().mockResolvedValue(mockAgent),
+    },
+    createAgent: jest.fn().mockResolvedValue(mockAgent),
     createAnthropicProvider: jest.fn(),
     createLogger: jest.fn(),
     LogLevel: { INFO: 'info' },
@@ -530,7 +534,7 @@ describe('AgentService', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const indexModule = require('../../../index');
       const { createAgent } = indexModule;
-      const mockAgent = createAgent();
+      const mockAgent = await Agent.create({} as any);
       
       // Override the processQuery mock to not throw an error for our test
       mockAgent.processQuery.mockResolvedValueOnce({

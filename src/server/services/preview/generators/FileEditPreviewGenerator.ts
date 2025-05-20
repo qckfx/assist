@@ -9,7 +9,7 @@ import {
   DiffPreviewData
 } from '../../../../types/preview';
 import { PreviewGenerator, PreviewOptions } from '../PreviewGenerator';
-import { FileEditToolResult } from '@qckfx/agent/node/tools';
+import type { FileEditToolResult } from '@qckfx/agent/internals';
 import { serverLogger } from '../../../logger';
 import path from 'path';
 import * as diffLib from 'diff';

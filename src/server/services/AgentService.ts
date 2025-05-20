@@ -5,12 +5,12 @@ import { getSessionStatePersistence } from './sessionPersistenceProvider';
 import { EventEmitter } from 'events';
 import { Anthropic } from '@anthropic-ai/sdk';
 import {
-  createAgent,
   Agent,
+  ToolExecutionEvents,
   ToolResultEntry,
 } from '@qckfx/agent';
+import type { CheckpointData, EnvironmentStatusData, ProcessingCompletedData } from '@qckfx/agent';
 import {
-  createPromptManager, 
   ToolExecutionStatus,
   ToolExecutionEvent,
   PermissionRequestState,
@@ -18,33 +18,23 @@ import {
   createExecutionAdapter,
   ExecutionAdapter,
   ExecutionAdapterFactoryOptions,
-  isSessionAborted,
-  setSessionAborted,
   ToolExecutionState,
 } from '../../types/platform-types';
-import {
-  LLMFactory,
-} from '@qckfx/agent/node/providers';
 import { SessionState } from '../../types/session';
-import {
-  createLogger,
-  LogLevel
-} from '../../utils/logger';
 import { PreviewContentType, ToolPreviewState } from '../../types/preview';
 import { StoredMessage, SessionListEntry } from '../../types/session';
 import { createToolExecutionManager } from './tool-execution'; 
 import { ToolExecutionManagerImpl } from './tool-execution/ToolExecutionManagerImpl';
 import { createPreviewManager, PreviewManagerImpl } from './PreviewManagerImpl';
-import { sessionManager } from './SessionManager';
+import { SessionManager, sessionManager } from './SessionManager';
 import { previewService } from './preview/PreviewService';
 import { ServerError, AgentBusyError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import * as SessionPersistence from './SessionPersistence';
 import crypto from 'crypto';
 import { container, TimelineService } from '../container';
-
-// Default system prompt for the agent
-const DEFAULT_SYSTEM_PROMPT = "You are a precise, efficient AI assistant that helps users with software development tasks.";
+import { WebSocketService } from './WebSocketService';
+import { WebSocketEvent } from '../../types/websocket';
 
 /**
  * Events emitted by the agent service
@@ -90,10 +80,6 @@ export enum AgentServiceEvent {
 export interface AgentServiceConfig {
   /** Default model to use */
   defaultModel?: string;
-  /** Permission mode */
-  permissionMode?: 'auto' | 'interactive';
-  /** Tools that are always allowed without permission */
-  allowedTools?: string[];
   /** Whether to enable prompt caching */
   cachingEnabled?: boolean;
 }
@@ -143,7 +129,7 @@ export class AgentService extends EventEmitter {
   private activeProcessingSessionIds: Set<string> = new Set();
   private sessionFastEditMode: Map<string, boolean> = new Map();
   private activeTools: Map<string, ActiveTool[]> = new Map();
-  private sessionExecutionAdapterTypes: Map<string, 'local' | 'docker' | 'e2b'> = new Map();
+  private sessionExecutionAdapterTypes: Map<string, 'local' | 'docker' | 'remote'> = new Map();
   private sessionE2BSandboxIds: Map<string, string> = new Map();
   private activeToolArgs = new Map<string, Record<string, unknown>>();
   
@@ -201,8 +187,6 @@ export class AgentService extends EventEmitter {
     this.config = {
       ...config,
       defaultModel: config.defaultModel,
-      permissionMode: config.permissionMode || 'interactive',
-      allowedTools: config.allowedTools || ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
       cachingEnabled: config.cachingEnabled !== undefined ? config.cachingEnabled : true,
     };
     
@@ -507,9 +491,7 @@ export class AgentService extends EventEmitter {
   }
   
   // When a tool execution starts (from the onToolExecutionStart callback)
-  private handleToolExecutionStart(executionId: string, toolId: string, toolUseId: string, args: Record<string, unknown>, sessionId: string): void {
-    const tool = this.agent?.toolRegistry.getTool(toolId);
-    const toolName = tool?.name || toolId;
+  private handleToolExecutionStart(executionId: string, toolId: string, toolName: string, toolUseId: string, args: Record<string, unknown>, sessionId: string): void {
     
     serverLogger.debug(`Generated executionId for tool execution: ${executionId}`, {
       toolUseId,
@@ -667,6 +649,8 @@ export class AgentService extends EventEmitter {
    * @param model Model name to use for this query
    */
   public async processQuery(
+    sessionManager: SessionManager,
+    webSocketService: WebSocketService,
     sessionId: string,
     query: string,
     model: string
@@ -676,6 +660,9 @@ export class AgentService extends EventEmitter {
   }> {
     // Get the session
     const session = sessionManager.getSession(sessionId);
+    // Get the execution adapter type and sandbox ID for this session
+    const executionAdapterType = this.getExecutionAdapterType(sessionId) || 'local';
+    const e2bSandboxId = this.getE2BSandboxId(sessionId);
 
     // Check if the session is already processing
     if (session.isProcessing || this.activeProcessingSessionIds.has(sessionId)) {
@@ -687,15 +674,6 @@ export class AgentService extends EventEmitter {
       // Note: Abort status will be cleared in AgentRunner.processQuery when a new message is received
       this.activeProcessingSessionIds.add(sessionId);
       
-      // Create a new controller if none exists or if the current one is already used
-      if (!session.state.coreSessionState.abortController) {
-        session.state.coreSessionState.abortController = new AbortController();
-        console.log(`[AgentService] Created new AbortController for session ${sessionId}`);
-      } else if (session.state.coreSessionState.abortController.signal.aborted && !isSessionAborted(sessionId)) {
-        // We already processed the abort, safe to refresh
-        session.state.coreSessionState.abortController = new AbortController();
-        console.log(`[AgentService] Replaced used AbortController for session ${sessionId}`);
-      }
       // Do NOT clearSessionAborted() here - that will be done in AgentRunner after abort is handled
       // Why? Because:
       // 1. If we clear here, we'd lose the abort status that AgentRunner uses to detect aborts
@@ -712,92 +690,30 @@ export class AgentService extends EventEmitter {
       // Emit event for processing started
       this.emit(AgentServiceEvent.PROCESSING_STARTED, { sessionId });
 
-      // Create the model provider with the specified model
-      const modelProvider = LLMFactory.createProvider({
-        model: model,
-        cachingEnabled: this.config.cachingEnabled,
-      });
-
-      // Create a logger for this session
-      const logger = createLogger({
-        level: LogLevel.INFO,
-        formatOptions: {
-          showTimestamp: true,
-          showPrefix: true,
-          colors: true,
-        },
-      });
-
-      // Create a prompt manager
-      const promptManager = createPromptManager(DEFAULT_SYSTEM_PROMPT);
-
-      // Get the execution adapter type and sandbox ID for this session
-      const executionAdapterType = this.getExecutionAdapterType(sessionId) || 'local';
-      const e2bSandboxId = this.getE2BSandboxId(sessionId);
-      
-      // Create appropriate environment config based on execution type
-      let environment;
-      
-      if (executionAdapterType === 'e2b' && e2bSandboxId) {
-        environment = { 
-          type: 'e2b' as const, 
-          sandboxId: e2bSandboxId 
-        };
-      } else if (executionAdapterType === 'docker') {
-        environment = { type: 'docker' as const };
-      } else {
-        // Default to local
-        environment = { type: 'local' as const };
-      }
-      
-      if (!session.state.coreSessionState.executionAdapter) {
-        const adapterResult = await createExecutionAdapter({
-          type: executionAdapterType,
-          docker: {
-            projectRoot: process.cwd(),
+      this.agent = await Agent.create({
+        config: {
+          defaultModel: model,
+          cachingEnabled: this.config.cachingEnabled || true,
+          environment: {
+            type: executionAdapterType,
           },
-          logger,
-          sessionId
-        });
-        session.state.coreSessionState.executionAdapter = adapterResult.adapter;
-      }
-      
-      // Generate directory structure map only if it hasn't been generated for this session yet
-      if (!session.state.coreSessionState.directoryStructureGenerated) {
-        try {
-          // Get the current working directory using the execution adapter
-          const cwdResult = await session.state.coreSessionState.executionAdapter.executeCommand('agent-service-get-cwd', 'pwd');
-          const cwd = cwdResult.stdout.trim() || process.cwd();
-          
-          // Use the execution adapter's generateDirectoryMap method directly
-          const directoryStructure = await session.state.coreSessionState.executionAdapter.generateDirectoryMap(cwd, 10);
-          
-          // Set the directory structure in the prompt manager
-          promptManager.setDirectoryStructurePrompt(directoryStructure);
-          
-          // Mark that we've generated directory structure for this session
-          session.state.coreSessionState.directoryStructureGenerated = true;
-          console.log('[dir-map] generated for session ' + sessionId);
-        } catch (error) {
-          console.warn(`AgentService: Failed to generate directory structure map: ${(error as Error).message}`);
-        }
-      } else {
-        console.log('AgentService: Using existing directory structure map for this session');
-      }
-      
-      // Create the agent with permission handling based on configuration
-      this.agent = createAgent({
-        modelProvider,
-        promptManager, // Pass the configured prompt manager
-        environment,
-        logger,
-        permissionUIHandler: {
-          requestPermission: (toolId: string, args: Record<string, unknown>): Promise<boolean> => {
-            // If auto-approve mode is enabled and the tool is in the allowed list
-            if (this.config.permissionMode === 'auto' && this.config.allowedTools?.includes(toolId)) {
-              return Promise.resolve(true);
-            }
-
+          logLevel: 'debug',
+          experimentalFeatures: {}
+        },
+        callbacks: {
+          getRemoteId: async () => {
+            return e2bSandboxId!;
+          },
+          onCheckpointReady: async (cp: CheckpointData) => {
+            sessionManager.checkpointEventHandler(cp);
+          },
+          onEnvironmentStatusChanged: async (event: EnvironmentStatusData) => {
+            webSocketService.io.to(sessionId).emit(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, event);
+          },
+          onProcessingCompleted: async (event: ProcessingCompletedData) => {
+            webSocketService.io.to(sessionId).emit(WebSocketEvent.PROCESSING_COMPLETED, {sessionId, result: event.response});
+          },
+          onPermissionRequested: async ({toolId, args}: {toolId: string, args: Record<string, unknown>}) => {
             // For interactive mode, find or create a tool execution for this permission request
             let executionId: string;
             const activeTools = this.activeTools.get(sessionId) || [];
@@ -840,40 +756,40 @@ export class AgentService extends EventEmitter {
               };
               
               // Add the listener
-              this.toolExecutionManager.on(ToolExecutionEvent.PERMISSION_RESOLVED, onPermissionResolved);
+              this.toolExecutionManager.on(ToolExecutionEvent.PERMISSION_RESOLVED, onPermissionResolved); 
             });
-          },
-        },
-      });
+          }
+        }
+      })
       
       // Set Fast Edit Mode on the agent's permission manager based on this session's setting
       const isFastEditModeEnabled = this.getFastEditMode(sessionId);
-      this.agent.permissionManager.setFastEditMode(isFastEditModeEnabled);
+      this.agent.setFastEditMode(isFastEditModeEnabled);
       
       // Store the execution adapter type in the session
       // Get the actual type from the agent's environment or default to 'local'
-      const executionType = this.agent.environment?.type as 'local' | 'docker' | 'e2b' || 'docker';
+      const executionType = this.agent.environment as 'local' | 'docker' | 'remote' || 'docker';
       this.setExecutionAdapterType(sessionId, executionType);
 
       // Collect tool results
       const toolResults: ToolResultEntry[] = [];
       
       // Register callbacks for tool execution events using the new API
-      const unregisterStart = this.agent.toolRegistry.onToolExecutionStart(
-        (executionId: string, toolId: string, toolUseId: string, args: Record<string, unknown>, _context: unknown) => {
-          this.handleToolExecutionStart(executionId, toolId, toolUseId, args, sessionId);
+      const unregisterStart = this.agent.on(ToolExecutionEvents.STARTED, 
+        ({id, toolId, toolName, toolUseId, args}: {id: string, toolId: string, toolName: string, toolUseId: string, args: Record<string, unknown>}) => {
+          this.handleToolExecutionStart(id, toolId, toolName, toolUseId, args, sessionId);
         }
       );
       
-      const unregisterComplete = this.agent.toolRegistry.onToolExecutionComplete(
-        (executionId: string, toolId: string, args: Record<string, unknown>, result: unknown, executionTime: number) => {
-          this.handleToolExecutionComplete(executionId, toolId, args, result, executionTime, sessionId);
+      const unregisterComplete = this.agent.on(ToolExecutionEvents.COMPLETED, 
+        ({id, toolId, args, result, executionTime}: {id: string, toolId: string, args: Record<string, unknown>, result?: unknown, executionTime?: number}) => {
+          this.handleToolExecutionComplete(id, toolId, args, result, executionTime!, sessionId);
         }
       );
       
-      const unregisterError = this.agent.toolRegistry.onToolExecutionError(
-        (executionId: string, toolId: string, args: Record<string, unknown>, error: Error) => {
-          this.handleToolExecutionError(executionId, toolId, args, error, sessionId);
+      const unregisterError = this.agent.on(ToolExecutionEvents.ERROR,
+        ({id, toolId, args, error}: {id: string, toolId: string, args: Record<string, unknown>, error?: {message: string, stack?: string}}) => {
+          this.handleToolExecutionError(id, toolId, args, new Error(error?.message || 'Unknown error'), sessionId);
         }
       );
       
@@ -1070,7 +986,7 @@ export class AgentService extends EventEmitter {
 
     // Use the centralized session abort mechanism to get timestamp
     // This will update the abort registry and emit events
-    const abortTimestamp = setSessionAborted(sessionId);
+    const abortTimestamp = Agent.setSessionAborted(sessionId);
     
     // Store the timestamp in the session state
     session.state.coreSessionState.abortedAt = abortTimestamp;
@@ -1246,7 +1162,7 @@ export class AgentService extends EventEmitter {
   /**
    * Set the execution adapter type for a session
    */
-  public setExecutionAdapterType(sessionId: string, type: 'local' | 'docker' | 'e2b'): boolean {
+  public setExecutionAdapterType(sessionId: string, type: 'local' | 'docker' | 'remote'): boolean {
     try {
       // Verify the session exists (will throw if not found)
       const session = sessionManager.getSession(sessionId);
@@ -1277,7 +1193,7 @@ export class AgentService extends EventEmitter {
   /**
    * Get the execution adapter type for a session
    */
-  public getExecutionAdapterType(sessionId: string): 'local' | 'docker' | 'e2b' | undefined {
+  public getExecutionAdapterType(sessionId: string): 'local' | 'docker' | 'remote' | undefined {
     try {
       // First check our map for the most current value
       const typeFromMap = this.sessionExecutionAdapterTypes.get(sessionId);
@@ -1394,7 +1310,7 @@ export class AgentService extends EventEmitter {
   public async createExecutionAdapterForSession(
     sessionId: string, 
     options: { 
-      type?: 'local' | 'docker' | 'e2b';
+      type?: 'local' | 'docker' | 'remote';
       e2bSandboxId?: string;
     } = {}
   ): Promise<void> {
@@ -1420,7 +1336,7 @@ export class AgentService extends EventEmitter {
       };
       
       // Add E2B-specific options if needed
-      if (options.type === 'e2b' && options.e2bSandboxId) {
+      if (options.type === 'remote' && options.e2bSandboxId) {
         adapterOptions.e2b = {
           sandboxId: options.e2bSandboxId
         };
@@ -1474,7 +1390,7 @@ export class AgentService extends EventEmitter {
       // Wait for Docker initialization if it's in progress and we're using Docker
       if (!session.state.coreSessionState.executionAdapter) {
         let adapter: ExecutionAdapter | null;
-        let type: 'local' | 'docker' | 'e2b';
+        let type: 'local' | 'docker' | 'remote';
         if ((options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) && 
             this.dockerInitializationPromise) {
           console.log('🚩🚩🚩dockerInitializationPromise', this.dockerInitializationPromise);

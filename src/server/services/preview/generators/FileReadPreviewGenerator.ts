@@ -10,7 +10,7 @@ import {
   TextPreviewData
 } from '../../../../types/preview';
 import { PreviewGenerator, PreviewOptions } from '../PreviewGenerator';
-import { FileReadToolResult } from '@qckfx/agent/node/tools';
+import type { FileReadToolResult } from '@qckfx/agent/internals';
 import { serverLogger } from '../../../logger';
 import path from 'path';
 

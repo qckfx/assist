@@ -2,13 +2,13 @@
  * API controller functions
  */
 import { Request, Response, NextFunction } from 'express';
-import { Session, sessionManager } from '../services/SessionManager';
+import { Session, SessionManager } from '../services/SessionManager';
 import { AgentServiceRegistry } from '../container';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
 import { AuthenticatedRequest } from '../middleware/userContext';
 import crypto from 'crypto';
-import { rollbackSession as performRollback } from '@qckfx/agent';
+import { Agent, ContextWindow } from '@qckfx/agent';
 import {
   StartSessionRequest,
   QueryRequest,
@@ -21,8 +21,7 @@ import {
 import { getSessionStatePersistence } from '../services/SessionStatePersistence';
 import { TimelineService as TimelineServiceToken } from '../container';
 import { AgentServiceConfig } from '../services/AgentService';
-import { createContextWindow } from '../../types/platform-types';
-
+import { WebSocketService } from '../services/WebSocketService';
 /**
  * Start a new agent session or reconnect to an existing one
  * @route POST /api/start
@@ -33,14 +32,10 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
     let session: Session;
     
     // Get the agent service registry from the container
-    console.log('🚩 API Request: startSession');
     const appInstance = req.app;
-    console.log('🚩 Got app instance:', !!appInstance);
     const containerInstance = appInstance.locals.container;
-    console.log('🚩 Got container instance:', !!containerInstance);
     
     if (!containerInstance) {
-      console.error('🚩 Container instance is missing from app.locals');
       res.status(500).json({
         success: false,
         message: 'Server misconfiguration: container not initialized'
@@ -49,7 +44,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
     }
     
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
-    console.log('🚩 Got agentServiceRegistry:', !!agentServiceRegistry);
+    const sessionManager = containerInstance.get(SessionManager);
     
     // Check if sessionId is provided for reconnection
     if (body.sessionId) {
@@ -74,8 +69,6 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
         // Get default agent service config
         const defaultAgentServiceConfig: AgentServiceConfig = {
           defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
-          permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',
-          allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
           cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
         };
         
@@ -84,7 +77,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
         
         // Create a state object that includes the agentServiceConfig
         const state = savedSession.sessionState || { 
-          contextWindow: createContextWindow(),
+          contextWindow: new ContextWindow(),
         };
         
         // Convert SavedSessionData to Session
@@ -94,7 +87,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
           lastActiveAt: new Date(savedSession.updatedAt),
           state: state,
           isProcessing: false,
-          executionAdapterType: savedSession.sessionState?.coreSessionState?.executionAdapterType as 'local' | 'docker' | 'e2b' || 'docker',
+          executionAdapterType: savedSession.sessionState?.coreSessionState?.executionAdapterType as 'local' | 'docker' | 'remote' || 'docker',
           e2bSandboxId: savedSession.sessionState?.coreSessionState?.e2bSandboxId,
           agentServiceConfig: agentServiceConfig
         };
@@ -108,7 +101,6 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       const executionAdapterType = body?.config?.executionAdapterType || 'docker';
       const e2bSandboxId = body?.config?.e2bSandboxId;
      
-      console.log('🚩🚩🚩executionAdapterType', executionAdapterType);
       // Create a new session with provided environment settings
       session = sessionManager.createSession({
         executionAdapterType,
@@ -133,7 +125,6 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       e2bSandboxId: session.e2bSandboxId
     });
     
-    console.log('🚩🚩🚩session', JSON.stringify(session, null, 2));
     // Return the session info with environment details
     res.status(201).json({
       sessionId: session.id,
@@ -171,6 +162,7 @@ export async function rollbackSessionToCheckpoint(
     // Get the agent service registry from the container
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
+    const sessionManager = containerInstance.get(SessionManager);
     
     // Retrieve the session (throws if not found)
     const session = sessionManager.getSession(sessionId);
@@ -204,7 +196,7 @@ export async function rollbackSessionToCheckpoint(
     
     try {
       // Use the SDK's rollbackSession function
-      const commitSha = await performRollback(sessionId, coreState, repoRoot, toolExecutionId);
+      const commitSha = await Agent.performRollback(sessionId, coreState, repoRoot, toolExecutionId);
       
       // Get the TimelineService from the container to update the timeline
       const timelineService = containerInstance.get(TimelineServiceToken);
@@ -242,27 +234,14 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
-    
+    const sessionManager = containerInstance.get(SessionManager);
+    const webSocketService = containerInstance.get(WebSocketService);
+
     // Get the specific agent service for this session
     const agentService = agentServiceRegistry.getServiceForSession(sessionId);
     
-    // Get the timeline service from the app container
-    const appForTimeline = req.app;
-    const containerForTimeline = appForTimeline.locals.container;
-    
     // Use the imported TimelineServiceToken as the token for container.get
-    let timelineService;
-    try {
-      if (containerForTimeline) {
-        timelineService = containerForTimeline.get(TimelineServiceToken);
-      }
-    } catch (err) {
-      serverLogger.error('Error getting TimelineService from container:', err);
-    }
-    
-    if (!timelineService) {
-      serverLogger.warn('Timeline service not available in container for recording user message');
-    }
+    const timelineService = containerInstance.get(TimelineServiceToken);
     
     // Start processing the query - this is asynchronous
     // We'll respond immediately and let the client poll for updates
@@ -296,7 +275,7 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
       // Start agent processing in the background 
       // AgentRunner will add the user message to contextWindow itself
       serverLogger.info(`Starting agent processing for session ${sessionId} with model ${model}`);
-      agentService.processQuery(sessionId, query, model)
+      agentService.processQuery(sessionManager, webSocketService, sessionId, query, model)
         .catch((error: unknown) => {
           serverLogger.error('Error processing query:', error, LogCategory.AGENT);
         });
@@ -396,13 +375,13 @@ export async function getStatus(req: Request, res: Response, next: NextFunction)
   try {
     const { sessionId } = req.query as unknown as StatusRequest;
     
-    // Get the session
-    const session = sessionManager.getSession(sessionId);
-    
     // Get the agent service registry from the container
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
+    const sessionManager = containerInstance.get(SessionManager);
+    // Get the session
+    const session = sessionManager.getSession(sessionId);
     
     // Get the specific agent service for this session
     const agentService = agentServiceRegistry.getServiceForSession(sessionId);
@@ -436,6 +415,7 @@ export async function saveSessionState(req: Request, res: Response, next: NextFu
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
+    const sessionManager = containerInstance.get(SessionManager);
     
     // Get the specific agent service for this session
     const agentService = agentServiceRegistry.getServiceForSession(sessionId);
@@ -465,6 +445,7 @@ export async function listPersistedSessions(req: Request, res: Response, next: N
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
+    const sessionManager = containerInstance.get(SessionManager);
     
     // For operations that don't require a specific session, use the first available
     // In a multi-tenant environment, this might need refinement
@@ -491,6 +472,7 @@ export async function deletePersistedSession(req: Request, res: Response, next: 
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
+    const sessionManager = containerInstance.get(SessionManager);
     
     // For operations that don't require a specific session, use the first available
     // In a multi-tenant environment, this might need refinement
@@ -525,6 +507,10 @@ export async function validateSessionIds(req: Request, res: Response, next: Next
     
     // Get session state persistence
     const sessionStatePersistence = getSessionStatePersistence();
+
+    const app = req.app;
+    const container = app.locals.container;
+    const sessionManager = container.get(SessionManager);
     
     // Log session validation with the SESSION category to make it easy to filter
     serverLogger.debug(`Validating ${sessionIds.length} session IDs`, LogCategory.SESSION);
@@ -570,6 +556,7 @@ export async function toggleFastEditMode(req: Request, res: Response, next: Next
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
+    const sessionManager = containerInstance.get(SessionManager);
     
     // Get the specific agent service for this session
     const agentService = agentServiceRegistry.getServiceForSession(sessionId);
@@ -612,6 +599,7 @@ export async function getFastEditMode(req: Request, res: Response, next: NextFun
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
     const agentServiceRegistry = containerInstance.get(AgentServiceRegistry);
+    const sessionManager = containerInstance.get(SessionManager);
     
     // Get the specific agent service for this session
     const agentService = agentServiceRegistry.getServiceForSession(sessionId);

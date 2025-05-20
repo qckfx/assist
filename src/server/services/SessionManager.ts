@@ -2,14 +2,14 @@
  * Session management service
  */
 import { v4 as uuidv4 } from 'uuid';
-import { ContextWindow, clearSessionAborted } from '../../types/platform-types';
 import { SessionState } from '../../types/session';
 import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
 import { AgentServiceConfig } from './AgentService';
 // Import CheckpointEvents from agent package
-import { CheckpointEvents, CheckpointPayload } from '@qckfx/agent';
+import { Agent, ContextWindow } from '@qckfx/agent';
+import type { CheckpointData } from '@qckfx/agent';
 import * as SessionPersistence from './SessionPersistence';
 import { getSessionStatePersistence } from './sessionPersistenceProvider';
 
@@ -28,7 +28,7 @@ export interface Session {
   /** Whether the session is currently processing a query */
   isProcessing: boolean;
   /** The type of execution adapter used for this session */
-  executionAdapterType: 'local' | 'docker' | 'e2b';
+  executionAdapterType: 'local' | 'docker' | 'remote';
   /** E2B sandbox ID (only applicable when executionAdapterType is 'e2b') */
   e2bSandboxId?: string;
   /** Agent service configuration for this session */
@@ -67,7 +67,7 @@ export class SessionManager {
   private config: Required<SessionManagerConfig>;
   private cleanupInterval?: NodeJS.Timeout;
   private eventListeners: Map<string, Array<(...args: any[]) => void>> = new Map();
-  private checkpointEventHandler: ((cp: CheckpointPayload) => Promise<void>) | null = null;
+  checkpointEventHandler: ((cp: CheckpointData) => Promise<void>);
 
   constructor(config: SessionManagerConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -77,7 +77,7 @@ export class SessionManager {
     }
     
     // Create the checkpoint event handler
-    this.checkpointEventHandler = async (cp: CheckpointPayload) => {
+    this.checkpointEventHandler = async (cp: CheckpointData) => {
       try {
         // Save the Git bundle to disk
         await SessionPersistence.saveBundle(cp.sessionId, cp.bundle);
@@ -104,9 +104,6 @@ export class SessionManager {
         serverLogger.error(`Failed to process checkpoint for session ${cp.sessionId}:`, error);
       }
     };
-    
-    // Subscribe to checkpoint events
-    CheckpointEvents.on('checkpoint:ready', this.checkpointEventHandler);
   }
 
   /**
@@ -114,7 +111,7 @@ export class SessionManager {
    * @param config Optional configuration for the session
    */
   public createSession(config?: {
-    executionAdapterType?: 'local' | 'docker' | 'e2b';
+    executionAdapterType?: 'local' | 'docker' | 'remote';
     e2bSandboxId?: string;
     agentServiceConfig?: AgentServiceConfig;
   }): Session {
@@ -139,8 +136,6 @@ export class SessionManager {
     // Get default agent service config
     const defaultAgentServiceConfig: AgentServiceConfig = {
       defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
-      permissionMode: process.env.QCKFX_PERMISSION_MODE as 'auto' | 'interactive' || 'interactive',
-      allowedTools: ['ReadTool', 'GlobTool', 'GrepTool', 'LSTool'],
       cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
     };
     
@@ -151,6 +146,7 @@ export class SessionManager {
       lastActiveAt: new Date(),
       state: { 
         coreSessionState: { 
+          id: uuidv4().toString(),
           contextWindow: new ContextWindow(),
           agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
           abortController: new AbortController(),
@@ -270,7 +266,7 @@ export class SessionManager {
     serverLogger.info(`Deleted session ${sessionId}`, LogCategory.SESSION);
     
     // Clean up entries in the aborted sessions map to prevent memory leaks
-    clearSessionAborted(sessionId);
+    Agent.clearSessionAborted(sessionId);
     
     // Emit session:removed event to notify listeners
     this.emit('session:removed', sessionId);
@@ -334,12 +330,6 @@ export class SessionManager {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;
-    }
-    
-    // Remove checkpoint event listener to prevent memory leaks
-    if (this.checkpointEventHandler) {
-      CheckpointEvents.off('checkpoint:ready', this.checkpointEventHandler);
-      this.checkpointEventHandler = null;
     }
   }
 

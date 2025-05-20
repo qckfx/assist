@@ -59,7 +59,7 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
   createExecution(
     sessionId: string, 
     toolId: string, 
-    toolName: string, 
+    toolName: string,
     executionId: string,
     toolUseId: string,
     args: Record<string, unknown>

@@ -3,10 +3,9 @@
  */
 
 import { Agent as QckfxAgent } from '@qckfx/agent';
-import { RepositoryEnvironment } from './platform-types';
 
 export interface AgentConfig {
-  environment: RepositoryEnvironment;
+  environment: 'local' | 'docker' | 'remote';
   logger?: {
     debug: (message: string, ...args: unknown[]) => void;
     info: (message: string, ...args: unknown[]) => void;

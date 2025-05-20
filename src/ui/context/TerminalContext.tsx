@@ -4,7 +4,7 @@ import { MessageType } from '../components/Message';
 import { WebSocketEvent, SessionData } from '../types/api';
 import { useWebSocketContext } from './WebSocketContext';
 import { PreviewMode } from '../../types/preview';
-import { ContentPart } from '../../types/platform-types';
+import type { ContentPart } from '@qckfx/agent/browser';
 
 // Initial state
 const initialState: TerminalState = {

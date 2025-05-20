@@ -20,4 +20,4 @@ export interface ExecutionCompletedWithPreviewEventData {
   preview?: ToolPreviewState;
 }
 
-export type { ToolExecutionStatus } from '@qckfx/agent/browser/internals';
+export type { ToolExecutionStatus } from '@qckfx/agent';
