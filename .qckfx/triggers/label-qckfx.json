@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/@qckfx/schema@latest/trigger-config.schema.json",
+  "source": "github",
+  "kind": "issue",
+  "action": "labeled",
+  "filter": {
+    "label": "qckfx"
+  },
+  "agent": "default"
+}

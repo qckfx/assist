@@ -1,0 +1,9 @@
+{
+  "$schema": "https://unpkg.com/@qckfx/sdk-schema@latest/agent-config.schema.json",
+  "environment": {
+    "type": "remote"
+  },
+  "defaultModel": "claude-sonnet-3-7",
+  "systemPrompt": "You are a helpful assistant that autonomously performs tasks when triggered.",
+  "tools": []
+}
