@@ -4,6 +4,6 @@
     "type": "remote"
   },
   "defaultModel": "claude-sonnet-3-7",
-  "systemPrompt": "You are a helpful assistant that autonomously performs tasks when triggered.",
+  "systemPrompt": "You are a helpful assistant that autonomously completes tasks.",
   "tools": []
 }
