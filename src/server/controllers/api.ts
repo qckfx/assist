@@ -178,28 +178,13 @@ export async function rollbackSessionToCheckpoint(
       return;
     }
 
-    const adapter = coreState.executionAdapter;
-
-    // Attempt to derive repository root from inside the execution environment.
-    let repoRoot = process.cwd();
-    try {
-      if (typeof adapter.executeCommand === 'function') {
-        const pwdResult = await adapter.executeCommand('rollback-get-cwd', 'pwd');
-        if (pwdResult?.stdout) {
-          repoRoot = pwdResult.stdout.trim() || repoRoot;
-        }
-      }
-    } catch {
-      // Fallback to default repoRoot
-    }
-
     const toolExecutionId = body?.toolExecutionId ?? '';
 
     serverLogger.info(`Rolling back session ${sessionId} to tool execution ${toolExecutionId || 'latest'}`, LogCategory.SESSION);
     
     try {
       // Use the SDK's rollbackSession function
-      const commitSha = await Agent.performRollback(sessionId, coreState, repoRoot, toolExecutionId);
+      const restoredRepos = await Agent.performRollback(sessionId, coreState, toolExecutionId);
       
       // Get the TimelineService from the container to update the timeline
       const timelineService = containerInstance.get(TimelineServiceToken);
@@ -214,8 +199,20 @@ export async function rollbackSessionToCheckpoint(
         }
       }
       
-      serverLogger.info(`Rollback successful for session ${sessionId}, commit: ${commitSha}`, LogCategory.SESSION);
-      res.status(200).json({ success: true, sessionId, toolExecutionId });
+      const repoCount = restoredRepos.size;
+      const repoList = Array.from(restoredRepos.entries()).map(([path, sha]) => ({
+        path,
+        sha,
+        name: path.split('/').pop() || path
+      }));
+      
+      serverLogger.info(`Rollback successful for session ${sessionId}, restored ${repoCount} repositories`, LogCategory.SESSION);
+      res.status(200).json({ 
+        success: true, 
+        sessionId, 
+        toolExecutionId,
+        restoredRepositories: repoList
+      });
     } catch (error) {
       serverLogger.error(`Rollback failed for session ${sessionId}:`, error, LogCategory.SESSION);
       res.status(500).json({ success: false, message: (error as Error).message || 'Rollback failed' });
