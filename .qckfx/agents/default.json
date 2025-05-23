@@ -3,7 +3,7 @@
   "environment": {
     "type": "remote"
   },
-  "defaultModel": "claude-sonnet-3-7",
+  "defaultModel": "claude-3-7-sonnet",
   "systemPrompt": "You are a helpful assistant that autonomously completes tasks.",
   "tools": []
 }
