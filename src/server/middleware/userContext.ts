@@ -9,6 +9,13 @@ import { IUserManager, UserManagerToken } from '../services/UserManager';
 import { AuthService, AuthServiceToken } from '../services/AuthService';
 import { serverLogger } from '../logger';
 import { LogCategory } from '../../utils/logger';
+import * as crypto from 'crypto';
+
+// ---------------------------------------------------------------------------
+// In-memory quota tracking for anonymous, signed requests
+// Keyed by GitHub installation ID
+// ---------------------------------------------------------------------------
+const anonQuota = new Map<string, { count: number; resetAt: number }>();
 
 /**
  * Extended request with user authentication information
@@ -119,9 +126,115 @@ export function userContext(req: Request, res: Response, next: NextFunction) {
       }
     }
     
-    // No valid user found and no pending token
+    // ---------------------------------------------------------------
+    // Anonymous (free-tier) signature-based access
+    // ---------------------------------------------------------------
+    // The main application can obtain up to N free sessions for a
+    // GitHub installation *without* a user account.  It authenticates
+    // the request by sending a short-lived HMAC signature so that the
+    // header cannot be forged by a 3rd party now that the source code
+    // is public.
+    //
+    // Required headers (all must be present):
+    //   X-Qckfx-Anon:          "1"   – flag that this is the anon flow
+    //   X-Qckfx-Ts:           <unix seconds>
+    //   X-Qckfx-Sig:          <hex hmac(ts:installationId)>
+    //   X-GH-Installation:    <github installation id>
+    // ---------------------------------------------------------------
+
+    const anonFlag = req.header('X-Qckfx-Anon');
+    if (multiUser && anonFlag === '1') {
+      const tsHeader = req.header('X-Qckfx-Ts');
+      const sigHeader = req.header('X-Qckfx-Sig');
+      const installationId = req.header('X-GH-Installation');
+
+      if (!tsHeader || !sigHeader || !installationId) {
+        serverLogger.warn('Anon request missing required headers', LogCategory.AUTH);
+        res.status(401).json({ error: 'invalid-anon-request' });
+        return;
+      }
+
+      const timestamp = parseInt(tsHeader, 10);
+      if (Number.isNaN(timestamp)) {
+        serverLogger.warn('Anon request – invalid timestamp', LogCategory.AUTH);
+        res.status(401).json({ error: 'invalid-anon-request' });
+        return;
+      }
+
+      // Check clock skew (5 minutes)
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (Math.abs(nowSec - timestamp) > 300) {
+        serverLogger.warn('Anon request – timestamp outside allowed window', LogCategory.AUTH);
+        res.status(401).json({ error: 'invalid-anon-request' });
+        return;
+      }
+
+      const secret = process.env.ANON_SERVICE_SECRET;
+      if (!secret) {
+        serverLogger.error('ANON_SERVICE_SECRET not configured', LogCategory.AUTH);
+        res.status(500).json({ error: 'server-misconfiguration' });
+        return;
+      }
+
+      // Compute expected HMAC
+      const expected = crypto
+        .createHmac('sha256', secret)
+        .update(`${timestamp}:${installationId}`)
+        .digest('hex');
+
+      // Use timing-safe comparison
+      const signaturesMatch =
+        sigHeader.length === expected.length &&
+        crypto.timingSafeEqual(Buffer.from(sigHeader, 'hex'), Buffer.from(expected, 'hex'));
+
+      if (!signaturesMatch) {
+        serverLogger.warn('Anon request – signature mismatch', LogCategory.AUTH);
+        res.status(401).json({ error: 'invalid-anon-request' });
+        return;
+      }
+
+      // -----------------------------------------------------------
+      // Quota enforcement (FREE_ANON_SESSIONS per installationId)
+      // -----------------------------------------------------------
+      const freeLimit = parseInt(process.env.FREE_ANON_SESSIONS || '5', 10);
+
+      // Reset window every 24h
+      const WINDOW_MS = 24 * 60 * 60 * 1000;
+
+      interface QuotaRecord { count: number; resetAt: number }
+      const record = anonQuota.get(installationId) as QuotaRecord | undefined;
+      const nowMs = Date.now();
+
+      const isSessionStart = req.method === 'POST' && req.path === '/start';
+
+      if (!record || nowMs > record.resetAt) {
+        // Start a new window – only count if this request begins a session
+        anonQuota.set(installationId, { count: isSessionStart ? 1 : 0, resetAt: nowMs + WINDOW_MS });
+      } else {
+        if (isSessionStart) {
+          record.count += 1;
+        }
+
+        if (record.count > freeLimit) {
+          serverLogger.warn(`Anon quota exceeded for installation ${installationId}`, LogCategory.AUTH);
+          res.status(402).json({ error: 'quota-exceeded' });
+          return;
+        }
+      }
+
+      // All good – inject a pseudo-user so downstream code behaves
+      (req as AuthenticatedRequest).user = {
+        token: `anon-${installationId}`,
+        llmApiKey: process.env.LLM_API_KEY || '',
+      };
+
+      serverLogger.info(`Anon access granted for installation ${installationId}`, LogCategory.AUTH);
+      return next();
+    }
+
+    // No valid user found and no pending token, not an authorised anon request
     console.log('[userContext] No valid user or pending token');
-    
+
     // Multi-user mode requires authentication for all protected routes,
     // unless it's an authentication-related route
     if (multiUser) {
@@ -136,7 +249,7 @@ export function userContext(req: Request, res: Response, next: NextFunction) {
       // bounce between the login and home pages.
       const isAuthRoute = req.path.startsWith('/auth/');
       const isHealthCheck = req.path === '/health';
-      
+
       if (!isAuthRoute && !isHealthCheck) {
         console.log(`[userContext] Blocking unauthenticated access to ${req.path}`);
         serverLogger.warn(`Unauthenticated access attempt to ${req.path}`, LogCategory.AUTH);
@@ -144,7 +257,7 @@ export function userContext(req: Request, res: Response, next: NextFunction) {
         return;
       }
     }
-    
+
     // Proceed for auth routes or in single-user mode
     console.log('[userContext] Allowing unauthenticated access to auth route or in single-user mode');
     return next();

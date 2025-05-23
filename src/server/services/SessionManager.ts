@@ -29,8 +29,10 @@ export interface Session {
   isProcessing: boolean;
   /** The type of execution adapter used for this session */
   executionAdapterType: 'local' | 'docker' | 'remote';
-  /** E2B sandbox ID (only applicable when executionAdapterType is 'e2b') */
-  e2bSandboxId?: string;
+  /** Remote sandbox ID (only applicable when executionAdapterType is 'remote') */
+  remoteId?: string;
+  /** Root directory containing multiple git repos (for remote environments) */
+  projectsRoot?: string;
   /** Agent service configuration for this session */
   agentServiceConfig: AgentServiceConfig;
 }
@@ -112,7 +114,8 @@ export class SessionManager {
    */
   public createSession(config?: {
     executionAdapterType?: 'local' | 'docker' | 'remote';
-    e2bSandboxId?: string;
+    remoteId?: string;
+    projectsRoot?: string;
     agentServiceConfig?: AgentServiceConfig;
   }): Session {
     // Check if we've reached the maximum number of sessions
@@ -151,12 +154,15 @@ export class SessionManager {
           agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
           abortController: new AbortController(),
           executionAdapterType: config?.executionAdapterType || 'docker',
+          remoteId: config?.remoteId,
+          projectsRoot: config?.projectsRoot,
         },
         checkpoints: []
       },
       isProcessing: false,
       executionAdapterType: config?.executionAdapterType || 'docker',
-      e2bSandboxId: config?.e2bSandboxId,
+      remoteId: config?.remoteId,
+      projectsRoot: config?.projectsRoot,
       agentServiceConfig: config?.agentServiceConfig || defaultAgentServiceConfig,
     };
     

@@ -11,7 +11,7 @@ interface ServerConfig {
   /** Whether to run in development mode with extra logging */
   development: boolean;
   /** The environment type to use for the agent */
-  agentEnvironment: 'local' | 'docker' | 'e2b';
+  agentEnvironment: 'local' | 'docker' | 'remote';
   /** Provider token for authenticating with the qckfx server */
   providerToken?: string;
 }
@@ -35,7 +35,7 @@ export function createServerConfig(options: {
   web?: boolean;
   port?: number;
   development?: boolean;
-  agentEnvironment?: 'local' | 'docker' | 'e2b';
+  agentEnvironment?: 'local' | 'docker' | 'remote';
   providerToken?: string;
 }): ServerConfig {
   return {

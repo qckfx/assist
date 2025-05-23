@@ -88,7 +88,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
           state: state,
           isProcessing: false,
           executionAdapterType: savedSession.sessionState?.coreSessionState?.executionAdapterType as 'local' | 'docker' | 'remote' || 'docker',
-          e2bSandboxId: savedSession.sessionState?.coreSessionState?.e2bSandboxId,
+          remoteId: savedSession.sessionState?.coreSessionState?.remoteId as string | undefined,
           agentServiceConfig: agentServiceConfig
         };
         
@@ -99,12 +99,14 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
     } else {
       // Extract environment settings from request if provided
       const executionAdapterType = body?.config?.executionAdapterType || 'docker';
-      const e2bSandboxId = body?.config?.e2bSandboxId;
+      const remoteId = body?.config?.remoteId;
+      const projectsRoot = body?.config?.projectsRoot;
      
       // Create a new session with provided environment settings
       session = sessionManager.createSession({
         executionAdapterType,
-        e2bSandboxId
+        remoteId,
+        projectsRoot
       });
       serverLogger.info(`Created new session ${session.id}`, LogCategory.SESSION);
     }
@@ -122,7 +124,8 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
     // Initialize the execution environment for this session
     await agentService.createExecutionAdapterForSession(session.id, {
       type: session.executionAdapterType,
-      e2bSandboxId: session.e2bSandboxId
+      remoteId: session.remoteId,
+      projectsRoot: session.projectsRoot
     });
     
     // Return the session info with environment details
@@ -132,7 +135,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       lastActiveAt: session.lastActiveAt.toISOString(),
       isProcessing: session.isProcessing,
       executionAdapterType: session.executionAdapterType,
-      e2bSandboxId: session.e2bSandboxId
+      remoteId: session.remoteId
     });
   } catch (error) {
     next(error);

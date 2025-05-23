@@ -60,7 +60,7 @@ export interface WebSocketEventMap {
   
   // Environment events
   [WebSocketEvent.ENVIRONMENT_STATUS_CHANGED]: {
-    environmentType: 'local' | 'docker' | 'e2b';
+    environmentType: 'local' | 'docker' | 'remote';
     status: 'initializing' | 'connecting' | 'connected' | 'disconnected' | 'error';
     isReady: boolean;
     error?: string;

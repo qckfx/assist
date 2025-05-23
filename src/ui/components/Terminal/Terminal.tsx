@@ -213,13 +213,13 @@ export function Terminal({
   const { createSessionWithEnvironment } = wsTerminalContext;
   
   // Handle environment selection
-  const handleEnvironmentSelect = async (environment: ExecutionEnvironment, e2bSandboxId?: string) => {
+  const handleEnvironmentSelect = async (environment: ExecutionEnvironment, remoteId?: string) => {
     try {
       // Show environment setup message
       setSaveMessage('Setting up environment...');
       
       // Create a session with the selected environment
-      const newSessionId = await createSessionWithEnvironment(environment, e2bSandboxId);
+      const newSessionId = await createSessionWithEnvironment(environment, remoteId);
       
       if (newSessionId) {
         console.log('Created new session with environment:', environment, newSessionId);

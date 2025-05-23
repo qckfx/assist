@@ -15,8 +15,9 @@ export const startSessionSchema = z.object({
     .object({
       model: z.string().optional(),
       // Add execution environment configuration
-      executionAdapterType: z.enum(['local', 'docker', 'e2b']).optional(),
-      e2bSandboxId: z.string().optional(), // Only needed when executionAdapterType is 'e2b'
+      executionAdapterType: z.enum(['local', 'docker', 'remote']).optional(),
+      remoteId: z.string().optional(), // Only needed when executionAdapterType is 'remote'
+      projectsRoot: z.string().optional(), // Root directory containing multiple git repos
     })
     .optional(),
 });

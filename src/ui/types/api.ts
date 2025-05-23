@@ -30,8 +30,8 @@ export interface SessionStartRequest {
     temperature?: number;
   };
   config?: {
-    executionAdapterType?: 'docker' | 'local' | 'e2b';
-    e2bSandboxId?: string;
+    executionAdapterType?: 'docker' | 'local' | 'remote';
+    remoteId?: string;
   };
 }
 
@@ -255,12 +255,12 @@ export interface WebSocketEventMap {
   [WebSocketEvent.FAST_EDIT_MODE_DISABLED]: { sessionId: string; enabled: false; };
   [WebSocketEvent.INIT]: { 
     sessionId: string; 
-    executionEnvironment: 'local' | 'docker' | 'e2b'; 
-    e2bSandboxId?: string; 
+    executionEnvironment: 'local' | 'docker' | 'remote'; 
+    remoteId?: string; 
   };
   
   [WebSocketEvent.ENVIRONMENT_STATUS_CHANGED]: {
-    environmentType: 'local' | 'docker' | 'e2b';
+    environmentType: 'local' | 'docker' | 'remote';
     status: string;
     isReady: boolean;
     error?: string;

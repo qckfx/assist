@@ -130,7 +130,7 @@ export class AgentService extends EventEmitter {
   private sessionFastEditMode: Map<string, boolean> = new Map();
   private activeTools: Map<string, ActiveTool[]> = new Map();
   private sessionExecutionAdapterTypes: Map<string, 'local' | 'docker' | 'remote'> = new Map();
-  private sessionE2BSandboxIds: Map<string, string> = new Map();
+  private sessionRemoteIds: Map<string, string> = new Map();
   private activeToolArgs = new Map<string, Record<string, unknown>>();
   
   // Add new properties for the managers
@@ -662,7 +662,7 @@ export class AgentService extends EventEmitter {
     const session = sessionManager.getSession(sessionId);
     // Get the execution adapter type and sandbox ID for this session
     const executionAdapterType = this.getExecutionAdapterType(sessionId) || 'local';
-    const e2bSandboxId = this.getE2BSandboxId(sessionId);
+    const remoteId = this.getRemoteId(sessionId);
 
     // Check if the session is already processing
     if (session.isProcessing || this.activeProcessingSessionIds.has(sessionId)) {
@@ -702,7 +702,7 @@ export class AgentService extends EventEmitter {
         },
         callbacks: {
           getRemoteId: async () => {
-            return e2bSandboxId!;
+            return remoteId!;
           },
           onCheckpointReady: async (cp: CheckpointData) => {
             sessionManager.checkpointEventHandler(cp);
@@ -1211,15 +1211,15 @@ export class AgentService extends EventEmitter {
   }
   
   /**
-   * Set the E2B sandbox ID for a session
+   * Set the remote sandbox ID for a session
    */
-  public setE2BSandboxId(sessionId: string, sandboxId: string): boolean {
+  public setRemoteId(sessionId: string, sandboxId: string): boolean {
     try {
       // Verify the session exists
       sessionManager.getSession(sessionId);
       
       // Store the sandbox ID
-      this.sessionE2BSandboxIds.set(sessionId, sandboxId);
+      this.sessionRemoteIds.set(sessionId, sandboxId);
       
       // Also update the session state
       const session = sessionManager.getSession(sessionId);
@@ -1228,7 +1228,7 @@ export class AgentService extends EventEmitter {
           ...session.state,
           coreSessionState: {
             ...session.state.coreSessionState,
-            e2bSandboxId: sandboxId
+            remoteId: sandboxId
           }
         }
       });
@@ -1240,19 +1240,19 @@ export class AgentService extends EventEmitter {
   }
   
   /**
-   * Get the E2B sandbox ID for a session
+   * Get the remote sandbox ID for a session
    */
-  public getE2BSandboxId(sessionId: string): string | undefined {
+  public getRemoteId(sessionId: string): string | undefined {
     try {
       // First check the map
-      const sandboxId = this.sessionE2BSandboxIds.get(sessionId);
+      const sandboxId = this.sessionRemoteIds.get(sessionId);
       if (sandboxId) {
         return sandboxId;
       }
       
       // Then try to get it from the session
       const session = sessionManager.getSession(sessionId);
-      return session.state.coreSessionState.e2bSandboxId;
+      return session.state.coreSessionState.remoteId;
     } catch {
       return undefined;
     }
@@ -1311,7 +1311,8 @@ export class AgentService extends EventEmitter {
     sessionId: string, 
     options: { 
       type?: 'local' | 'docker' | 'remote';
-      e2bSandboxId?: string;
+      remoteId?: string;
+      projectsRoot?: string;
     } = {}
   ): Promise<void> {
     try {
@@ -1336,15 +1337,16 @@ export class AgentService extends EventEmitter {
       };
       
       // Add E2B-specific options if needed
-      if (options.type === 'remote' && options.e2bSandboxId) {
+      if (options.type === 'remote' && options.remoteId) {
         adapterOptions.e2b = {
-          sandboxId: options.e2bSandboxId
+          sandboxId: options.remoteId,
+          projectsRoot: options.projectsRoot
         };
       }
 
       if (options.type === 'docker') {
         adapterOptions.docker = {
-          projectRoot: process.cwd()
+          projectRoot: options.projectsRoot || process.cwd()
         };
       }
 
@@ -1352,7 +1354,7 @@ export class AgentService extends EventEmitter {
       
       // For Docker, check if we need to initialize the container right away
       // This is a performance optimization for the first tool call
-      if (options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) {
+      if (options.type === 'docker' || (options.type === undefined && !options.remoteId)) {
         // Only pre-initialize if Docker initialization isn't already in progress
         if (!this.dockerInitializing) {
           this.dockerInitializing = true;
@@ -1372,7 +1374,7 @@ export class AgentService extends EventEmitter {
                   logger: serverLogger,
                   sessionId,
                   docker: {
-                    projectRoot: process.cwd()
+                    projectRoot: options.projectsRoot || process.cwd()
                   }
                 });
                 console.log('🚩🚩🚩pre-init adapter', res.adapter);
@@ -1391,7 +1393,7 @@ export class AgentService extends EventEmitter {
       if (!session.state.coreSessionState.executionAdapter) {
         let adapter: ExecutionAdapter | null;
         let type: 'local' | 'docker' | 'remote';
-        if ((options.type === 'docker' || (options.type === undefined && !options.e2bSandboxId)) && 
+        if ((options.type === 'docker' || (options.type === undefined && !options.remoteId)) && 
             this.dockerInitializationPromise) {
           console.log('🚩🚩🚩dockerInitializationPromise', this.dockerInitializationPromise);
           adapter = await this.dockerInitializationPromise;

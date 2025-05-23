@@ -143,16 +143,16 @@ export const apiClient = {
    * Start a new agent session with specific environment settings
    */
   startSessionWithEnvironment: (
-    executionAdapterType: 'docker' | 'local' | 'e2b',
-    e2bSandboxId?: string,
+    executionAdapterType: 'docker' | 'local' | 'remote',
+    remoteId?: string,
     sessionId?: string
   ) => 
     apiRequest<{ sessionId: string }>(API_ENDPOINTS.START, 'POST', {
       sessionId, // Include sessionId for reconnection if provided
       config: {
         executionAdapterType,
-        e2bSandboxId
-      }
+        remoteId,
+      },
     }),
   
   /**

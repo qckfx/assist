@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 
-export type ExecutionEnvironment = 'docker' | 'local' | 'e2b';
+export type ExecutionEnvironment = 'docker' | 'local' | 'remote';
 
 export interface EnvironmentSelectorProps {
-  onSelect: (environment: ExecutionEnvironment, e2bSandboxId?: string) => void;
+  onSelect: (environment: ExecutionEnvironment, remoteId?: string) => void;
   className?: string;
   defaultEnvironment?: ExecutionEnvironment;
 }
@@ -15,7 +15,7 @@ export function EnvironmentSelector({
   defaultEnvironment = 'docker'
 }: EnvironmentSelectorProps) {
   const [selectedEnvironment, setSelectedEnvironment] = useState<ExecutionEnvironment>(defaultEnvironment);
-  const [e2bSandboxId, setE2bSandboxId] = useState<string>('');
+  const [remoteId, setRemoteId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const handleSelect = (env: ExecutionEnvironment) => {
@@ -29,7 +29,7 @@ export function EnvironmentSelector({
     // Call the onSelect callback with the selected environment
     onSelect(
       selectedEnvironment, 
-      selectedEnvironment === 'e2b' ? e2bSandboxId : undefined
+      selectedEnvironment === 'remote' ? remoteId : undefined
     );
   };
   
@@ -100,36 +100,36 @@ export function EnvironmentSelector({
           <div 
             className={cn(
               "flex items-center border border-gray-600 p-3 rounded cursor-pointer hover:bg-gray-800 transition-colors",
-              selectedEnvironment === 'e2b' && "border-blue-500 bg-gray-800"
+              selectedEnvironment === 'remote' && "border-blue-500 bg-gray-800"
             )}
-            onClick={() => handleSelect('e2b')}
+            onClick={() => handleSelect('remote')}
           >
             <input 
               type="radio" 
               id="e2b" 
               name="environment" 
               value="e2b" 
-              checked={selectedEnvironment === 'e2b'}
-              onChange={() => handleSelect('e2b')}
+              checked={selectedEnvironment === 'remote'}
+              onChange={() => handleSelect('remote')}
               className="mr-3"
             />
             <div className="w-full">
-              <label htmlFor="e2b" className="text-white font-medium cursor-pointer">E2B Sandbox</label>
+              <label htmlFor="remote" className="text-white font-medium cursor-pointer">Remote Sandbox</label>
               <p className="text-gray-400 text-sm mb-2">
-                Run commands in an E2B cloud sandbox
+                Run commands in a remote cloud sandbox
               </p>
               
-              {selectedEnvironment === 'e2b' && (
+              {selectedEnvironment === 'remote' && (
                 <div className="mt-2">
-                  <label htmlFor="e2bSandboxId" className="text-white text-sm block mb-1">E2B Sandbox ID</label>
+                  <label htmlFor="remoteId" className="text-white text-sm block mb-1">Remote Sandbox ID</label>
                   <input
                     type="text"
-                    id="e2bSandboxId"
-                    value={e2bSandboxId}
-                    onChange={(e) => setE2bSandboxId(e.target.value)}
+                    id="remoteId"
+                    value={remoteId}
+                    onChange={(e) => setRemoteId(e.target.value)}
                     placeholder="e.g., 41f712-a81f-42d7-97d3-cbe5527e8c7e"
                     className="bg-gray-900 border border-gray-600 rounded px-3 py-2 w-full text-white"
-                    required={selectedEnvironment === 'e2b'}
+                    required={selectedEnvironment === 'remote'}
                   />
                 </div>
               )}
@@ -144,7 +144,7 @@ export function EnvironmentSelector({
               "bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors",
               isSubmitting && "opacity-50 cursor-not-allowed"
             )}
-            disabled={isSubmitting || (selectedEnvironment === 'e2b' && !e2bSandboxId)}
+            disabled={isSubmitting || (selectedEnvironment === 'remote' && !remoteId)}
           >
             {isSubmitting ? 'Setting up...' : 'Start Environment'}
           </button>

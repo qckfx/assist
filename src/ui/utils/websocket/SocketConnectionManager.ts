@@ -45,7 +45,7 @@ export class SocketConnectionManager extends EventEmitter {
    * - hasJoined: Whether we've successfully joined the session
    * - pendingSession: Session waiting to be joined once connection is established
    * - executionEnvironment: The type of execution environment for this session
-   * - e2bSandboxId: Optional sandbox ID for E2B environments
+   * - remoteId: Optional sandbox ID for remote environments
    * - environmentStatus: Status of the execution environment (initializing, connected, etc.)
    * - environmentReady: Whether the environment is ready to accept commands
    * - lastEnvironmentError: Last error message from the environment
@@ -54,8 +54,8 @@ export class SocketConnectionManager extends EventEmitter {
     currentSessionId: null as string | null,
     hasJoined: false,
     pendingSession: null as string | null,
-    executionEnvironment: null as 'local' | 'docker' | 'e2b' | null,
-    e2bSandboxId: null as string | null,
+    executionEnvironment: null as 'local' | 'docker' | 'remote' | null,
+    remoteId: null as string | null,
     // Environment status tracking
     environmentStatus: null as string | null,
     environmentReady: false,
@@ -127,12 +127,12 @@ export class SocketConnectionManager extends EventEmitter {
       if (data.executionEnvironment) {
         // Update session state with environment information
         this.sessionState.executionEnvironment = data.executionEnvironment;
-        this.sessionState.e2bSandboxId = data.e2bSandboxId || null;
+        this.sessionState.remoteId = (data as any).remoteId || null;
         
         // Emit environment_change event for components to react
         this.emit('environment_change', {
           executionEnvironment: data.executionEnvironment,
-          e2bSandboxId: data.e2bSandboxId
+          remoteId: (data as any).remoteId
         });
         
       }
@@ -141,7 +141,7 @@ export class SocketConnectionManager extends EventEmitter {
     // Set up listener for environment status events
     this.socket.on(WebSocketEvent.ENVIRONMENT_STATUS_CHANGED, (data: {
       sessionId: string;
-      environmentType: 'docker' | 'local' | 'e2b';
+      environmentType: 'docker' | 'local' | 'remote';
       status: string;
       isReady: boolean;
       error?: string;
@@ -169,7 +169,7 @@ export class SocketConnectionManager extends EventEmitter {
             // Emit environment_change for this update
             this.emit('environment_change', {
               executionEnvironment: data.environmentType,
-              e2bSandboxId: this.sessionState.e2bSandboxId
+              remoteId: this.sessionState.remoteId
             });
           } else if (this.sessionState.executionEnvironment !== data.environmentType) {
             this.sessionState.executionEnvironment = data.environmentType;
@@ -177,7 +177,7 @@ export class SocketConnectionManager extends EventEmitter {
             // Emit environment_change for this update
             this.emit('environment_change', {
               executionEnvironment: data.environmentType,
-              e2bSandboxId: this.sessionState.e2bSandboxId
+              remoteId: this.sessionState.remoteId
             });
           }
         }
@@ -272,7 +272,7 @@ export class SocketConnectionManager extends EventEmitter {
     status: string | null;
     isReady: boolean;
     error: string | null;
-    type: 'docker' | 'local' | 'e2b' | null;
+    type: 'docker' | 'local' | 'remote' | null;
   } {
     return {
       status: this.sessionState.environmentStatus,
@@ -633,7 +633,7 @@ export class SocketConnectionManager extends EventEmitter {
       hasJoined: false,
       pendingSession: null,
       executionEnvironment: null,
-      e2bSandboxId: null,
+      remoteId: null,
       environmentStatus: null,
       environmentReady: false,
       lastEnvironmentError: null

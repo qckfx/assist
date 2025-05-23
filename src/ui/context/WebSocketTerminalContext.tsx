@@ -26,8 +26,8 @@ interface WebSocketTerminalContextProps {
   // Session management
   sessionId: string | undefined;
   createSessionWithEnvironment: (
-    environment: 'docker' | 'local' | 'e2b', 
-    e2bSandboxId?: string
+    environment: 'docker' | 'local' | 'remote', 
+    remoteId?: string
   ) => Promise<string | undefined>;
   
   // Command handling
@@ -136,17 +136,17 @@ export function WebSocketTerminalProvider({
   
   // Create a new session with specific environment settings
   const createSessionWithEnvironment = useCallback(async (
-    environment: 'docker' | 'local' | 'e2b',
-    e2bSandboxId?: string
+    environment: 'docker' | 'local' | 'remote',
+    remoteId?: string
   ) => {
     try {
       // Update UI state
       setProcessing(true);
       
       console.log(`[WebSocketTerminalContext] Requesting new session with environment: ${environment}...`);
-      
+
       // Create session via API with environment settings
-      const response = await apiClient.startSessionWithEnvironment(environment, e2bSandboxId);
+      const response = await apiClient.startSessionWithEnvironment(environment, remoteId);
       console.log('[WebSocketTerminalContext] Session with environment creation response:', response);
       
       const sessionData = response.data || response;
@@ -164,8 +164,8 @@ export function WebSocketTerminalProvider({
         
         // Store only environment settings in localStorage, not sessionId
         localStorage.setItem('sessionEnvironment', environment);
-        if (e2bSandboxId) {
-          localStorage.setItem('sessionE2BSandboxId', e2bSandboxId);
+        if (remoteId) {
+          localStorage.setItem('sessionRemoteId', remoteId);
         }
         
         // Update session state
