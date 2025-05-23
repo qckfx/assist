@@ -2,6 +2,7 @@
  * Session management service
  */
 import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
 import { SessionState } from '../../types/session';
 import { SessionNotFoundError } from '../utils/errors';
 import { serverLogger } from '../logger';
@@ -81,26 +82,42 @@ export class SessionManager {
     // Create the checkpoint event handler
     this.checkpointEventHandler = async (cp: CheckpointData) => {
       try {
-        // Save the Git bundle to disk
-        await SessionPersistence.saveBundle(cp.sessionId, cp.bundle);
+        // Save all bundles for this checkpoint
+        await SessionPersistence.saveCheckpointBundles(cp.sessionId, cp.toolExecutionId, cp.bundles);
         
-        // Update the session state with checkpoint information
+        // Update the session state with multi-repo checkpoint information
         const session = this.sessions.get(cp.sessionId);
         if (session) {
           // Initialize checkpoints array if needed
           session.state.checkpoints ??= [];
           
-          // Add the new checkpoint
+          // Build repositories object from the Maps
+          const repositories: Record<string, { repoName: string; shadowCommit: string; hostCommit: string }> = {};
+          
+          for (const [repoPath, hostCommit] of cp.hostCommits) {
+            const repoName = path.basename(repoPath);
+            const shadowCommit = cp.shadowCommits.get(repoPath);
+            
+            if (shadowCommit) {
+              repositories[repoPath] = {
+                repoName,
+                shadowCommit,
+                hostCommit
+              };
+            }
+          }
+          
+          // Add the new multi-repo checkpoint
           session.state.checkpoints.push({
             toolExecutionId: cp.toolExecutionId,
-            shadowCommit: cp.shadowCommit,
-            hostCommit: cp.hostCommit
+            timestamp: cp.timestamp,
+            repositories
           });
           
           // Persist session metadata
           this.persistSessionMeta(session);
           
-          serverLogger.info(`Saved checkpoint for session ${cp.sessionId}`, LogCategory.SESSION);
+          serverLogger.info(`Saved multi-repo checkpoint for session ${cp.sessionId} (${cp.repoCount} repos)`, LogCategory.SESSION);
         }
       } catch (error) {
         serverLogger.error(`Failed to process checkpoint for session ${cp.sessionId}:`, error);

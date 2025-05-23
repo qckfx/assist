@@ -22,7 +22,7 @@ import {
 } from '../../types/platform-types';
 import { SessionState } from '../../types/session';
 import { PreviewContentType, ToolPreviewState } from '../../types/preview';
-import { StoredMessage, SessionListEntry } from '../../types/session';
+import { StoredMessage, SessionListEntry, CheckpointInfo } from '../../types/session';
 import { createToolExecutionManager } from './tool-execution'; 
 import { ToolExecutionManagerImpl } from './tool-execution/ToolExecutionManagerImpl';
 import { createPreviewManager, PreviewManagerImpl } from './PreviewManagerImpl';
@@ -1429,44 +1429,53 @@ export class AgentService extends EventEmitter {
         const sessionData = await persistence.getSessionDataWithoutEvents(sessionId);
         
         if (sessionData?.checkpoints?.length) {
-          // Load the bundle if available
-          const bundle = await SessionPersistence.loadBundle(sessionId);
+          const lastCheckpoint = sessionData.checkpoints.at(-1);
           
-          if (bundle) {
-            serverLogger.info(`Restoring shadow repo for session ${sessionId}`);
+          if (lastCheckpoint && 'repositories' in lastCheckpoint && lastCheckpoint.repositories) {
+            // Multi-repo checkpoint restoration
+            const bundles = await SessionPersistence.loadCheckpointBundles(sessionId, lastCheckpoint.toolExecutionId);
             
-            // Write the bundle to a temporary file using base64 encoding to avoid binary corruption
-            const base64 = Buffer.from(bundle).toString('base64');
-            await session.state.coreSessionState.executionAdapter.writeFile('/tmp/shadow.b64', base64, 'utf8');
-            
-            // Decode the base64 file back to binary
-            await session.state.coreSessionState.executionAdapter.executeCommand(executionId, 'base64 -d /tmp/shadow.b64 > /tmp/shadow.bundle && rm /tmp/shadow.b64');
-            
-            // Get repo root
-            const cwdResult = await session.state.coreSessionState.executionAdapter.executeCommand(executionId, 'pwd');
-            const repoRoot = cwdResult.stdout.trim() || process.cwd();
-            
-            // Define the shadow repo directory
-            const shadowDir = `${repoRoot}/.agent-shadow/${sessionId}`;
-            
-            // Create shadow repo and configure it to use the working tree
-            const lastCheckpoint = sessionData.checkpoints.at(-1);
-            const toolExecutionId = lastCheckpoint?.toolExecutionId || '';
-            
-            // Command to restore the state with proper error handling
-            const cmd = `
-              set -e &&
-              rm -rf "${shadowDir}" 2>/dev/null || true &&
-              git clone --bare /tmp/shadow.bundle "${shadowDir}" &&
-              git --git-dir="${shadowDir}" config core.worktree "${repoRoot}" &&
-              git --git-dir="${shadowDir}" checkout chkpt/${toolExecutionId} &&
-              git --git-dir="${shadowDir}" checkout-index -a -f &&
-              rm /tmp/shadow.bundle
-            `;
-            
-            // Execute the restore command
-            await session.state.coreSessionState.executionAdapter?.executeCommand(executionId, cmd);
-            serverLogger.info(`Restored shadow repo for session ${sessionId} to checkpoint ${toolExecutionId}`);
+            if (bundles.size > 0) {
+              serverLogger.info(`Restoring ${bundles.size} repositories for session ${sessionId}`);
+              
+              // Restore each repository
+              for (const [repoName, bundleData] of bundles) {
+                const checkpoint = lastCheckpoint as CheckpointInfo;
+                const repoInfo = Object.entries(checkpoint.repositories).find(([_, info]) => info.repoName === repoName);
+                if (!repoInfo) continue;
+                
+                const [repoPath, repoData] = repoInfo;
+                const { shadowCommit } = repoData;
+                
+                // Write the bundle to a temporary file using base64 encoding
+                const base64 = Buffer.from(bundleData).toString('base64');
+                await session.state.coreSessionState.executionAdapter.writeFile(`/tmp/${repoName}_shadow.b64`, base64, 'utf8');
+                
+                // Decode the base64 file back to binary
+                await session.state.coreSessionState.executionAdapter.executeCommand(
+                  executionId, 
+                  `base64 -d /tmp/${repoName}_shadow.b64 > /tmp/${repoName}_shadow.bundle && rm /tmp/${repoName}_shadow.b64`
+                );
+                
+                // Define the shadow repo directory
+                const shadowDir = `${repoPath}/.agent-shadow/${sessionId}`;
+                
+                // Command to restore the state
+                const cmd = `
+                  set -e &&
+                  rm -rf "${shadowDir}" 2>/dev/null || true &&
+                  git clone --bare /tmp/${repoName}_shadow.bundle "${shadowDir}" &&
+                  git --git-dir="${shadowDir}" config core.worktree "${repoPath}" &&
+                  git --git-dir="${shadowDir}" checkout chkpt/${lastCheckpoint.toolExecutionId} &&
+                  git --git-dir="${shadowDir}" checkout-index -a -f &&
+                  rm /tmp/${repoName}_shadow.bundle
+                `;
+                
+                // Execute the restore command
+                await session.state.coreSessionState.executionAdapter?.executeCommand(executionId, cmd);
+                serverLogger.info(`Restored shadow repo for ${repoName} in session ${sessionId} to checkpoint ${lastCheckpoint.toolExecutionId}`);
+              }
+            }
           }
         }
       } catch (error) {
