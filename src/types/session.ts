@@ -231,22 +231,7 @@ export interface SavedSessionData {
   /**
    * Checkpoints for repository snapshots
    */
-  checkpoints?: Array<{
-    /**
-     * Tool execution ID associated with this checkpoint
-     */
-    toolExecutionId: string;
-    
-    /**
-     * Shadow repository commit hash
-     */
-    shadowCommit: string;
-    
-    /**
-     * Host repository commit hash
-     */
-    hostCommit: string;
-  }>;
+  checkpoints?: CheckpointInfo[];
   
   /**
    * Core session state
@@ -310,13 +295,18 @@ export enum SessionPersistenceEvent {
 }
 
 /**
- * Extends the core SessionState interface to include checkpoint information
+ * Repository checkpoint data within a multi-repo checkpoint
  */
-export interface CheckpointInfo {
+export interface RepoCheckpoint {
   /**
-   * Tool execution ID associated with this checkpoint
+   * Repository path
    */
-  toolExecutionId: string;
+  repoPath: string;
+  
+  /**
+   * Repository name (directory name)
+   */
+  repoName: string;
   
   /**
    * Shadow repository commit hash
@@ -327,6 +317,26 @@ export interface CheckpointInfo {
    * Host repository commit hash
    */
   hostCommit: string;
+}
+
+/**
+ * Extends the core SessionState interface to include checkpoint information
+ */
+export interface CheckpointInfo {
+  /**
+   * Tool execution ID associated with this checkpoint
+   */
+  toolExecutionId: string;
+  
+  /**
+   * Timestamp when the checkpoint was created
+   */
+  timestamp: string;
+  
+  /**
+   * Map of repository paths to their checkpoint data
+   */
+  repositories: Record<string, Omit<RepoCheckpoint, 'repoPath'>>;
 }
 
 export interface SessionState {

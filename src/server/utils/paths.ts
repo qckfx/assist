@@ -29,11 +29,33 @@ export function getSessionDir(sessionId: string): string {
   return path.join(getSessionsDataDir(), sessionId);
 }
 
+
 /**
- * Get the path to a session bundle file
+ * Get the path to a session's checkpoints directory
  * @param {string} sessionId - The session ID
- * @returns {string} The path to the session's bundle file
+ * @returns {string} The path to the session's checkpoints directory
  */
-export function getSessionBundlePath(sessionId: string): string {
-  return path.join(getSessionsDataDir(), `${sessionId}.bundle`);
+export function getSessionCheckpointsDir(sessionId: string): string {
+  return path.join(getSessionDir(sessionId), 'checkpoints');
+}
+
+/**
+ * Get the path to a specific checkpoint directory
+ * @param {string} sessionId - The session ID
+ * @param {string} toolExecutionId - The tool execution ID
+ * @returns {string} The path to the checkpoint directory
+ */
+export function getCheckpointDir(sessionId: string, toolExecutionId: string): string {
+  return path.join(getSessionCheckpointsDir(sessionId), toolExecutionId);
+}
+
+/**
+ * Get the path to a checkpoint bundle file for a specific repository
+ * @param {string} sessionId - The session ID
+ * @param {string} toolExecutionId - The tool execution ID
+ * @param {string} repoName - The repository name
+ * @returns {string} The path to the checkpoint bundle file
+ */
+export function getCheckpointBundlePath(sessionId: string, toolExecutionId: string, repoName: string): string {
+  return path.join(getCheckpointDir(sessionId, toolExecutionId), `${repoName}.bundle`);
 }
