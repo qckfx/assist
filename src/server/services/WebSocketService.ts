@@ -3,6 +3,9 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { AgentServiceEvent } from './AgentService';
 import { AgentServiceRegistry } from './AgentServiceRegistry';
 import { SessionManager, sessionManager } from './SessionManager';
+import { getSessionStatePersistence } from './sessionPersistenceProvider';
+import { Session } from './SessionManager';
+import { AgentServiceConfig } from './AgentService';
 import { serverLogger } from '../logger';
 import { 
   ToolPreviewData, 
@@ -228,9 +231,68 @@ export class WebSocketService {
       // Handle join session requests
       socket.on(WebSocketEvent.JOIN_SESSION, async (sessionId: string) => {
         try {
-          // Check if session exists in memory
-          if (!this.sessionManager.getAllSessions().some(s => s.id === sessionId)) {
-            serverLogger.warn(`Session ${sessionId} not found in memory for WebSocket connection`);
+          // ------------------------------------------------------------------
+          // Ensure the session is available in memory. If not, attempt to lazily
+          // hydrate it from the on-disk persistence store so that front-end
+          // deep-links (/sessions/<id>) work after server restarts.
+          // ------------------------------------------------------------------
+
+          let sessionExists = this.sessionManager.getAllSessions().some(s => s.id === sessionId);
+
+          if (!sessionExists) {
+            serverLogger.info(`Session ${sessionId} not found in memory – attempting to restore from persistence`);
+
+            try {
+              const persistence = getSessionStatePersistence();
+              const saved = await persistence.loadSession(sessionId);
+
+              if (saved) {
+                // Build agent service config
+                const defaultAgentCfg: AgentServiceConfig = {
+                  defaultModel: process.env.LLM_MODEL || 'claude-3-7-sonnet-20250219',
+                  cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
+                };
+
+                const agentCfg = saved.sessionState?.coreSessionState?.agentServiceConfig || defaultAgentCfg;
+
+                const reconstructed: Session = {
+                  id: saved.id,
+                  createdAt: new Date(saved.createdAt),
+                  lastActiveAt: new Date(saved.updatedAt),
+                  state: saved.sessionState as any,
+                  isProcessing: false,
+                  executionAdapterType: saved.sessionState?.coreSessionState?.executionAdapterType as 'local' | 'docker' | 'remote' || 'docker',
+                  remoteId: saved.sessionState?.coreSessionState?.remoteId as string | undefined,
+                  projectsRoot: saved.sessionState?.coreSessionState?.projectsRoot as string | undefined,
+                  agentServiceConfig: agentCfg,
+                };
+
+                // Add to manager
+                this.sessionManager.addSession(reconstructed);
+                sessionExists = true;
+
+                // Ensure execution adapter is set up so that tools / rollback work
+                try {
+                  const agentService = this.agentServiceRegistry.getServiceForSession(sessionId);
+                  await agentService.createExecutionAdapterForSession(sessionId, {
+                    type: reconstructed.executionAdapterType,
+                    remoteId: reconstructed.remoteId,
+                    projectsRoot: reconstructed.projectsRoot,
+                  });
+                } catch (adapterErr) {
+                  serverLogger.error(`Failed to create execution adapter for restored session ${sessionId}:`, adapterErr);
+                }
+
+                serverLogger.info(`Restored persisted session ${sessionId} for WebSocket JOIN_SESSION`);
+              }
+            } catch (restoreErr) {
+              serverLogger.error(`Error while restoring session ${sessionId}:`, restoreErr);
+            }
+          }
+
+          // If the session still doesn't exist, notify client and abort
+          if (!sessionExists) {
+            serverLogger.warn(`Session ${sessionId} unavailable for WebSocket connection after restore attempt`);
             socket.emit(WebSocketEvent.ERROR, {
               message: `Session ${sessionId} not found. Please create or reconnect to a session first.`,
             });
