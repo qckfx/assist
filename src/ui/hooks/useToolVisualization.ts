@@ -89,19 +89,10 @@ export function useToolVisualization(): UseToolVisualizationResult {
       
       // Log the timeline item received from TimelineContext
       console.log(`Timeline item received in useToolVisualization for ${item.id}:`, {
-        hasTopLevelPreview: !!item.preview,
-        hasToolExecutionPreview: !!item.toolExecution.preview,
-        hasPreviewFlag: item.toolExecution.hasPreview === true,
-        previewInToolExecution: item.toolExecution.preview ? {
+        hasExecutionPreview: !!item.toolExecution.preview,
+        previewMeta: item.toolExecution.preview ? {
           contentType: item.toolExecution.preview.contentType,
-          hasBriefContent: !!item.toolExecution.preview.briefContent,
-          briefContentLength: item.toolExecution.preview.briefContent?.length || 0,
-          hasActualContent: item.toolExecution.preview.hasActualContent === true
-        } : null,
-        previewTopLevel: item.preview ? {
-          contentType: item.preview.contentType,
-          hasBriefContent: !!item.preview.briefContent,
-          briefContentLength: item.preview.briefContent?.length || 0
+          briefContentLength: item.toolExecution.preview.briefContent?.length || 0
         } : null,
         toolExecutionProps: Object.keys(item.toolExecution)
       });
@@ -121,7 +112,6 @@ export function useToolVisualization(): UseToolVisualizationResult {
         executionTime: item.toolExecution.executionTime,
         result: item.toolExecution.result,
         error: item.toolExecution.error,
-        // Use preview directly from toolExecution
         preview: item.toolExecution.preview,
         // Apply view mode: from specific setting, or default
         viewMode: viewModes[item.id] || defaultViewMode

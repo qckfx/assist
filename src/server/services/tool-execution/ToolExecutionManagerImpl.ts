@@ -585,7 +585,16 @@ export class ToolExecutionManagerImpl implements ToolExecutionManager {
    * Associate a preview with a tool execution
    */
   associatePreview(executionId: string, previewId: string): ToolExecutionState {
-    return this.updateExecution(executionId, { previewId });
+    const preview = this.previewManager.getPreview(previewId);
+    return this.updateExecution(executionId, {
+      previewId,
+      // Attach the full preview object for downstream consumers (timeline,
+      // websocket, UI).  This eliminates the need for separate top-level
+      // preview fields elsewhere.
+      preview,
+      hasPreview: !!preview,
+      previewContentType: preview?.contentType
+    });
   }
 
   /**

@@ -277,14 +277,17 @@ export class TimelineService extends EventEmitter {
       serverLogger.warn(`[ToolExecution] Skipping duplicate tool execution update for ${executionId} (${now - lastUpdate}ms since last update)`);
       
       // Return a minimal item with just the necessary information
+      const executionWithPreview = preview && !toolExecution.preview
+        ? { ...toolExecution, preview }
+        : toolExecution;
+
       return {
         id: executionId,
         type: TimelineItemType.TOOL_EXECUTION,
-        timestamp: toolExecution.startTime,
+        timestamp: executionWithPreview.startTime,
         sessionId,
-        toolExecution,
-        permissionRequest: toolExecution.permissionId,
-        preview,
+        toolExecution: executionWithPreview,
+        permissionRequest: executionWithPreview.permissionId,
         parentMessageId
       };
     }
@@ -311,15 +314,19 @@ export class TimelineService extends EventEmitter {
       serverLogger.warn(`Invalid timestamp detected for tool execution ${toolExecution.id}, using current time instead`);
     }
     
-    // Create the timeline item with the provided preview
+    // Ensure the preview travels *inside* the ToolExecutionState
+    const executionWithPreview = preview && !toolExecution.preview
+      ? { ...toolExecution, preview }
+      : toolExecution;
+
+    // Create the timeline item (no top-level preview field)
     const timelineItem: ToolExecutionTimelineItem = {
-      id: toolExecution.id,
+      id: executionWithPreview.id,
       type: TimelineItemType.TOOL_EXECUTION,
       timestamp: validatedStartTime,
       sessionId,
-      toolExecution,
-      permissionRequest: toolExecution.permissionId,
-      preview,
+      toolExecution: executionWithPreview,
+      permissionRequest: executionWithPreview.permissionId,
       parentMessageId
     };
     
@@ -420,14 +427,17 @@ export class TimelineService extends EventEmitter {
     }
     
     // Create the timeline item
+    const permissionRequestWithPreview = preview && !permissionRequest.previewId
+      ? { ...permissionRequest, preview }
+      : permissionRequest;
+
     const timelineItem: PermissionRequestTimelineItem = {
-      id: permissionRequest.id,
+      id: permissionRequestWithPreview.id,
       type: TimelineItemType.PERMISSION_REQUEST,
-      timestamp: permissionRequest.requestTime,
+      timestamp: permissionRequestWithPreview.requestTime,
       sessionId,
-      permissionRequest,
-      toolExecutionId: permissionRequest.executionId,
-      preview
+      permissionRequest: permissionRequestWithPreview,
+      toolExecutionId: permissionRequestWithPreview.executionId
     };
     
     // Save to timeline persistence

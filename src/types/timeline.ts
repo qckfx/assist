@@ -73,10 +73,8 @@ export interface ToolExecutionTimelineItem extends TimelineItemBase {
    */
   permissionRequest?: string;
   
-  /**
-   * Associated preview (if any)
-   */
-  preview?: ToolPreviewState;
+  // Preview lives inside toolExecution.preview from now on – keep this field
+  // removed to avoid duplication and divergence.
   
   /**
    * Parent message ID (if known)
@@ -100,10 +98,7 @@ export interface PermissionRequestTimelineItem extends TimelineItemBase {
    */
   toolExecutionId: string;
   
-  /**
-   * Associated preview (if any)
-   */
-  preview?: ToolPreviewState;
+  // Preview is carried inside permissionRequest.preview (if needed).
 }
 
 /**

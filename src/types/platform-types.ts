@@ -118,6 +118,11 @@ export interface ToolExecutionState extends CoreExecutionState {
  */
 export interface PermissionRequestState extends CorePermissionRequestState {
   previewId?: string;
+
+  /**
+   * Inline preview shown while awaiting permission.
+   */
+  preview?: ToolPreviewState;
 }
 
 /**

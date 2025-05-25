@@ -226,15 +226,15 @@ export function MessageFeed({
           result: item.toolExecution.result,
           error: item.toolExecution.error,
           permissionId: item.toolExecution.permissionId,
-          // Use preview from the timeline item if available
-          preview: item.preview ? {
-            contentType: item.preview.contentType,
-            briefContent: item.preview.briefContent,
-            fullContent: item.preview.fullContent,
-            metadata: item.preview.metadata
+          // Use preview from the nested toolExecution if available
+          preview: item.toolExecution.preview ? {
+            contentType: item.toolExecution.preview.contentType,
+            briefContent: item.toolExecution.preview.briefContent,
+            fullContent: item.toolExecution.preview.fullContent,
+            metadata: item.toolExecution.preview.metadata
           } : undefined,
-          // Add the explicit hasPreview flag
-          hasPreview: !!item.preview,
+          // Add explicit flag
+          hasPreview: !!item.toolExecution.preview,
           // Add the missing viewMode property 
           viewMode: defaultViewMode
         };
