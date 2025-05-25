@@ -12,6 +12,7 @@ import {
   fastEditModeToggleSchema,
   fastEditModeQuerySchema
 } from '../schemas/api';
+import { PermissionMode } from '../../types/platform-types';
 
 /**
  * Get pending permission requests for a session
@@ -89,8 +90,9 @@ export async function toggleFastEditMode(req: Request, res: Response, next: Next
     // Get the agent service for this session
     const agentService = agentServiceRegistry.getServiceForSession(sessionId);
     
-    // Toggle fast edit mode
-    const success = agentService.toggleFastEditMode(sessionId, enabled);
+    // Set permission mode using the new unified system
+    const mode = enabled ? PermissionMode.FAST_EDIT : PermissionMode.NORMAL;
+    const success = agentService.setPermissionMode(sessionId, mode);
     
     if (!success) {
       throw new NotFoundError(`Session ${sessionId} not found`);

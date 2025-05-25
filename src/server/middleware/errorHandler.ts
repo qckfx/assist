@@ -29,6 +29,7 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   // Log the error
+  console.error('API Error:', err);
   serverLogger.error('API Error:', err);
 
   // If the error is one of our API errors, use its status code

@@ -33,6 +33,18 @@ import {
 import type { PreviewContentType, ToolPreviewState } from '../types/preview';
 
 /**
+ * Permission modes for agent operations
+ */
+export enum PermissionMode {
+  /** Standard permission mode - requires user approval for risky operations */
+  NORMAL = 'normal',
+  /** Fast edit mode - auto-approves safe file operations */
+  FAST_EDIT = 'fast-edit', 
+  /** Dangerous mode - auto-approves all operations (use only in secure environments) */
+  DANGEROUS = 'dangerous'
+}
+
+/**
  * Repository information for a session
  */
 export interface RepositoryInfo {

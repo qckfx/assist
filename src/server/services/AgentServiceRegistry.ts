@@ -64,6 +64,12 @@ export class AgentServiceRegistry extends EventEmitter {
     const eventTypes = [
       AgentServiceEvent.TOOL_EXECUTION_STARTED,
       AgentServiceEvent.TOOL_EXECUTION,
+      // Ensure we forward the completed event so downstream services such as
+      // TimelineService can persist finished tool runs. Without this the
+      // client only receives the live WebSocket updates and the timeline
+      // stored on disk is missing every tool execution when a session is
+      // re-loaded later.
+      AgentServiceEvent.TOOL_EXECUTION_COMPLETED,
       AgentServiceEvent.TOOL_EXECUTION_ERROR,
       AgentServiceEvent.TOOL_EXECUTION_ABORTED,
       AgentServiceEvent.PERMISSION_REQUESTED,

@@ -19,6 +19,7 @@ import {
   ExecutionAdapter,
   ExecutionAdapterFactoryOptions,
   ToolExecutionState,
+  PermissionMode,
 } from '../../types/platform-types';
 import { SessionState } from '../../types/session';
 import { PreviewContentType, ToolPreviewState } from '../../types/preview';
@@ -127,7 +128,7 @@ interface ToolExecutionEventData {
 export class AgentService extends EventEmitter {
   private config: AgentServiceConfig;
   private activeProcessingSessionIds: Set<string> = new Set();
-  private sessionFastEditMode: Map<string, boolean> = new Map();
+  private sessionPermissionModes: Map<string, PermissionMode> = new Map();
   private activeTools: Map<string, ActiveTool[]> = new Map();
   private sessionExecutionAdapterTypes: Map<string, 'local' | 'docker' | 'remote'> = new Map();
   private sessionRemoteIds: Map<string, string> = new Map();
@@ -762,9 +763,17 @@ export class AgentService extends EventEmitter {
         }
       })
       
-      // Set Fast Edit Mode on the agent's permission manager based on this session's setting
-      const isFastEditModeEnabled = this.getFastEditMode(sessionId);
+      // Apply permission mode to the agent's permission manager
+      const permissionMode = this.getPermissionMode(sessionId);
+      const isFastEditModeEnabled = permissionMode === PermissionMode.FAST_EDIT;
       this.agent.setFastEditMode(isFastEditModeEnabled);
+      
+      // Apply dangerous mode if enabled
+      if (permissionMode === PermissionMode.DANGEROUS) {
+        this.agent.setDangerMode(true);
+      } else {
+        this.agent.setDangerMode(false);
+      }
       
       // Store the execution adapter type in the session
       // Get the actual type from the agent's environment or default to 'local'
@@ -1075,21 +1084,22 @@ export class AgentService extends EventEmitter {
   }
   
   /**
-   * Toggle fast edit mode for a session
+   * Set permission mode for a session
    */
-  public toggleFastEditMode(sessionId: string, enabled: boolean): boolean {
+  public setPermissionMode(sessionId: string, mode: PermissionMode): boolean {
     try {
       // Verify the session exists (will throw if not found)
       sessionManager.getSession(sessionId);
       
-      // Update the fast edit mode state
-      this.sessionFastEditMode.set(sessionId, enabled);
+      const previousMode = this.sessionPermissionModes.get(sessionId) || PermissionMode.NORMAL;
+      this.sessionPermissionModes.set(sessionId, mode);
       
-      // Emit the appropriate event
-      this.emit(
-        enabled ? AgentServiceEvent.FAST_EDIT_MODE_ENABLED : AgentServiceEvent.FAST_EDIT_MODE_DISABLED,
-        { sessionId, enabled }
-      );
+      // Emit appropriate events for backward compatibility
+      if (mode === PermissionMode.FAST_EDIT && previousMode !== PermissionMode.FAST_EDIT) {
+        this.emit(AgentServiceEvent.FAST_EDIT_MODE_ENABLED, { sessionId, enabled: true });
+      } else if (mode !== PermissionMode.FAST_EDIT && previousMode === PermissionMode.FAST_EDIT) {
+        this.emit(AgentServiceEvent.FAST_EDIT_MODE_DISABLED, { sessionId, enabled: false });
+      }
       
       return true;
     } catch {
@@ -1098,10 +1108,25 @@ export class AgentService extends EventEmitter {
   }
   
   /**
-   * Get the fast edit mode state for a session
+   * Get the permission mode for a session
+   */
+  public getPermissionMode(sessionId: string): PermissionMode {
+    return this.sessionPermissionModes.get(sessionId) || PermissionMode.NORMAL;
+  }
+  
+  /**
+   * Toggle fast edit mode for a session (backward compatibility)
+   */
+  public toggleFastEditMode(sessionId: string, enabled: boolean): boolean {
+    const mode = enabled ? PermissionMode.FAST_EDIT : PermissionMode.NORMAL;
+    return this.setPermissionMode(sessionId, mode);
+  }
+  
+  /**
+   * Get the fast edit mode state for a session (backward compatibility)
    */
   public getFastEditMode(sessionId: string): boolean {
-    return this.sessionFastEditMode.get(sessionId) || false;
+    return this.getPermissionMode(sessionId) === PermissionMode.FAST_EDIT;
   }
   
   /**

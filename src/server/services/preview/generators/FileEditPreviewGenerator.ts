@@ -89,7 +89,11 @@ export class FileEditPreviewGenerator extends PreviewGenerator {
         return null;
       }
       
-      const filePath = args.path as string || result.path || '';
+      // Extract path from args since result structure has changed
+      const filePath = args.path as string || '';
+      
+      // Extract data from the new ToolResult structure
+      const resultData = result.ok ? result.data : null;
       
       // Generate a simple diff representation
       const oldString = args.searchCode as string || args.old_string as string || '';

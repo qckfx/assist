@@ -1,7 +1,7 @@
 // Basic API response and request types
 import { ToolPreviewData } from '../../types/preview';
 import { TimelineItem } from '../../types/timeline';
-import { StructuredContent } from '../../types/platform-types';
+import { StructuredContent, PermissionMode } from '../../types/platform-types';
 
 /**
  * Environment status enum for connection and initialization status
@@ -40,6 +40,7 @@ export type ModelInfo = Record<string, string[]>;
 export interface QueryRequest {
   query: string;
   model?: string;
+  permissionMode?: PermissionMode;
 }
 
 export interface SessionHistoryEntry {

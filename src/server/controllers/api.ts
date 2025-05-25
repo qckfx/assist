@@ -30,7 +30,10 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
   try {
     const body = req.body as StartSessionRequest;
     let session: Session;
-    
+
+    // Extract agentConfig if supplied
+    const { agentConfig } = body;
+
     // Get the agent service registry from the container
     const appInstance = req.app;
     const containerInstance = appInstance.locals.container;
@@ -68,7 +71,7 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
         
         // Get default agent service config
         const defaultAgentServiceConfig: AgentServiceConfig = {
-          defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
+          defaultModel: process.env.LLM_MODEL || 'claude-3-7-sonnet-20250219',
           cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
         };
         
@@ -102,11 +105,22 @@ export async function startSession(req: Request, res: Response, next: NextFuncti
       const remoteId = body?.config?.remoteId;
       const projectsRoot = body?.config?.projectsRoot;
      
+      // Build agent service config taking into account agentConfig or explicit model override
+      const agentServiceConfig: AgentServiceConfig = {
+        defaultModel:
+          (agentConfig && (agentConfig as { defaultModel?: string }).defaultModel) ||
+          body?.config?.model ||
+          process.env.LLM_MODEL ||
+          'claude-3-7-sonnet-20250219',
+        cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
+      };
+
       // Create a new session with provided environment settings
       session = sessionManager.createSession({
         executionAdapterType,
         remoteId,
-        projectsRoot
+        projectsRoot,
+        agentServiceConfig,
       });
       serverLogger.info(`Created new session ${session.id}`, LogCategory.SESSION);
     }
@@ -228,7 +242,7 @@ export async function rollbackSessionToCheckpoint(
  */
 export async function submitQuery(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { sessionId, query, model } = req.body as QueryRequest;
+    const { sessionId, query, model, agentConfig, permissionMode } = req.body as QueryRequest;
     
     // Get the agent service registry from the container
     const appInstance = req.app;
@@ -239,6 +253,22 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
 
     // Get the specific agent service for this session
     const agentService = agentServiceRegistry.getServiceForSession(sessionId);
+    
+    // Get the session to access its configuration
+    const session = sessionManager.getSession(sessionId);
+    
+    // Determine model precedence:
+    // 1. explicit model field
+    // 2. agentConfig.defaultModel sent with this request (if any)
+    // 3. session's stored defaultModel
+    // 4. env / hard-coded fallback
+    const defaultModelFromAgentCfg = (agentConfig as { defaultModel?: string } | undefined)?.defaultModel;
+    const effectiveModel =
+      model ||
+      defaultModelFromAgentCfg ||
+      session.agentServiceConfig?.defaultModel ||
+      process.env.LLM_MODEL ||
+      'claude-3-7-sonnet-20250219';
     
     // Use the imported TimelineServiceToken as the token for container.get
     const timelineService = containerInstance.get(TimelineServiceToken);
@@ -272,10 +302,15 @@ export async function submitQuery(req: Request, res: Response, next: NextFunctio
         }
       }
       
+      // Apply permission mode if provided (no-op if undefined)
+      if (permissionMode) {
+        agentService.setPermissionMode(sessionId, permissionMode);
+      }
+      
       // Start agent processing in the background 
       // AgentRunner will add the user message to contextWindow itself
-      serverLogger.info(`Starting agent processing for session ${sessionId} with model ${model}`);
-      agentService.processQuery(sessionManager, webSocketService, sessionId, query, model)
+      serverLogger.info(`Starting agent processing for session ${sessionId} with model ${effectiveModel}`);
+      agentService.processQuery(sessionManager, webSocketService, sessionId, query, effectiveModel)
         .catch((error: unknown) => {
           serverLogger.error('Error processing query:', error, LogCategory.AGENT);
         });

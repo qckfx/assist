@@ -26,6 +26,7 @@ import {
   MessageTimelineItem,
   ToolExecutionTimelineItem,
   PermissionRequestTimelineItem,
+  TimelineItem,
 } from '../../types/timeline';
 import { WebSocketEvent } from '../../types/websocket';
 import { WebSocketService } from './WebSocketService';
@@ -113,7 +114,18 @@ export class TimelineService extends EventEmitter {
     serverLogger.debug(`Retrieving timeline items for session ${sessionId}`);
     
     // Load directly from timeline persistence
-    const timelineItems = await this.timelinePersistence.loadTimelineItems(sessionId);
+    const timelineItems = (await this.timelinePersistence.loadTimelineItems(sessionId))
+      // Ensure items are always returned in chronological order.
+      // Without this, the timeline can appear jumbled when multiple writes race.
+      .sort((a, b) => {
+        // Fallback to string compare if timestamps are invalid
+        const ta = new Date(a.timestamp).getTime();
+        const tb = new Date(b.timestamp).getTime();
+        if (isNaN(ta) || isNaN(tb)) {
+          return a.timestamp.localeCompare(b.timestamp);
+        }
+        return ta - tb;
+      });
     
     // Debug log to check if we have user messages
     const userMessages = timelineItems.filter(item => 
@@ -743,6 +755,41 @@ export class TimelineService extends EventEmitter {
       
       // Clean up after a delay
       setTimeout(() => permissionDebounce.delete(permissionId), 2000);
+    });
+
+    /*
+     * ------------------------------------------------------------------
+     * Generic timeline item updates (errors, aborts, in-flight changes…)
+     * ------------------------------------------------------------------
+     * AgentService emits AgentServiceEvent.TIMELINE_ITEM_UPDATED whenever it
+     * creates or mutates a timeline item for a tool execution – including
+     * error and abort states.  The payload already holds a fully-formed
+     * TimelineItem so we just persist/merge it.  We deliberately do *not*
+     * rebroadcast the WebSocket event here; that happened upstream when the
+     * AgentService generated the update.  Our responsibility is only to keep
+     * on-disk state in sync so sessions that are re-opened later contain the
+     * full history.
+     */
+    this.agentServiceRegistry.on(AgentServiceEvent.TIMELINE_ITEM_UPDATED, async (data: { sessionId: string; item: TimelineItem; isUpdate?: boolean }) => {
+      try {
+        if (!data || !data.sessionId || !data.item) {
+          serverLogger.warn('[TimelineService] TIMELINE_ITEM_UPDATED missing data', data);
+          return;
+        }
+
+        const { sessionId, item } = data;
+
+        // Persist the item. addTimelineItem replaces an existing item (same
+        // id+type) or appends a new one; it also serialises through the per
+        // session queue so concurrent writes are safe.
+        await this.timelinePersistence.addTimelineItem(sessionId, item);
+
+        // Emit internal event so any in-process subscribers (e.g. SSE
+        // endpoints) can react immediately.
+        this.emit(TimelineServiceEvent.ITEM_UPDATED, item);
+      } catch (error) {
+        serverLogger.error('[TimelineService] Failed to persist timeline update:', error);
+      }
     });
     
     this.agentServiceRegistry.on(MESSAGE_UPDATED, (data: any) => {

@@ -155,7 +155,7 @@ export class SessionManager {
     
     // Get default agent service config
     const defaultAgentServiceConfig: AgentServiceConfig = {
-      defaultModel: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
+      defaultModel: process.env.LLM_MODEL || 'claude-3-7-sonnet-20250219',
       cachingEnabled: process.env.QCKFX_DISABLE_CACHING ? false : true,
     };
     

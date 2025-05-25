@@ -3,6 +3,7 @@
  */
 import { z } from 'zod';
 import { TimelineItemType } from '../../types/timeline';
+import { PermissionMode } from '../../types/platform-types';
 
 /**
  * Schema for session start request
@@ -20,6 +21,9 @@ export const startSessionSchema = z.object({
       projectsRoot: z.string().optional(), // Root directory containing multiple git repos
     })
     .optional(),
+  // Optional agent configuration (mirrors .qckfx/agents/<agent>.json)
+  // We accept arbitrary JSON and will validate specific fields later as needed.
+  agentConfig: z.record(z.any()).optional(),
 });
 
 /**
@@ -28,7 +32,11 @@ export const startSessionSchema = z.object({
 export const querySchema = z.object({
   sessionId: z.string().uuid(),
   query: z.string().min(1),
-  model: z.string().min(1),
+  model: z.string().min(1).optional(),
+  // Allow passing agentConfig on query as well (optional)
+  agentConfig: z.record(z.any()).optional(),
+  // Optional permission mode for controlling agent behavior
+  permissionMode: z.nativeEnum(PermissionMode).optional(),
 });
 
 /**
